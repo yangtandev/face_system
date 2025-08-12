@@ -1,0 +1,45 @@
+# --- System Files ---
+# 忽略作業系統產生的暫存檔
+.DS_Store
+Thumbs.db
+
+# --- Python ---
+# 忽略 Python 虛擬環境
+venv/
+*.venv
+env/
+.env
+
+# 忽略 Python 的快取檔案和位元組碼
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 忽略 Python 測試和建構相關的資料夾
+.pytest_cache/
+.tox/
+build/
+dist/
+*.egg-info/
+
+# --- IDE / Editor ---
+# 忽略 VSCode 的設定檔
+.vscode/
+
+# --- Project Specific ---
+# 您原有的設定，我將它們保留並分類
+# 動態產生的媒體和日誌
+media/
+voice/
+img_log/
+log/
+
+# 模型和設定檔
+models/data/20180402-114759-vggface2.pt
+config.json
+
+# --- Docker ---
+.dockerignore
+docker-compose.yml
+run_docker.sh
