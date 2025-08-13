@@ -30,7 +30,9 @@ services:
 
             # 將主機的 config.json 掛載到容器的 /app/config.json。
             # 好處：您可以在不重新建構 image 的情況下，直接在主機上修改設定檔，然後重啟容器 (docker-compose restart) 即可生效。
-            - ./config.json:/app/config.json
+            - type: bind
+              source: ./config.json
+              target: /app/config.json
 
             # 將其他可能由程式動態產生的資料夾也掛載出來，確保資料不隨容器刪除而遺失
             - ./media:/app/media
