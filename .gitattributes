@@ -1,12 +1,15 @@
-# 自動偵測文字檔，並根據需要處理換行。
-# 這會讓 Git 在 commit 時將 CRLF 轉為 LF。
-* text=auto
-
-# 對於以下明確需要 LF 換行的檔案類型，強制指定使用 LF。
-# 這對跨平台專案至關重要，特別是 Shell 腳本。
-*.sh      text eol=lf
-*.py      text eol=lf
-*.yml     text eol=lf
-*.json    text eol=lf
-Dockerfile text eol=lf
+# --- Git LFS 追蹤規則 ---
+# 告訴 Git LFS 要管理所有 .pt 結尾的檔案。
+# 這是解決大型檔案上傳問題的關鍵。
 *.pt filter=lfs diff=lfs merge=lfs -text
+
+# --- 換行符規則 ---
+# 自動偵測文字檔，並在 commit 時將 CRLF 轉為 LF。
+* text=auto
+# 對於以下明確需要 LF 換行的檔案類型，強制指定使用 LF。
+# 這能確保 .sh 腳本在 Linux 上能正確執行。
+*.sh      eol=lf
+*.py      eol=lf
+*.yml     eol=lf
+*.json    eol=lf
+Dockerfile eol=lf
