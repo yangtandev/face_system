@@ -11,6 +11,7 @@ ENV PYTHONUNBUFFERED=1
 # --- 安裝系統依賴 ---
 # 更新套件列表並安裝 Python、pip 以及 GUI 應用程式所需的函式庫
 RUN apt-get update && apt-get install -y \
+    git \
     python3.10 \
     python3-pip \
     python3-tk \
