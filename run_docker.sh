@@ -27,7 +27,7 @@ echo ""
 # -d:      在背景 (detached) 模式下執行。
 echo -e "${GREEN}正在使用 Docker Compose 建構並啟動容器...${NC}"
 echo "這可能需要幾分鐘，特別是第一次建構時。"
-docker-compose up --build -d
+docker compose up --build -d
 
 # 檢查 docker-compose 是否成功啟動
 if [ $? -ne 0 ]; then
@@ -41,10 +41,10 @@ echo -e "${GREEN}Docker 容器已成功啟動！${NC}"
 echo "您的應用程式應該很快就會顯示在螢幕上。"
 echo ""
 echo "您可以使用以下指令來查看日誌："
-echo "  docker-compose logs -f"
+echo "  docker compose logs -f"
 echo ""
 echo "若要停止應用程式，請執行："
-echo "  docker-compose down"
+echo "  docker compose down"
 echo "--------------------------------------------------"
 
 exit 0
