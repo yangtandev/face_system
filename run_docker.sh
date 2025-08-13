@@ -24,7 +24,7 @@ echo ""
 
 # --- 步驟 2: 停止並移除舊的容器 (確保乾淨的啟動) ---
 echo -e "${GREEN}正在停止並移除任何舊的容器...${NC}"
-docker compose down
+docker compose down --volumes
 echo "舊容器已移除。"
 echo ""
 
