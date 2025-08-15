@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import requests
 from tqdm import tqdm
-from ultralytics import YOLOv10
+from yolov10.ultralytics import YOLOv10
 from PVMS_Library import config
 from init.log import LOGGER
 from ui.user_show import MainWindow
