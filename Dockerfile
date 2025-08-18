@@ -10,6 +10,8 @@ ENV PYTHONUNBUFFERED=1
 # 設定語言環境為 C.UTF-8，確保系統支援 Unicode
 ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8
+# 將 yolov10 目錄加入 Python 的模組搜尋路徑
+ENV PYTHONPATH "${PYTHONPATH}:/app/yolov10"
 
 # --- 安裝系統依賴 ---
 # 更新套件列表並安裝 Python、pip 以及運行 Qt GUI 應用程式所需的完整函式庫
@@ -54,15 +56,14 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # --- 複製專案檔案 ---
+# 將 yolov10 原始碼複製到容器中
+COPY yolov10 /app/yolov10
 # 將目前資料夾（除了 .dockerignore 中指定的檔案）的所有內容複製到容器的 /app 目錄
 COPY . .
 
 # --- 安裝 Python 依賴 ---
-# 先從 GitHub 下載 YOLOv10，然後安裝它，接著再安裝 requirements.txt 中的其他套件
-# 這樣可以確保 YOLOv10 及其包含的 ultralytics 模組被正確安裝
-RUN git clone https://github.com/THU-MIG/yolov10.git && \
-    pip3 install --no-cache-dir ./yolov10 && \
-    pip3 install --no-cache-dir -r requirements.txt
+# 使用 pip 安裝 requirements.txt 中定義的所有套件
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 # --- 設定啟動指令 ---
 # 設定容器啟動時要執行的預設指令
