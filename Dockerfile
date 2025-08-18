@@ -55,14 +55,10 @@ RUN apt-get update && apt-get install -y \
 # 在容器內建立一個 /app 資料夾，並將其設為工作目錄
 WORKDIR /app
 
-# --- 複製專案檔案 ---
-# 將 yolov10 原始碼複製到容器中
-COPY yolov10 /app/yolov10
-# 將目前資料夾（除了 .dockerignore 中指定的檔案）的所有內容複製到容器的 /app 目錄
+# --- 下載 YOLOv10 並安裝依賴 ---
+# 在複製專案檔案前先處理好 YOLOv10，確保環境乾淨
+RUN git clone https://github.com/THU-MIG/yolov10.git
 COPY . .
-
-# --- 安裝 Python 依賴 ---
-# 使用 pip 安裝 requirements.txt 中定義的所有套件
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 # --- 設定啟動指令 ---
