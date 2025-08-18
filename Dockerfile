@@ -58,8 +58,11 @@ WORKDIR /app
 COPY . .
 
 # --- 安裝 Python 依賴 ---
-# 使用 pip 安裝 requirements.txt 中定義的所有套件
-RUN pip3 install --no-cache-dir -r requirements.txt
+# 先從 GitHub 下載 YOLOv10，然後安裝它，接著再安裝 requirements.txt 中的其他套件
+# 這樣可以確保 YOLOv10 及其包含的 ultralytics 模組被正確安裝
+RUN git clone https://github.com/THU-MIG/yolov10.git && \
+    pip3 install --no-cache-dir ./yolov10 && \
+    pip3 install --no-cache-dir -r requirements.txt
 
 # --- 設定啟動指令 ---
 # 設定容器啟動時要執行的預設指令
