@@ -16,3 +16,4 @@ numba==0.60.0
 scikit-learn==1.5.1
 tqdm
 torchvision
+psutil
