@@ -9,11 +9,13 @@ ENV LC_ALL C.UTF-8
 # 將 yolov10 目錄加入 Python 的模組搜尋路徑
 ENV PYTHONPATH "${PYTHONPATH}:/app/yolov10"
 
-# --- 安裝系統依賴 (包含 git-lfs) ---
+# --- 安裝系統依賴 (包含 git-lfs, rsync, ping) ---
 RUN apt-get update && apt-get install -y \
     fonts-wqy-zenhei \
     git \
     git-lfs \
+    rsync \
+    iputils-ping \
     python3.10 \
     python3-pip \
     python3-tk \
@@ -50,7 +52,9 @@ RUN git clone https://github.com/yangtandev/face_system.git . && \
     git lfs pull && \
 # 2. 複製 YOLOv10
     git clone https://github.com/THU-MIG/yolov10.git && \
-# 3. 安裝所有 Python 套件
+# 3. 建立動態產生的資料夾
+    mkdir -p /app/media/descriptors && \
+# 4. 安裝所有 Python 套件
     pip3 install --no-cache-dir -r requirements.txt
 
 # --- 設定啟動指令 ---
