@@ -13,7 +13,7 @@ default_config = {
         "out_camera": "rtsp://admin:!QAZ87518499@192.168.31.59:554"
     },
     "Server": {
-        "ip": "54.92.8.82",
+        "ip": "43.213.128.240",
         "username": "ubuntu",
         "password": "875184991qaz2wsx",
         "face_data_dir": "/home/ubuntu/pvms-api/media",
