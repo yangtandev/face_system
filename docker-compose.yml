@@ -18,6 +18,16 @@ services:
             - QT_X11_NO_MITSHM=1
 
         # --- 掛載設定 (Volumes) ---
+        # command 指令讓我們可以覆寫 Dockerfile 中的預設 CMD
+        # 這裡我們使用 shell 來執行一個複合指令：
+        # 1. `rm -f /app/config.json`: 強制刪除可能存在的舊設定檔，-f 參數確保即使檔案不存在也不會報錯。
+        # 2. `python3 /app/setting/bulid_config.py`: 執行腳本來建立一個全新的、基於預設值的設定檔。
+        # 3. `python3 /app/face_main.py`: 最後，啟動主應用程式。
+        # 用 `&&` 串連指令，確保前一個指令成功執行後，才會執行下一個。
+        command: >
+            sh -c "rm -f /app/config.json && python3 /app/setting/bulid_config.py && python3 /app/face_main.py"
+
+        # --- 掛載設定 (Volumes) ---
         # volumes 讓我們可以將主機的檔案或資料夾，映射到容器內部
         volumes:
             # 將主機的 X11 socket 掛載到容器中。
@@ -32,3 +42,10 @@ services:
             - ./media:/app/media
             - ./img_log:/app/img_log
             - ./voice:/app/voice
+
+        # --- 硬體設備設定 ---
+        # devices 讓我們可以將主機的硬體設備，直接映射給容器使用
+        devices:
+            # 將主機的 DRI (Direct Rendering Infrastructure) 設備掛載到容器中。
+            # 這對於需要硬體加速的 GUI 應用程式至關重要，可以解決常見的 libGL 錯誤。
+            - /dev/dri:/dev/dri

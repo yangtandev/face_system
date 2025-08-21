@@ -6,6 +6,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV LANG C.UTF-8
 ENV LC_ALL C.UTF-8
+# 解決 RTSP (HEVC) 影像流可能出現的 "VPS 0 does not exist" 錯誤
+# 強制 OpenCV 的 FFmpeg 後端使用 TCP 協定來接收 RTSP 影像流，提高連線穩定性
+ENV OPENCV_FFMPEG_CAPTURE_OPTIONS="rtsp_transport;tcp"
 # 將 yolov10 目錄加入 Python 的模組搜尋路徑
 ENV PYTHONPATH "${PYTHONPATH}:/app/yolov10"
 

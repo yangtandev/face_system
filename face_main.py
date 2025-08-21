@@ -319,6 +319,12 @@ class FaceRecognitionSystem:
         self.speaker = Say_()
         self.local_media_path = os.path.join(os.path.dirname(__file__), "media")
         self.model_path = os.path.join(self.local_media_path, "linear_svc_model.pkl")
+
+        # 確保所有必要的 media 子目錄都存在
+        os.makedirs(os.path.join(self.local_media_path, "descriptors"), exist_ok=True)
+        os.makedirs(os.path.join(self.local_media_path, "pic_bak"), exist_ok=True)
+        os.makedirs(os.path.join(self.local_media_path, "profile_pictures"), exist_ok=True)
+
         self.update_lock = threading.Lock() # 用於防止多個更新執行緒同時運行
 
     def run(self):
