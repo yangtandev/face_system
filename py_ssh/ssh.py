@@ -35,11 +35,16 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
     # -z: 壓縮傳輸
     # --delete: 刪除本地多出來的檔案，保持與遠端完全一致
     # -e: 指定使用的 ssh 指令
+    # 建立 ssh 指令，並加入選項以停用嚴格的主機金鑰檢查
+    # -o StrictHostKeyChecking=no: 自動接受新的主機金鑰，避免互動式提示
+    # -o UserKnownHostsFile=/dev/null: 不將主機金鑰儲存到檔案中，避免容器重啟時發生衝突
+    ssh_command = f"ssh -p {ssh_config.get('port', 22)} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
     command = [
         "rsync",
         "-avz",
         "--delete",
-        "-e", f"ssh -p {ssh_config.get('port', 22)}",
+        "-e", ssh_command,
         f"{ssh_config['username']}@{ssh_config['ip']}:{source_dir}/", # 注意來源路徑結尾的斜線
         dest_dir
     ]
