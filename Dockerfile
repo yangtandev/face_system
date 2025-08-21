@@ -49,15 +49,15 @@ RUN apt-get update && apt-get install -y \
 # --- 設定工作目錄 ---
 WORKDIR /app
 
-# --- 複製本地專案檔案到容器中 ---
-COPY . .
+# --- 複製 Git 相關檔案並拉取 LFS ---
+# 為了執行 git lfs pull，需要先將 .git 目錄和 .gitattributes 複製進來
+COPY .git ./.git
+COPY .gitattributes ./.gitattributes
+RUN git lfs pull
 
-# --- 處理依賴 ---
-# 1. 拉取 LFS 檔案
-# 2. 複製 YOLOv10
-# 3. 安裝所有 Python 套件
-RUN git lfs pull && \
-    git clone https://github.com/THU-MIG/yolov10.git && \
+# --- 複製專案所有檔案並處理依賴 ---
+COPY . .
+RUN git clone https://github.com/THU-MIG/yolov10.git && \
     pip3 install --no-cache-dir -r requirements.txt
 
 # --- 設定啟動指令 ---
