@@ -49,16 +49,17 @@ RUN apt-get update && apt-get install -y \
 # --- 設定工作目錄 ---
 WORKDIR /app
 
-# --- 下載專案原始碼並處理依賴 ---
-# 1. 複製主專案並拉取 LFS 檔案
-RUN git clone https://github.com/yangtandev/face_system.git . && \
-    git lfs pull && \
+# --- 複製本地專案檔案到容器中 ---
+COPY . .
+
+# --- 處理依賴 ---
+# 1. 拉取 LFS 檔案
 # 2. 複製 YOLOv10
+# 3. 安裝所有 Python 套件
+RUN git lfs pull && \
     git clone https://github.com/THU-MIG/yolov10.git && \
-# 3. 建立動態產生的資料夾
-    mkdir -p /app/media/descriptors && \
-# 4. 安裝所有 Python 套件
     pip3 install --no-cache-dir -r requirements.txt
 
 # --- 設定啟動指令 ---
-CMD ["python3", "main.py"]
+# 注意：此 CMD 為預設指令，實際上會被 docker-compose.yml 中的 command 覆寫
+CMD ["python3", "face_main.py"]
