@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     git-lfs \
     rsync \
     iputils-ping \
+    sshpass \
     python3.10 \
     python3-pip \
     python3-tk \

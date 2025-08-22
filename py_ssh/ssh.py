@@ -22,6 +22,8 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
         ssh_config (dict): 包含 'ip', 'username', 'password' 的字典。
         source_dir (str): 遠端來源資料夾路徑。
         dest_dir (str): 本地目標資料夾路徑。
+    """
+    global config_ # 確保 config_ 在此函數中可用
 
     Returns:
         bool: True 表示成功，False 表示失敗。
@@ -38,7 +40,9 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
     # 建立 ssh 指令，並加入選項以停用嚴格的主機金鑰檢查
     # -o StrictHostKeyChecking=no: 自動接受新的主機金鑰，避免互動式提示
     # -o UserKnownHostsFile=/dev/null: 不將主機金鑰儲存到檔案中，避免容器重啟時發生衝突
-    ssh_command = f"ssh -p {ssh_config.get('port', 22)} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    # 使用 sshpass 傳遞密碼
+    password = config_["Server"]["password"]
+    ssh_command = f"sshpass -p '{password}' ssh -p {ssh_config.get('port', 22)} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
     command = [
         "rsync",
