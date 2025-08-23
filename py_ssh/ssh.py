@@ -24,7 +24,7 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
         dest_dir (str): 本地目標資料夾路徑。
 
     Returns:
-        bool: True 表示成功，False 表示失敗。
+        bool: True 表示成功, False 表示失敗。
     """
     global config_ # 確保 config_ 在此函數中可用
     # 確保本地目標資料夾存在
