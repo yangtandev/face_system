@@ -22,12 +22,11 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
         ssh_config (dict): 包含 'ip', 'username', 'password' 的字典。
         source_dir (str): 遠端來源資料夾路徑。
         dest_dir (str): 本地目標資料夾路徑。
-    """
-    global config_ # 確保 config_ 在此函數中可用
 
     Returns:
         bool: True 表示成功，False 表示失敗。
     """
+    global config_ # 確保 config_ 在此函數中可用
     # 確保本地目標資料夾存在
     os.makedirs(dest_dir, exist_ok=True)
 
