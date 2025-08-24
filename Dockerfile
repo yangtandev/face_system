@@ -12,7 +12,7 @@ ENV OPENCV_FFMPEG_CAPTURE_OPTIONS="rtsp_transport;tcp"
 # 將 yolov10 目錄加入 Python 的模組搜尋路徑
 ENV PYTHONPATH "${PYTHONPATH}:/app/yolov10"
 
-# --- 安裝系統依賴 (包含 git-lfs, rsync, ping) ---
+# --- 安裝系統依賴並下載專案原始碼 ---
 RUN apt-get update && apt-get install -y \
     fonts-wqy-zenhei \
     git \
@@ -51,12 +51,9 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # --- 下載專案原始碼並處理依賴 ---
-# 1. 複製主專案並拉取 LFS 檔案
-RUN git clone https://github.com/yangtandev/face_system.git . && \
-    git lfs pull && \
-# 2. 複製 YOLOv10
+COPY . .
+RUN git lfs pull && \
     git clone https://github.com/THU-MIG/yolov10.git && \
-# 3. 安裝所有 Python 套件
     pip3 install --no-cache-dir -r requirements.txt
 
 # --- 設定啟動指令 ---
