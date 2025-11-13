@@ -40,8 +40,7 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
     # -o StrictHostKeyChecking=no: 自動接受新的主機金鑰，避免互動式提示
     # -o UserKnownHostsFile=/dev/null: 不將主機金鑰儲存到檔案中，避免容器重啟時發生衝突
     # 使用 sshpass 傳遞密碼
-    password = config_["Server"]["password"]
-    ssh_command = f"sshpass -p '{password}' ssh -p {ssh_config.get('port', 22)} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    ssh_command = f"ssh -p {ssh_config.get('port', 22)} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
     command = [
         "rsync",
@@ -92,7 +91,7 @@ def connect_server():
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
         ssh.connect(hostname=config_["Server"]["ip"], port=22,
-                    username=config_["Server"]["username"], password=config_["Server"]["password"])
+                    username=config_["Server"]["username"])
         print("SSH連線成功")
     except Exception as e:
         print("SSH連線失敗", e)
