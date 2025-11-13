@@ -34,5 +34,5 @@ voice/
 img_log/
 log/
 
-# 設定檔 (通常包含機敏資訊或環境特定設定)
-config.json
+
+start_rtsp.py

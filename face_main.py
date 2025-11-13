@@ -305,7 +305,7 @@ class FaceRecognitionSystem:
         self.state.min_face = CONFIG["min_face"]
 
         self.svc = LinearSVC(C=1, multi_class='ovr')
-        self.mtcnn = mtcnn.MTCNN(image_size=160, min_face_size=150, keep_all=True, select_largest=True)
+        self.mtcnn = mtcnn.MTCNN(image_size=160, min_face_size=95, keep_all=True, select_largest=True)
         self.resnet = inception_resnet_v1.InceptionResnetV1(pretrained='vggface2').eval()
 
         if CONFIG["Clothes_show"]:

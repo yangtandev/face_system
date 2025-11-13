@@ -12,7 +12,7 @@ FFMPEG_COMMAND = [
     '-preset', 'ultrafast',
     '-tune', 'zerolatency',
     '-f', 'rtsp',
-    'rtsp://localhost:8554/mystream'
+    'rtsp://localhost:8554/stream'
 ]
 RTSP_STREAM_NAME = '/mystream'
 

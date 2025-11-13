@@ -9,8 +9,8 @@ default_config = {
         "ip_mask": "255.255.255.0"
     },
     "cameraIP": {
-        "in_camera": "rtsp://admin:!QAZ87518499@192.168.31.101:554",
-        "out_camera": "rtsp://admin:!QAZ87518499@192.168.31.59:554"
+        "in_camera": "rtsp://192.168.31.101",
+		"out_camera": "rtsp://192.168.31.59"
     },
     "Server": {
         "ip": "43.213.128.240",
@@ -34,7 +34,7 @@ default_config = {
     "door": "0",
     "Clothes_detection": False,
     "Clothes_show": False,
-    "min_face": 300,
+    "min_face": 95,
     "test_mod": False,
     "auto_open": False,
     "full_screen": False

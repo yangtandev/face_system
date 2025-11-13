@@ -47,13 +47,12 @@ class VideoCapture:
         is_localhost = hostname in ("localhost", "127.0.0.1")
 
         while not self.stop_threads:
-            # 如果是本機連線，就跳過 ping 檢查，直接嘗試連線
-            # 如果是遠端位址，則維持 ping 檢查
-            if is_localhost or self.ping(self.rtsp_url):
+            # 無論如何都直接嘗試連線，而不是先 ping
+            if True:
                 if is_localhost:
                     print(f"Attempting to connect to local RTSP stream: {self.rtsp_url}")
                 else:
-                    print(f"Ping to {hostname} successful, attempting to connect to RTSP stream...")
+                    print(f"Attempting to connect to RTSP stream at {hostname}...")
 
                 self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
                 if self.cap.isOpened():
@@ -61,9 +60,7 @@ class VideoCapture:
                     return
                 else:
                     print("Failed to open RTSP stream with OpenCV. Retrying...")
-            else:
-                print(f"Ping to {hostname} failed. Retrying in {self.delay} seconds...")
-
+            
             time.sleep(self.delay)
 
         # 只有在迴圈是因為 stop_threads=False 結束時才引發例外
