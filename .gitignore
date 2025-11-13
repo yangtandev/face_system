@@ -34,6 +34,7 @@ voice/
 img_log/
 log/
 *.txt
+!requirements.txt
 
 start_rtsp.py
 
