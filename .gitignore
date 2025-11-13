@@ -33,6 +33,8 @@ media/
 voice/
 img_log/
 log/
-
+*.txt
 
 start_rtsp.py
+
+CACHED
