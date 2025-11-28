@@ -3,205 +3,191 @@ import subprocess
 import threading
 import time
 import cv2
-import numpy as np  # 用於創建黑畫面
+import numpy as np
 from urllib.parse import urlparse
+import os
 
 class VideoCapture:
     """
-    Custom VideoCapture class to handle RTSP connection failures and auto-reconnect.
-    自定義的 RTSP 影像擷取類別，支援自動重連與讀取錯誤時填黑畫面。
+    Custom VideoCapture class using a direct FFmpeg subprocess pipe.
+    This is the most robust method for handling problematic RTSP streams,
+    as it bypasses OpenCV's internal backends (FFmpeg/GStreamer) and uses the
+    FFmpeg command-line tool directly.
     """
 
     def __init__(self, rtsp_url, retries=5, delay=5):
         """
-        Constructor 初始化 RTSP 連線物件，並啟動讀取執行緒。
-
-        Parameters:
-        rtsp_url (str): RTSP 串流位址。
-        retries (int): 最多重試次數（目前未使用，可擴充）。
-        delay (int): 每次重試間隔秒數。
+        Initializes the FFmpeg-based video capture object.
         """
         self.rtsp_url = rtsp_url
         self.retries = retries
         self.delay = delay
-        self.cap = None
-        self.ret = False
-        self.q = queue.Queue(maxsize=3)
+        
+        self.proc = None  # FFmpeg subprocess
+        self.width = None
+        self.height = None
+        
+        self.q = queue.Queue(maxsize=2)
         self.stop_threads = False
-        self.lock = threading.Lock()
-        self.count = 0
-        # 建立黑畫面 (假設分辨率為 640x480，您可以根據需求調整)
-        self.black_frame = np.zeros((480, 640, 3), dtype=np.uint8)
-        #self._connect()
-
+        
+        # Start the reader thread which will manage the connection and frame reading
         self.thread = threading.Thread(target=self._reader)
         self.thread.daemon = True
         self.thread.start()
 
-    def _connect(self):
+    def _get_video_info(self):
         """
-        嘗試連線到 RTSP 串流。先進行 ping 測試確認 IP 可達，再使用 cv2.VideoCapture 開啟串流。
-        若無法連接則每隔 delay 秒重試，直到 stop_threads 被設為 True。
+        Uses ffprobe to get the video's width and height.
         """
-        hostname = urlparse(self.rtsp_url).hostname
-        is_localhost = hostname in ("localhost", "127.0.0.1")
-
-        while not self.stop_threads:
-            # 無論如何都直接嘗試連線，而不是先 ping
-            if True:
-                if is_localhost:
-                    print(f"Attempting to connect to local RTSP stream: {self.rtsp_url}")
-                else:
-                    print(f"Attempting to connect to RTSP stream at {hostname}...")
-
-                self.cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)
-                if self.cap.isOpened():
-                    print("Connected to RTSP stream.")
-                    return
-                else:
-                    print("Failed to open RTSP stream with OpenCV. Retrying...")
+        print("Probing video stream for resolution...")
+        try:
+            # Construct the ffprobe command
+            command = [
+                'ffprobe',
+                '-v', 'error',
+                '-select_streams', 'v:0',
+                '-show_entries', 'stream=width,height',
+                '-of', 'csv=s=x:p=0',
+                self.rtsp_url
+            ]
             
-            time.sleep(self.delay)
-
-        # 只有在迴圈是因為 stop_threads=False 結束時才引發例外
-        if not self.stop_threads:
-            raise Exception("Failed to connect to RTSP stream after multiple attempts.")
+            # Execute the command
+            output = subprocess.check_output(command, stderr=subprocess.STDOUT, universal_newlines=True, timeout=10)
+            
+            # Parse the output (e.g., "1920x1080")
+            resolution = output.strip().split('x')
+            self.width = int(resolution[0])
+            self.height = int(resolution[1])
+            print(f"Video resolution detected: {self.width}x{self.height}")
+            return True
+            
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, IndexError) as e:
+            print(f"Failed to get video info using ffprobe: {e}")
+            # Fallback to a default resolution if ffprobe fails
+            self.width, self.height = 1920, 1080
+            print(f"Warning: ffprobe failed. Falling back to default resolution {self.width}x{self.height}. This might cause issues.")
+            return False # Indicate that we are using a fallback
 
     def _reader(self):
         """
-        持續從 RTSP 串流讀取影像並放入 queue。若讀取失敗會重連並將 queue 填入黑畫面。
-        該函式在初始化時由背景執行緒啟動。
+        The main loop that connects to the stream and reads frames.
+        This function runs in a background thread.
         """
-        self._connect()
         while not self.stop_threads:
-            try:
-                # 提前檢查停止旗標
-                if self.stop_threads:
-                    break
+            # First, get video info. This is a prerequisite.
+            if self.width is None or self.height is None:
+                self._get_video_info()
 
-                with self.lock:
-                    # 再次檢查 self.cap 是否有效，避免在無效物件上操作
-                    if self.cap is None or not self.cap.isOpened():
-                        self.ret = False
-                        time.sleep(0.1) # 短暫等待，避免空轉
+            try:
+                print(f"Attempting to start FFmpeg process for RTSP stream at {urlparse(self.rtsp_url).hostname}...")
+                
+                # Command to decode the RTSP stream and pipe raw BGR frames to stdout
+                command = [
+                    'ffmpeg',
+                    '-hide_banner', '-loglevel', 'error',
+                    '-rtsp_transport', 'tcp',      # Force TCP for stability
+                    '-i', self.rtsp_url,           # Input URL
+                    '-f', 'rawvideo',              # Output format: raw video
+                    '-pix_fmt', 'bgr24',           # Pixel format: BGR (what OpenCV uses)
+                    '-'                            # Output to stdout
+                ]
+                
+                # Start the FFmpeg subprocess
+                self.proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                frame_size = self.height * self.width * 3
+                
+                print("FFmpeg process started. Reading frames...")
+                
+                while not self.stop_threads:
+                    # Read a full frame's worth of bytes
+                    in_bytes = self.proc.stdout.read(frame_size)
+                    
+                    if len(in_bytes) == 0:
+                        # Stream ended or FFmpeg process died
+                        print("FFmpeg stream ended. Attempting to reconnect...")
+                        break # Exit inner loop to trigger reconnection
+                        
+                    if len(in_bytes) != frame_size:
+                        print(f"Warning: Incomplete frame received. Expected {frame_size}, got {len(in_bytes)}.")
                         continue
 
-                    ret, frame = self.cap.read()
-                    self.ret = ret
-
-                if not ret:
-                    # 如果被告知停止，就不要再嘗試重連了
-                    if self.stop_threads:
-                        break
-
-                    print("Frame read failed. Inserting black frame and reconnecting...")
-
-                    if not self.q.empty():
-                        try:
-                            self.q.get_nowait()
-                        except queue.Empty:
-                            pass
-
-                    if self.cap:
-                        self.cap.release()
-                    self._connect()
-                    continue
-
-                if not self.q.empty():
-                    try:
+                    # Convert the bytes to a NumPy array and reshape it
+                    frame = np.frombuffer(in_bytes, np.uint8).reshape(self.height, self.width, 3)
+                    
+                    # If the queue is full, discard the oldest frame
+                    if self.q.full():
                         self.q.get_nowait()
-                    except queue.Empty:
-                        pass
-                self.q.put(frame)
+                        
+                    self.q.put(frame)
 
-            except cv2.error:
-                # 在關閉(terminate)過程中，另一執行緒可能會釋放 self.cap，導致 read() 拋出此錯誤。
-                # 這是預期行為，所以我們捕捉它並準備結束執行緒。
-                if self.stop_threads:
-                    print("Reader thread is shutting down gracefully.")
-                    break
-                else:
-                    # 如果不是在關閉過程中發生，則可能是個真正的問題
-                    print("An unexpected OpenCV error occurred. Attempting to reconnect...")
-                    self.ret = False
-                    if self.cap:
-                        self.cap.release()
+            except Exception as e:
+                print(f"An error occurred in the reader thread: {e}")
+
+            finally:
+                # Clean up the subprocess if it exists
+                if self.proc:
+                    self.proc.kill()
+                    self.proc.wait()
+                    self.proc = None
+                
+                # If we are not supposed to stop, wait before retrying
+                if not self.stop_threads:
+                    print(f"Waiting {self.delay} seconds before reconnecting...")
                     time.sleep(self.delay)
-                    self._connect()
-
-
 
     def read(self):
         """
-        取得最新一張影像(frame)。
-
-        Returns:
-        frame (np.ndarray): 最新一張影像，若讀取失敗則回傳黑畫面。
+        Retrieves the latest frame from the queue.
+        This will block for up to 1 second for a new frame to become available.
         """
-        if not self.ret:
-            return self.black_frame
-        return self.q.get()
-
-    def ping(self, ip_address):
-        """
-        嘗試對目標 IP 進行 ping 測試以檢查是否可達。
-
-        Parameters:
-        ip_address (str): IP 位址或 RTSP 位址(可包含帳密與 port)
-
-        Returns:
-        bool: True 表示 ping 成功,False 表示失敗。
-        """
-        if "@" in ip_address:
-            ip = ip_address.split("@")[-1]
-        else:
-            ip = ip_address  # 直接傳入 IP 地址的情況
-        if ":" in ip:
-            ip = ip.split(":")[0]
         try:
-            # 使用 sudo 執行 ping 命令
-            output = subprocess.check_output(
-                ["ping", "-w", "2", ip],
-                stderr=subprocess.STDOUT,  # 捕捉標準錯誤輸出
-                universal_newlines=True  # 將輸出轉換為字符串
-            )
-
-            # 檢查輸出中是否有關鍵字，表示 ping 成功
-            if ("Reply from" in output or "回覆自" in output) and \
-               ("Received = 4" in output or "已收到 = 4" in output) or \
-                "2 received" in output:
-                return True  # 表示 ping 成功
-            else:
-                return False  # 表示 ping 失敗
-        except subprocess.CalledProcessError as e:
-            #print("Ping failed. Output was:", e.output)
-            return False  # 表示命令執行失敗
+            # Block for up to 1 second to wait for a new frame
+            return self.q.get(timeout=1)
+        except queue.Empty:
+            # If no frame arrives within the timeout, the stream is likely dead.
+            print("Queue empty for 1 second, returning black frame.")
+            # Return a black frame of the correct size
+            if self.width and self.height:
+                 return np.zeros((self.height, self.width, 3), dtype=np.uint8)
+            else: # Fallback if we don't even know the resolution yet
+                 return np.zeros((480, 640, 3), dtype=np.uint8)
 
     def terminate(self):
         """
-        優雅地停止讀取執行緒並釋放資源。
+        Stops the reader thread and terminates the FFmpeg subprocess.
         """
         print(f"Terminating camera connection to {self.rtsp_url}...")
-        # 1. 設置停止旗標，通知背景執行緒該結束了
         self.stop_threads = True
-
-        # 2. 等待背景執行緒執行完畢 (最多等待 2 秒)
-        if hasattr(self, 'thread') and self.thread.is_alive():
+        
+        # Kill the FFmpeg process
+        if self.proc:
+            self.proc.kill()
+        
+        # Wait for the reader thread to finish
+        if self.thread.is_alive():
             self.thread.join(timeout=2.0)
-
-        # 3. 在確認背景執行緒已停止後，才安全地釋放資源
-        if self.cap:
-            self.cap.release()
-
+            
         print(f"Camera connection to {self.rtsp_url} terminated.")
 
 if __name__ == "__main__":
-    camera = VideoCapture("rtsp://admin:!QAZ87518499@192.168.31.132:554")
+    # Example usage: Replace with your RTSP URL
+    # camera = VideoCapture("rtsp://admin:!QAZ87518499@192.168.31.132:554")
+    camera = VideoCapture("rtsp://192.168.50.71") # Using the user's URL
+
+    cv2.namedWindow("FFmpeg Pipe Test", cv2.WINDOW_NORMAL)
+    
     while True:
         frame = camera.read()
-        frame = cv2.resize(frame, (1280,720))
-        cv2.imshow("test", frame)
+        
+        # We must check if the frame has content, as the black frame fallback is used
+        if frame.size > 0:
+            # For display, resize the frame to something manageable
+            display_frame = cv2.resize(frame, (1280, 720))
+            cv2.imshow("FFmpeg Pipe Test", display_frame)
+        
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
+            
     camera.terminate()
     cv2.destroyAllWindows()
