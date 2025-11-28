@@ -27,7 +27,7 @@ def setup_log(log_name):
         filename=log_path,               # 實際寫入檔案的路徑
         when="MIDNIGHT",                # 每天午夜輪轉一次
         interval=1,                     # 間隔為 1 天
-        backupCount=20,                 # 最多保留 20 個歷史檔案
+        backupCount=6,                  # 最多保留 6 個歷史檔案 (共 7 天)
         encoding='utf-8'                # 編碼格式為 UTF-8
     )
 

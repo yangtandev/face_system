@@ -40,7 +40,15 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
     # -o StrictHostKeyChecking=no: 自動接受新的主機金鑰，避免互動式提示
     # -o UserKnownHostsFile=/dev/null: 不將主機金鑰儲存到檔案中，避免容器重啟時發生衝突
     # 使用 sshpass 傳遞密碼
-    ssh_command = f"ssh -p {ssh_config.get('port', 22)} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    key_path = config_["Server"].get("ssh_key_path")
+    if key_path:
+        ssh_command = f"ssh -i '{key_path}' -p {ssh_config.get('port', 22)} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    else:
+        # Fallback to password if key_path is not provided (though we encourage using keys)
+        # Note: The 'password' key might not exist in config_["Server"] after recent changes.
+        # This fallback might need review if password auth is completely removed.
+        password = config_["Server"].get("password", "fallback_password_if_needed") # Use .get with a default
+        ssh_command = f"sshpass -p '{password}' ssh -p {ssh_config.get('port', 22)} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
     command = [
         "rsync",
@@ -52,6 +60,7 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
     ]
 
     print(f"Executing rsync command: {' '.join(command)}")
+    print(f"PATH: {os.environ.get('PATH')}")
 
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -81,7 +90,6 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
         return False
 
 
-
 def connect_server():
     """
     建立 SSH 連線，使用 config.json 中設定的伺服器資訊。
@@ -90,8 +98,17 @@ def connect_server():
     global ssh
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
-        ssh.connect(hostname=config_["Server"]["ip"], port=22,
-                    username=config_["Server"]["username"])
+        key_path = config_["Server"].get("ssh_key_path")
+        if key_path:
+            ssh.connect(hostname=config_["Server"]["ip"], port=22,
+                        username=config_["Server"]["username"], key_filename=key_path)
+        else:
+            # Fallback to password if key_path is not provided
+            # Note: The 'password' key might not exist in config_["Server"] after recent changes.
+            # This fallback might need review if password auth is completely removed.
+            password = config_["Server"].get("password", "fallback_password_if_needed") # Use .get with a default
+            ssh.connect(hostname=config_["Server"]["ip"], port=22,
+                        username=config_["Server"]["username"], password=password)
         print("SSH連線成功")
     except Exception as e:
         print("SSH連線失敗", e)

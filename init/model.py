@@ -215,69 +215,72 @@ class Comparison:
     """
     負責臉部向量比對與身份預測：
     - 最終決策者，統一控制辨識與顯示狀態。
-    - 採用帶時間衰減的信心分數累加器，提升辨識穩定性。
+    - 採用單次辨識成功即觸發的機制。
     - 引入顯示狀態保持機制，解決畫面閃爍問題。
-    - 提供詳細的日誌記錄，包含分數組成歷史。
     """
     def __init__(self, frame_num, system):
         self.system = system
         self.frame_num = frame_num
         self.stop_threads = False
 
-        self.recognition_states = {}
+        # 用於控制辨識成功後，人員名稱在畫面上停留的時間
         self.display_state = {'person_id': 'None', 'last_update': 0}
+        self.last_recognition_time = 0
 
-        self.DISPLAY_STATE_HOLD_SECONDS = 3
-        self.CONFIDENCE_THRESHOLD = 0.65
-        self.SUCCESS_SCORE_THRESHOLD = 2.0
-        self.STATE_EXPIRATION_SECONDS = 5
+        self.DISPLAY_STATE_HOLD_SECONDS = 3  # 辨識成功後，名稱顯示的持續時間
+        self.CONFIDENCE_THRESHOLD = 0.65     # 單次辨識的信賴度門檻
+        self.RECOGNITION_COOLDOWN = 5        # 同一個攝影機在辨識成功後的冷卻時間(秒)
 
         self.TIMEZONE = pytz.timezone('Asia/Taipei')
 
         threading.Thread(target=self.face_comparison, daemon=True).start()
 
-    def _cleanup_expired_states(self):
-        now = time.time()
-        expired_keys = [
-            person_id for person_id, state in self.recognition_states.items()
-            if now - state['last_seen'] > self.STATE_EXPIRATION_SECONDS
-        ]
-        if expired_keys:
-            for key in expired_keys:
-                del self.recognition_states[key]
-            if not self.recognition_states:
-                self.system.state.display_history[self.frame_num] = []
-
     def _update_display_state(self, person_id):
+        """更新當前顯示的人員ID和時間"""
         self.display_state['person_id'] = person_id
         self.display_state['last_update'] = time.time()
         self.system.state.same_class[self.frame_num] = person_id
 
     def face_comparison(self):
+        """
+        執行臉部比對的核心迴圈。
+        - 提取人臉特徵。
+        - 與資料庫比對並計算信賴度。
+        - 如果信賴度超過門檻，則觸發成功事件。
+        - 管理UI顯示狀態，並移除信賴度分數的顯示。
+        """
         last_warmup_time = 0
         dummy_input = tensor_test_img
 
         while not self.stop_threads:
             time.sleep(0.01)
             now = time.time()
-            self._cleanup_expired_states()
 
+            # 清除畫面上的人員名稱（如果超過顯示時間）
             if self.display_state['person_id'] != 'None' and \
                now - self.display_state['last_update'] > self.DISPLAY_STATE_HOLD_SECONDS:
-                if not self.recognition_states:
-                    self._update_display_state('None')
-                    self.system.state.display_history[self.frame_num] = []
+                self._update_display_state('None')
 
+            # 重置觸發器
             self.system.state.same_people[self.frame_num] = 0
+            # 清空歷史紀錄，確保不顯示信賴度分數
+            self.system.state.display_history[self.frame_num] = []
 
+            # 檢查是否有臉部框
             if self.system.state.max_box[self.frame_num] is None or \
                self.system.state.frame_mtcnn[self.frame_num] is None:
                 continue
 
+            # 檢查臉部大小是否足夠
             _box = self.system.state.max_box[self.frame_num]
             if _box[2] - _box[0] < self.system.state.min_face:
                 continue
+            
+            # 檢查是否在辨識冷卻時間內
+            if now - self.last_recognition_time < self.RECOGNITION_COOLDOWN:
+                continue
 
+            # 提取人臉特徵向量
             try:
                 face_embedding_list = self.system.resnet(self.system.mtcnn.extract(self.system.state.frame_mtcnn[self.frame_num].copy(), [_box], None))
                 if face_embedding_list is None or len(face_embedding_list) == 0:
@@ -286,6 +289,7 @@ class Comparison:
             except Exception:
                 continue
 
+            # 進行預測與信賴度計算
             try:
                 predicted_id = self.system.svc.predict([current_face_vec])[0]
                 registered_embeddings = self.system.state.features_dict.get(predicted_id, [])
@@ -296,38 +300,23 @@ class Comparison:
             except Exception:
                 continue
 
+            # 標記每一次辨識事件（無論成功與否）
+            log_time = datetime.now(self.TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')
+            staff_name = self.system.state.features_dict.get("id_name", {}).get(predicted_id, "未知")
+            LOGGER.info(f"[辨識事件][Cam {self.frame_num}] 偵測到 {staff_name} (ID: {predicted_id}), 信賴度: {confidence:.2%}")
+
+            # 如果單次信賴度超過門檻，則直接視為成功
             if confidence >= self.CONFIDENCE_THRESHOLD:
                 person_id = predicted_id
-                state = self.recognition_states.get(person_id, {'score': 0, 'last_seen': now, 'history': []})
+                
+                # 觸發成功事件 (例如：開門)
+                self.system.state.same_people[self.frame_num] = 1
+                # 更新UI顯示的人員名稱
+                self._update_display_state(person_id)
+                # 更新最後辨識成功的時間
+                self.last_recognition_time = now
 
-                state['score'] += confidence
-                state['last_seen'] = now
-                state['history'].append((confidence, now))
-                self.recognition_states[person_id] = state
-
-                display_lines = []
-                last_three_history = state['history'][-3:]
-                for conf, ts in last_three_history:
-                    time_str = datetime.fromtimestamp(ts, self.TIMEZONE).strftime('%H:%M:%S')
-                    display_lines.append(f"{conf:.1%} @ {time_str}")
-                self.system.state.display_history[self.frame_num] = display_lines
-
-                if state['score'] >= self.SUCCESS_SCORE_THRESHOLD:
-                    log_time = datetime.now(self.TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')
-
-                    history_log = " | ".join([
-                        f"{conf:.2f} @ {datetime.fromtimestamp(ts, self.TIMEZONE).strftime('%H:%M:%S')}"
-                        for conf, ts in state['history']
-                    ])
-                    print(f"--- [{log_time}][成功 Cam {self.frame_num}] {person_id} 辨識成功! ---")
-                    print(f"    - 最終分數: {state['score']:.2f} (>{self.SUCCESS_SCORE_THRESHOLD})")
-                    print(f"    - 分數組成: [ {history_log} ]")
-
-                    self.system.state.same_people[self.frame_num] = 1
-                    self._update_display_state(person_id)
-
-                    del self.recognition_states[person_id]
-
+            # 模型暖機
             if time.time() - last_warmup_time > 10 and self.frame_num == 0:
                 try:
                     _ = self.system.resnet(dummy_input)
@@ -337,3 +326,4 @@ class Comparison:
 
     def terminate(self):
         self.stop_threads = True
+

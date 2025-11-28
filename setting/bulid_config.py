@@ -9,13 +9,13 @@ default_config = {
         "ip_mask": "255.255.255.0"
     },
     "cameraIP": {
-        "in_camera": "rtsp://192.168.31.101",
-		"out_camera": "rtsp://192.168.31.59"
+        "in_camera": "rtsp://192.168.50.71",
+        "out_camera": "rtsp://192.168.50.71"
     },
     "Server": {
         "ip": "43.213.128.240",
         "username": "ubuntu",
-        "password": "875184991qaz2wsx",
+        "ssh_key_path": "/home/ubuntu/.ssh/id_rsa",
         "face_data_dir": "/home/ubuntu/pvms-api/media",
         "API_url": "https://demosite.api.ginibio.com/api/v1",
         "location_ID": 1
@@ -25,11 +25,11 @@ default_config = {
         "out": "\u7c3d\u96e2",
         "clothes": "\u8acb\u6b63\u78ba\u8457\u88dd"
     },
-    "inCamera":{
-        "close":False
+    "inCamera": {
+        "close": False
     },
-    "outCamera":{
-        "close":False
+    "outCamera": {
+        "close": False
     },
     "door": "0",
     "Clothes_detection": False,
@@ -39,6 +39,7 @@ default_config = {
     "auto_open": False,
     "full_screen": False
 }
+
 
 def merge_config(default, current):
     """合併 default 與 current，回傳更新後的 config"""
@@ -53,6 +54,7 @@ def merge_config(default, current):
             updated[key] = value  # 新增缺少的 key
 
     return updated  # 移除多餘的 key（不包含於 default）
+
 
 def update_config_file(config_path='config.json'):
     if not os.path.exists(config_path):
@@ -80,6 +82,7 @@ def update_config_file(config_path='config.json'):
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(final_config, f, ensure_ascii=False, indent=2)
     print(f"已更新設定檔: {config_path}")
+
 
 if __name__ == "__main__":
     # 使用範例

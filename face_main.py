@@ -132,13 +132,6 @@ class CameraSystem:
                 x1, y1, x2, y2 = self.system.state.max_box[self.frame_num]
                 cv2.rectangle(now_frame, (x1, y1), (x2, y2), (255, 0, 0), 6)
 
-                # 繪製歷史紀錄
-                history_lines = self.system.state.display_history[self.frame_num]
-                if history_lines:
-                    for i, line in enumerate(history_lines):
-                        y_offset = y1 + (i * (font_size // 2 + 5))
-                        now_frame = put_chinese_text(now_frame, line, (x2 + 10, y_offset), font_path, font_size // 2, (255, 255, 0), background=True)
-
                 # 根據 same_class 狀態決定顯示文字
                 current_class = self.system.state.same_class[self.frame_num]
                 if current_class != "None":

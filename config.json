@@ -5,12 +5,13 @@
 		"ip_mask": "255.255.255.0"
 	},
 	"cameraIP": {
-		"in_camera": "rtsp://admin:!QAZ87518499@192.168.31.101",
-		"out_camera": "rtsp://192.168.31.59"
+		"in_camera": "rtsp://192.168.50.71",
+		"out_camera": "rtsp://192.168.50.71"
 	},
 	"Server": {
 		"ip": "43.213.128.240",
 		"username": "ubuntu",
+		"ssh_key_path": "/home/ubuntu/.ssh/id_rsa",
 		"face_data_dir": "/home/ubuntu/pvms-api/media",
 		"API_url": "https://demosite.api.ginibio.com/api/v1",
 		"location_ID": 1
@@ -33,5 +34,6 @@
 	"check_face_times": 1,
 	"test_mod": false,
 	"auto_open": true,
-	"full_screen": true
+	"full_screen": true,
+	"excel_api_enabled": false
 }
