@@ -2,6 +2,7 @@
 # 告訴 Git LFS 要管理所有 .pt 結尾的檔案。
 # 這是解決大型檔案上傳問題的關鍵。
 *.pt filter=lfs diff=lfs merge=lfs -text
+*.pkl filter=lfs diff=lfs merge=lfs -text
 # --- 換行符規則 ---
 # 自動偵測文字檔，並在 commit 時將 CRLF 轉為 LF。
 * text=auto

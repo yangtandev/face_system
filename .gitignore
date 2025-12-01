@@ -29,7 +29,8 @@ dist/
 
 # --- Project Specific ---
 # 動態產生的媒體和日誌
-media/
+/media/*
+!/media/linear_svc_model.pkl
 voice/
 img_log/
 log/
