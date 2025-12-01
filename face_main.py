@@ -123,8 +123,17 @@ class CameraSystem:
         主迴圈持續處理畫面並根據狀態繪製 UI 元素。
         """
         while not self.stop_threads:
-            self.system.state.frame[self.frame_num] = self.camera.read()
-            now_frame = self.system.state.frame[self.frame_num].copy()
+            original_frame = self.camera.read()
+            if original_frame is None or original_frame.size == 0:
+                time.sleep(0.01)
+                continue
+            
+            # Resize the frame immediately to a consistent processing size
+            resized_frame = cv2.resize(original_frame, (800, 600))
+            
+            # Store and use the resized frame for all subsequent operations
+            self.system.state.frame[self.frame_num] = resized_frame
+            now_frame = resized_frame.copy()
             font_size = 60
 
             # 繪製人臉框
@@ -141,15 +150,20 @@ class CameraSystem:
                     now_frame = put_chinese_text(now_frame, "辨識中", (x1, y1-55), font_path, font_size, (0,0,0))
 
                 # 觸發簽到/簽離 (API 呼叫)
-                if self.system.state.same_people[self.frame_num] >= 1:
+                if self.system.state.same_people[self.frame_num] > 0:
+                    LOGGER.info(f"成功辨識到人員，觸發後續的打卡流程。")
+                    confidence = self.system.state.same_people[self.frame_num]
                     success_staff_name = self.system.state.features_dict.get("id_name", {}).get(current_class, "訪客")
 
                     if current_class != "None" and (not CONFIG["Clothes_detection"] or (self.system.state.clothes[0] and self.system.state.clothes[2])):
-                        check_in_out(self.system, success_staff_name, current_class, self.frame_num, self.n_camera)
+                        LOGGER.info(f"衣物偵測通過 (或未啟用)，準備呼叫 check_in_out。")
+                        check_in_out(self.system, success_staff_name, current_class, self.frame_num, self.n_camera, confidence)
+                    elif current_class != "None":
+                        LOGGER.warning(f"人員: {success_staff_name} 辨識成功 (信賴度: {confidence:.2%}), 但因衣物未穿戴整齊而跳過打卡。")
 
                     self.save_img(self.system.state.frame[self.frame_num], "face", success_staff_name)
                     # 重設觸發器，防止重複呼叫
-                    self.system.state.same_people[self.frame_num] = 0
+                    self.system.state.same_people[self.frame_num] = 0.0
 
             self.show_frame = now_frame
         LOGGER.info("main_camera, 已跳出迴圈")
@@ -260,7 +274,7 @@ API = config.API(str(CONFIG["Server"]["API_url"]), int(CONFIG["Server"]["locatio
 @dataclass
 class GlobalState:
     max_box: List[Any] = None
-    same_people: List[int] = None
+    same_people: List[float] = None
     same_class: List[str] = None
     frame: List[Any] = None
     frame_mtcnn: List[Any] = None
@@ -271,6 +285,8 @@ class GlobalState:
     display_history: List[list] = None # 用於在畫面上顯示歷史紀錄
     leave: int = 0
     min_face: int = 0
+    max_points: List[Any] = None
+    last_speak_time: Dict[str, float] = None
 
 class FaceRecognitionSystem:
     """
@@ -286,7 +302,7 @@ class FaceRecognitionSystem:
         """
         self.state = GlobalState()
         self.state.max_box = [None, None]
-        self.state.same_people = [0, 0]
+        self.state.same_people = [0.0, 0.0]
         self.state.same_class = ["None", "None"]
         self.state.frame = [None, None]
         self.state.frame_mtcnn = [None, None]
@@ -296,6 +312,8 @@ class FaceRecognitionSystem:
         self.state.profile_dict = {}
         self.state.display_history = [[], []]
         self.state.min_face = CONFIG["min_face"]
+        self.state.max_points = [None, None]
+        self.state.last_speak_time = {}
 
         self.svc = LinearSVC(C=1, multi_class='ovr')
         self.mtcnn = mtcnn.MTCNN(image_size=160, min_face_size=95, keep_all=True, select_largest=True)
@@ -359,29 +377,36 @@ class FaceRecognitionSystem:
                 print("檔案同步失敗，中止本次更新。")
                 return
 
-            # 步驟 2: 找出新增和刪除的圖片
             pic_bak_path = os.path.join(self.local_media_path, "pic_bak")
             descriptors_path = os.path.join(self.local_media_path, "descriptors")
 
-            local_pics = set(f.split('.')[0] for f in os.listdir(pic_bak_path))
-            local_descriptors = set(f.split('.')[0] for f in os.listdir(descriptors_path))
+            # 步驟 2: 強制清除所有舊的特徵檔，以確保全部重新產生
+            print("正在清除舊的特徵檔以進行全面更新...")
+            for f in os.listdir(descriptors_path):
+                if f.lower().endswith('.npy'):
+                    os.remove(os.path.join(descriptors_path, f))
+            print("舊特徵檔清除完畢。")
 
-            new_files = [f"{name}.jpg" for name in local_pics - local_descriptors] # 假設都是 jpg
+            # 步驟 3: 找出新增和刪除的圖片 (現在會包含所有圖片)
+            local_pics = set(f.split('.')[0] for f in os.listdir(pic_bak_path))
+            local_descriptors = set(f.split('.')[0] for f in os.listdir(descriptors_path)) # Should be empty now
+
+            new_files = [f"{name}.jpg" for name in local_pics - local_descriptors]
             deleted_files = [f"{name}.npy" for name in local_descriptors - local_pics]
 
             update_needed = bool(new_files or deleted_files)
-            print(f"檔案比對完成：新增 {len(new_files)} 張圖片，刪除 {len(deleted_files)} 個特徵檔。")
+            print(f"檔案比對完成：準備為 {len(new_files)} 張圖片產生新特徵檔。")
 
-            # 步驟 3: 處理檔案變動
+            # 步驟 4: 處理檔案變動
             if update_needed:
                 self._process_deleted_descriptors(deleted_files, descriptors_path)
                 self._generate_new_descriptors(new_files, pic_bak_path, descriptors_path)
 
-                # 步驟 4: 重新載入特徵並訓練模型
+                # 步驟 5: 重新載入特徵並訓練模型
                 features, X_train, y_train, X_test, y_test = self._load_features_from_disk()
                 self._train_and_save_svc_model(X_train, y_train, X_test, y_test)
 
-                # 步驟 5: 熱更新系統狀態
+                # 步驟 6: 熱更新系統狀態
                 self.state.features_dict = features
                 self._update_profile_pictures()
                 print("模型與資料已熱更新完畢。")
@@ -434,12 +459,26 @@ class FaceRecognitionSystem:
             image_path = os.path.join(pic_bak_path, filename)
             try:
                 image = Image.open(image_path).convert('RGB')
-                img_cropped = self.mtcnn(image)
-                if img_cropped is not None:
-                    img_embedding = self.resnet(img_cropped)
+                
+                # Detect faces and landmarks
+                boxes, probs, points = self.mtcnn.detect(image, landmarks=True)
+                
+                # Ensure a face was detected and landmarks are available
+                if boxes is not None and points is not None:
+                    # We take the first detected face, assuming it's the most likely one
+                    box = boxes[0]
+                    point = points[0]
+                    
+                    # Crop the face without the forehead and standardize it
+                    img_cropped = crop_face_without_forehead(image, box, point)
+                    
+                    # Add a batch dimension and get the embedding
+                    img_embedding = self.resnet(img_cropped.unsqueeze(0))
+                    
                     np.save(os.path.join(descriptors_path, f"{filename.split('.')[0]}.npy"), img_embedding[0].detach().numpy())
                 else:
-                    print(f"警告：在圖片 {filename} 中未偵測到人臉。")
+                    print(f"警告：在圖片 {filename} 中未偵測到人臉或特徵點。")
+
             except Exception as e:
                 print(f"處理圖片 {filename} 時發生錯誤: {e}")
 

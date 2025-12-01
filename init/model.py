@@ -1,4 +1,3 @@
-
 import json
 import os
 import threading
@@ -11,6 +10,8 @@ import torch
 from init.log import LOGGER
 from datetime import datetime
 import pytz
+from PIL import Image
+from function import crop_face_without_forehead
 
 @nb.jit
 def cosine_similarity(vec1, vec2):
@@ -67,6 +68,7 @@ class Detector:
         - 每 10 秒進行模型暖機以減少推論延遲。
         """
         last_box = None
+        last_points = None
         last_time = 0
         dummy_input = tensor_test_img[0]#torch.zeros(3, 224, 224)  # 用於 MTCNN 模型暖機的假圖像
 
@@ -74,26 +76,29 @@ class Detector:
             # 如果有新的畫面可以處理
             if self.system.state.frame[self.frame_num] is not None:
                 self.system.state.max_box[self.frame_num] = last_box
+                self.system.state.max_points[self.frame_num] = last_points
                 new_frame = self.system.state.frame[self.frame_num].copy()
 
                 # 預設為無臉框
                 box = None
+                points = None
 
                 # 套用遮罩處理取得 ROI 區域
                 mask_frame, X_offset = self.apply_mask(new_frame)
                 self.mask_frame = mask_frame.copy()
 
                 # 嘗試偵測臉部
-                boxes, _ = self.system.mtcnn.detect(mask_frame)
+                boxes, _, landmarks = self.system.mtcnn.detect(mask_frame, landmarks=True)
                 if boxes is None:
                     # 若失敗，使用直方圖均衡化後重試
-                    boxes, _ = self.system.mtcnn.detect(self.equalize(mask_frame))
+                    boxes, _, landmarks = self.system.mtcnn.detect(self.equalize(mask_frame), landmarks=True)
 
                 if boxes is not None:
                     self.last_face_time = time.time()
                     x1, y1, x2, y2 = map(int, boxes[0])
                     x1, x2 = x1 + X_offset, x2 + X_offset
                     box = [x1, y1, x2, y2]
+                    points = landmarks[0]
 
                     # 若為主要畫面（frame_num=0）且開啟衣著檢測，則執行衣著辨識
                     if CONFIG["Clothes_show"] and self.frame_num == 0 and \
@@ -109,8 +114,10 @@ class Detector:
 
                 # 更新 MTCNN 結果與最新臉框
                 self.system.state.max_box[self.frame_num] = box
+                self.system.state.max_points[self.frame_num] = points
                 self.system.state.frame_mtcnn[self.frame_num] = new_frame
                 last_box = box
+                last_points = points
                 last_time = time.time()
 
             # 每 10 秒暖機一次 MTCNN 模型，避免延遲推論
@@ -123,7 +130,7 @@ class Detector:
                             conf=0.2,
                             verbose=False
                         )[0]
-                    __, _ = self.system.mtcnn.detect(dummy_input)
+                    __, _, _ = self.system.mtcnn.detect(dummy_input, landmarks=True)
                     last_time = time.time()
                 except:
                     pass
@@ -261,18 +268,16 @@ class Comparison:
                now - self.display_state['last_update'] > self.DISPLAY_STATE_HOLD_SECONDS:
                 self._update_display_state('None')
 
-            # 重置觸發器
-            self.system.state.same_people[self.frame_num] = 0
             # 清空歷史紀錄，確保不顯示信賴度分數
             self.system.state.display_history[self.frame_num] = []
 
-            # 檢查是否有臉部框
-            if self.system.state.max_box[self.frame_num] is None or \
-               self.system.state.frame_mtcnn[self.frame_num] is None:
+            # 檢查是否有臉部框和特徵點
+            _box = self.system.state.max_box[self.frame_num]
+            _points = self.system.state.max_points[self.frame_num]
+            if _box is None or _points is None or self.system.state.frame_mtcnn[self.frame_num] is None:
                 continue
 
             # 檢查臉部大小是否足夠
-            _box = self.system.state.max_box[self.frame_num]
             if _box[2] - _box[0] < self.system.state.min_face:
                 continue
             
@@ -282,11 +287,20 @@ class Comparison:
 
             # 提取人臉特徵向量
             try:
-                face_embedding_list = self.system.resnet(self.system.mtcnn.extract(self.system.state.frame_mtcnn[self.frame_num].copy(), [_box], None))
+                # Convert BGR frame to PIL Image
+                frame_image = Image.fromarray(cv2.cvtColor(self.system.state.frame_mtcnn[self.frame_num], cv2.COLOR_BGR2RGB))
+                
+                # Crop face without forehead using shared function
+                img_cropped = crop_face_without_forehead(frame_image, _box, _points)
+                
+                # Add batch dimension and get embedding
+                face_embedding_list = self.system.resnet(img_cropped.unsqueeze(0))
+                
                 if face_embedding_list is None or len(face_embedding_list) == 0:
                     continue
                 current_face_vec = face_embedding_list[0].detach().numpy()
-            except Exception:
+            except Exception as e:
+                LOGGER.error(f"[ERROR][Cam {self.frame_num}] 臉部特徵提取失敗: {e}")
                 continue
 
             # 進行預測與信賴度計算
@@ -297,20 +311,21 @@ class Comparison:
                     continue
                 total_similarity = sum(cosine_similarity(current_face_vec, emb) for emb in registered_embeddings)
                 confidence = total_similarity / len(registered_embeddings)
-            except Exception:
+            except Exception as e:
+                LOGGER.error(f"[ERROR][Cam {self.frame_num}] 預測或信賴度計算失敗: {e}")
                 continue
 
             # 標記每一次辨識事件（無論成功與否）
             log_time = datetime.now(self.TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')
             staff_name = self.system.state.features_dict.get("id_name", {}).get(predicted_id, "未知")
-            LOGGER.info(f"[辨識事件][Cam {self.frame_num}] 偵測到 {staff_name} (ID: {predicted_id}), 信賴度: {confidence:.2%}")
+            LOGGER.info(f"{log_time} [辨識事件][Cam {self.frame_num}] 偵測到 {staff_name} (ID: {predicted_id}), 信賴度: {confidence:.2%}")
 
             # 如果單次信賴度超過門檻，則直接視為成功
             if confidence >= self.CONFIDENCE_THRESHOLD:
                 person_id = predicted_id
                 
                 # 觸發成功事件 (例如：開門)
-                self.system.state.same_people[self.frame_num] = 1
+                self.system.state.same_people[self.frame_num] = confidence # Store confidence here
                 # 更新UI顯示的人員名稱
                 self._update_display_state(person_id)
                 # 更新最後辨識成功的時間
@@ -326,4 +341,3 @@ class Comparison:
 
     def terminate(self):
         self.stop_threads = True
-

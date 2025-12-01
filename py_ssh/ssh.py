@@ -59,9 +59,8 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
         dest_dir
     ]
 
-    print(f"Executing rsync command: {' '.join(command)}")
-    print(f"PATH: {os.environ.get('PATH')}")
-
+    # print(f"Executing rsync command: {' '.join(command)}")
+    # print(f"PATH: {os.environ.get('PATH')}")
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 

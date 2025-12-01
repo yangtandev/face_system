@@ -13,48 +13,67 @@ class Say_:
     def __init__(self):
         """
         建構子，初始化語音播放控制項與背景執行緒。
-        屬性：
-        - self.txt: 要轉成語音的文字
-        - self.filename: 儲存 mp3 的檔名（不含副檔名）
-        - self.path: 存放 mp3 的資料夾路徑
-        - self.play: 是否開始播放語音
-        - self.stop_threads: 結束背景執行緒用的旗標
         """
         self.txt = ""
         self.filename = ""
-        self.path = os.path.dirname(__file__)+"/../voice/"
+        self.path = os.path.join(os.path.dirname(__file__), "../voice/")
         self.play = False
         self.stop_threads = False
+        self.mixer_initialized = False # Mixer 初始化成功旗標
+
+        if not os.path.isdir(self.path):
+            os.makedirs(self.path)
 
         # 啟動背景執行緒執行 speak()
-        th = threading.Thread(target=self.speak)
-        th.daemon = True             # 设置工作线程为后台运行
+        th = threading.Thread(target=self.speak, name="speak")
+        th.daemon = True
         th.start()
 
     def speak(self):
         """
-        語音合成與播放功能主循環：
-        - 檢查是否需要播放(self.play 為 True)
-        - 若指定的 mp3 檔案不存在，則使用 gTTS 建立新語音檔案
-        - 使用 pygame.mixer 播放語音
-        - 播放後 self.play 設為 False 以避免重複
+        語音合成與播放功能主循環。
+        在背景執行緒中執行，會先嘗試初始化音訊設備。
         """
-        if not os.path.isdir(self.path):
-            os.makedirs(self.path)
+        # --- 在背景執行緒中執行一次性初始化 ---
+        try:
+            mixer.init()
+            self.mixer_initialized = True
+            LOGGER.info("音訊設備在背景執行緒中初始化成功。")
+        except Exception as e:
+            LOGGER.error(f"背景初始化音訊設備失敗: {e}。語音播報功能已被永久停用。")
+            # 初始化失敗，直接結束這個執行緒
+            self.stop_threads = True
+            return
+
+        # --- 主循環 ---
         while not self.stop_threads:
             if self.play:
-                mixer.init()
-                filename = self.filename + ".mp3" 
-                try:
-                    if not os.path.isfile(self.path+filename):
-                        tts = gTTS(text=self.txt, lang='zh-tw')
-                        tts.save(self.path+filename)
-                    mixer.music.load(self.path+filename)
-                    mixer.music.play(1)
-                except Exception as e:
-                    LOGGER.warning(f"say : {e}")
+                if self.mixer_initialized:
+                    LOGGER.info(f"偵測到播放請求: '{self.txt}'")
+                    filename = self.filename + ".mp3"
+                    full_path = os.path.join(self.path, filename)
+                    try:
+                        # 在載入新音訊前，強制停止所有正在播放的音訊，確保即時性
+                        mixer.music.stop() 
+
+                        if not os.path.isfile(full_path):
+                            LOGGER.info(f"語音檔不存在，正在使用 gTTS 產生: {full_path}")
+                            tts = gTTS(text=self.txt, lang='zh-tw')
+                            tts.save(full_path)
+                            LOGGER.info("gTTS 語音檔產生成功。")
+
+                        LOGGER.info(f"正在載入並播放語音檔: {full_path}")
+                        mixer.music.load(full_path)
+                        mixer.music.set_volume(1.0) # 強制設定音量為最大
+                        mixer.music.play(1)
+                        LOGGER.info("語音播放指令已送出。")
+                    except Exception as e:
+                        LOGGER.error(f"語音播報時發生錯誤: {e}", exc_info=True)
+                
+                # 無論成功或失敗，都重置播放旗標
                 self.play = False
-            time.sleep(0.00001)
+            
+            time.sleep(0.01)
 
     def terminate(self):
         """
