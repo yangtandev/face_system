@@ -113,7 +113,7 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
                 system.speaker.play = True
                 system.state.last_speak_time[staff_id] = now
 
-        if CONFIG.get("excel_api_enabled", False) and "demosite" in CONFIG["Server"]["API_url"] and system.speaker.play:
+        if CONFIG.get("excel_api_enabled", False) and "demosite" in CONFIG["Server"]["API_url"]:
             threading.Timer(1, check_in_out_excel, (staff_name,)).start()
 
         # 開門控制
