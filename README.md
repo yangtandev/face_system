@@ -2,26 +2,17 @@
 
 ## 專案說明
 
-本專案為人臉辨識系統，使用 Docker 進行容器化部署。
+本專案為人臉辨識系統。
 
-## 快速啟動
+## 環境準備
 
 ### 必要條件
 
 -   Ubuntu 20.04 或更高版本
 -   Git
--   Docker
--   Docker Compose
+-   Python 3.10+
 
-### 一鍵安裝與啟動
-
-在您的 Ubuntu 主機上，執行以下命令即可自動完成所有設定並啟動專案：
-
-```bash
-bash <(curl -s https://raw.githubusercontent.com/yangtandev/face_system/main/setup.sh)
-```
-
-或者，您也可以手動執行以下步驟：
+## 安裝與設定
 
 1.  **克隆專案**：
 
@@ -30,23 +21,160 @@ bash <(curl -s https://raw.githubusercontent.com/yangtandev/face_system/main/set
     cd face_system
     ```
 
-2.  **執行安裝腳本**：
+2.  **安裝依賴套件**：
+    建議在虛擬環境中安裝。
     ```bash
-    bash setup.sh
+    python -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
     ```
 
-### 查看日誌
+## 系統設定
 
-您可以使用以下命令來查看應用程式的日誌：
+在執行應用程式之前，您必須完成以下設定：
 
-```bash
-docker compose logs -f
-```
+### 1. 設定 `config.json`
 
-### 停止應用程式
-
-若要停止應用程式，請執行：
+本系統所有設定都集中管理於 `config.json` 檔案。您可以直接編輯此檔案，或執行 `setting/bulid_config.py` 來生成或更新設定檔，確保設定檔結構與程式同步。
 
 ```bash
-docker compose down
+python setting/bulid_config.py
 ```
+
+### 2. 設定 SSH 金鑰 (SSH Key)
+
+系統使用 SSH 金鑰來安全地與遠端伺服器連線，取代了不安全的明碼密碼。
+
+#### 如何產生與使用 SSH 金鑰？
+
+i. **檢查現有金鑰**：
+首先，檢查您是否已經有 SSH 金鑰。
+
+```bash
+ls -al ~/.ssh/id_rsa*
+```
+
+如果看到 `id_rsa` 和 `id_rsa.pub` 檔案，表示您已有金鑰，可以跳至步驟 iii。
+
+ii. **產生新的 SSH 金鑰**：
+如果沒有金鑰，請執行以下命令產生一對新的 4096 位元 RSA 金鑰。過程中可以直接按 Enter 使用預設設定。
+
+```bash
+ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+```
+
+這會在 `~/.ssh/` 目錄下產生 `id_rsa` (私鑰) 和 `id_rsa.pub` (公鑰) 兩個檔案。
+
+iii. **複製公鑰至遠端伺服器**：
+您需要將您的**公鑰** (`id_rsa.pub`) 的內容附加到遠端伺服器的 `~/.ssh/authorized_keys` 檔案中。最簡單的方法是使用 `ssh-copy-id` 命令：
+`bash
+    ssh-copy-id -i ~/.ssh/id_rsa.pub <username>@<server_ip>
+    `
+請將 `<username>` 和 `<server_ip>` 替換成您在 `config.json` 中設定的伺服器使用者名稱與 IP。
+
+iv. **確認 `config.json` 中的路徑**：
+確保 `config.json` 中 `Server` -> `ssh_key_path` 的路徑指向您剛剛建立的**私鑰**檔案 (預設為 `/home/ubuntu/.ssh/id_rsa`)。
+
+### 3. 更新攝影機 IP
+
+**這一步非常重要！** 請務必更新 `config.json` 中的攝影機串流位址。
+
+在 `cameraIP` 區塊中，修改 `in_camera` 和 `out_camera` 的值，填入您實際的 RTSP 串流 URL。
+
+```json
+"cameraIP": {
+    "in_camera": "rtsp://your_camera_ip_here",
+    "out_camera": "rtsp://your_other_camera_ip_here"
+},
+```
+
+## 執行應用程式
+
+完成所有設定後，您可以使用以下命令來啟動主程式：
+
+```bash
+python face_main.py
+```
+
+## 查看日誌
+
+應用程式的日誌會輸出到 `log` 資料夾中，主要的日誌檔案是 `log/face_system.log`。
+
+### 設定為系統服務 (開機自啟動) (可選)
+
+如果您希望此臉部辨識應用程式在系統開機並登入圖形介面後自動啟動，可以將其設定為一個 `systemd` 服務。
+
+1.  **建立服務文件**:
+    使用 `nano` 或您偏好的編輯器，建立一個新的服務設定檔。
+
+    ```bash
+    sudo nano /etc/systemd/system/face_system.service
+    ```
+
+2.  **貼入以下內容**:
+    將下面的設定內容完整複製並貼到編輯器中。
+
+    **重要提示：**
+    *   請務必將所有 `<您的使用者名稱>` 替換成您自己的 Linux **使用者名稱** (例如：`ubuntu`, `your_username`)。
+    *   請務必將所有 `<您的專案絕對路徑>` 替換成您的 `face_system` **專案所在的絕對路徑** (例如：`/home/your_username/face_system`)。
+
+    ```ini
+    [Unit]
+    Description=Face Recognition System GUI Application
+    # 我們需要等待圖形介面登入管理器啟動
+    After=graphical.target
+
+    [Service]
+    # *** 關鍵改動 1: 指定正確的使用者 ***
+    # 這解決了 status=203/EXEC 的權限問題
+    User=<您的使用者名稱>
+
+    # *** 關鍵改動 2: 指定環境變數 ***
+    # 這讓服務知道要在哪個螢幕、哪個使用者會話中顯示 GUI
+    Environment=DISPLAY=:0
+    Environment=XAUTHORITY=/home/<您的使用者名稱>/.Xauthority
+
+    # 設定工作目錄
+    WorkingDirectory=<您的專案絕對路徑>
+
+    # 執行指令（使用絕對路徑）
+    ExecStart=<您的專案絕對路徑>/venv/bin/python -u <您的專案絕對路徑>/face_main.py
+
+    # 自動重啟設定
+    Restart=always
+    RestartSec=10
+
+    [Install]
+    # *** 關鍵改動 3: 綁定到正確的系統級目標 ***
+    # graphical.target 是系統級的圖形介面目標
+    WantedBy=graphical.target
+    ```
+
+3.  **重新載入、啟用並啟動服務**:
+    儲存並關閉檔案後，執行以下指令來讓 `systemd` 讀取新的設定，並設定為開機自啟動。
+
+    ```bash
+    # 重新載入 systemd 設定
+    sudo systemctl daemon-reload
+
+    # 啟用服務 (設定為開機自啟動)
+    sudo systemctl enable face_system.service
+
+    # 立刻啟動服務
+    sudo systemctl start face_system.service
+    ```
+
+4.  **檢查服務狀態**:
+    您可以隨時使用以下指令來檢查服務的運行狀態。
+
+    ```bash
+    sudo systemctl status face_system.service
+    ```
+
+5.  **查看服務日誌**:
+    若要即時查看由 `systemd` 執行的應用程式所產生的日誌，請使用 `journalctl`。
+
+    ```bash
+    journalctl -u face_system.service -f
+    ```
+

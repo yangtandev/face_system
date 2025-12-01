@@ -37,7 +37,8 @@ default_config = {
     "min_face": 95,
     "test_mod": False,
     "auto_open": False,
-    "full_screen": False
+    "full_screen": False,
+    "excel_api_enabled": False
 }
 
 
