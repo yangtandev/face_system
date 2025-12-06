@@ -133,6 +133,9 @@ python face_main.py
     # 這讓服務知道要在哪個螢幕、哪個使用者會話中顯示 GUI
     Environment=DISPLAY=:0
     Environment=XAUTHORITY=/home/<您的使用者名稱>/.Xauthority
+    # 新增 XDG_RUNTIME_DIR，解決部分桌面環境下的通訊問題
+    # 注意：'1000' 是常見的預設使用者 ID，請根據您的系統作調整 (可用 `id -u <您的使用者名稱>` 查詢)
+    Environment="XDG_RUNTIME_DIR=/run/user/1000"
 
     # 設定工作目錄
     WorkingDirectory=<您的專案絕對路徑>
@@ -178,3 +181,15 @@ python face_main.py
     journalctl -u face_system.service -f
     ```
 
+## 疑難排解 (Troubleshooting)
+
+### 錯誤：`qt.qpa.plugin: Could not load the Qt platform plugin "xcb"`
+
+如果在執行程式時遇到關於 `xcb` 找不到或無法載入的錯誤，這通常表示系統缺少 Qt 圖形介面所依賴的函式庫。
+
+**解決方案**：
+在基於 Debian/Ubuntu 的系統上，執行以下指令來安裝必要的依賴套件：
+
+```bash
+sudo apt-get update && sudo apt-get install -y libxcb-xinerama0 libxcb-xfixes0 libxcb-shape0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
+```
