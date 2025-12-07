@@ -5,8 +5,8 @@
 		"ip_mask": "255.255.255.0"
 	},
 	"cameraIP": {
-		"in_camera": "rtsp://192.168.50.71",
-		"out_camera": "rtsp://192.168.50.71"
+		"in_camera": "rtsp://192.168.0.71",
+		"out_camera": "rtsp://192.168.0.71"
 	},
 	"Server": {
 		"ip": "43.213.128.240",
@@ -30,7 +30,7 @@
 	"door": "0",
 	"Clothes_detection": false,
 	"Clothes_show": false,
-	"min_face": 200,
+	"min_face": 100,
 	"check_face_times": 1,
 	"test_mod": false,
 	"auto_open": true,

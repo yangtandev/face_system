@@ -6,110 +6,232 @@ import cv2
 import numpy as np
 import os
 import signal
+from urllib.parse import urlparse
+
+# --- Hardware Acceleration Auto-Detection ---
+
+_best_decoder_info = {'name': 'cpu', 'checked': False}
+
+def get_best_decoder():
+    """
+    Checks for available hardware decoders and returns the best one found.
+    Caches the result to avoid re-checking.
+    """
+    if _best_decoder_info['checked']:
+        return _best_decoder_info['name']
+
+    try:
+        print("Checking for available hardware decoders...")
+        decoders_output = subprocess.check_output(
+            ['ffmpeg', '-decoders'], 
+            text=True, 
+            stderr=subprocess.DEVNULL
+        )
+        
+        # Priority: Intel QSV -> NVIDIA CUVID -> CPU
+        if 'hevc_qsv' in decoders_output:
+            print("Found Intel QSV hardware decoder. Will attempt to use 'hevc_qsv'.")
+            _best_decoder_info['name'] = 'hevc_qsv'
+        elif 'hevc_cuvid' in decoders_output:
+            print("Found NVIDIA CUVID hardware decoder. Will attempt to use 'hevc_cuvid'.")
+            _best_decoder_info['name'] = 'hevc_cuvid'
+        else:
+            print("No supported hardware decoder found. Using CPU-based software decoding.")
+            _best_decoder_info['name'] = 'cpu'
+
+    except FileNotFoundError:
+        print("Warning: 'ffmpeg' command not found. Cannot check for hardware decoders.")
+        _best_decoder_info['name'] = 'cpu'
+    except Exception as e:
+        print(f"Warning: Could not check for hardware decoders: {e}. Using CPU.")
+        _best_decoder_info['name'] = 'cpu'
+    
+    _best_decoder_info['checked'] = True
+    return _best_decoder_info['name']
 
 def _ignore_sigint():
     """Function to be called in the child process to ignore SIGINT."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
+# --- VideoCapture Class ---
+
 class VideoCapture:
     """
-    Custom VideoCapture class using FFmpeg to transcode the RTSP stream
-    to a pipe of MJPEG images. This is highly robust against codec/stream issues.
+    Custom VideoCapture class using FFmpeg. It auto-detects and attempts to use 
+    hardware acceleration, falling back to a robust MJPEG pipe if HW fails.
     """
     def __init__(self, rtsp_url, config_data=None):
         self.rtsp_url = rtsp_url
         self.q = queue.Queue(maxsize=2)
         self.stop_threads = False
         self.proc = None
+        self.config = config_data or {}
         
-        self.config = config_data
+        # Auto-detect the best decoder on initialization
+        self.hw_decoder_name = get_best_decoder()
         
-        self.thread = threading.Thread(target=self._reader)
+        self.width = None
+        self.height = None
+        
+        self.thread = threading.Thread(target=self._reader_manager)
         self.thread.daemon = True
         self.thread.start()
 
-    def _log_stderr(self, pipe):
-        """Continuously reads from a pipe and logs the output."""
+    def _get_video_info_for_raw_pipeline(self):
+        """Uses ffprobe to get resolution needed for the raw video pipeline."""
+        print("Probing video stream for resolution (for raw pipeline)...")
         try:
-            for line in iter(pipe.readline, b''):
-                print(f'[ffmpeg stderr] {line.decode("utf-8", errors="ignore").strip()}')
-        except ValueError:
-            # This can happen if the pipe is closed by the main thread during shutdown.
-            pass
-        finally:
-            if not pipe.closed:
-                pipe.close()
+            command = [
+                'ffprobe', '-v', 'error', '-select_streams', 'v:0',
+                '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0',
+                '-rtsp_flags', 'prefer_tcp', # Ensure TCP is used for ffprobe too
+                self.rtsp_url
+            ]
+            timeout = self.config.get("ffprobe_timeout")
+            output = subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL, timeout=timeout).strip()
+            self.width, self.height = map(int, output.split('x'))
+            print(f"Raw Pipeline: Detected resolution {self.width}x{self.height}.")
+            return True
+        except Exception as e:
+            print(f"Raw Pipeline: ffprobe failed: {e}. Cannot use raw video pipeline.")
+            return False
 
-    def _reader(self):
-        """
-        The main loop that connects to the stream, pipes MJPEG frames, and decodes them.
-        """
+    def _start_raw_video_pipeline(self, use_hw_accel=False, error_tolerant=False):
+        """Attempts to start a raw video pipeline, with optional HW accel and error tolerance."""
+        pipeline_type = "HW Accel Raw" if use_hw_accel else "Err-Tolerant Raw"
+        print(f"Attempting {pipeline_type} pipeline for {self.rtsp_url}...")
+
+        if not self._get_video_info_for_raw_pipeline():
+            return False # Cannot proceed without resolution
+
+        if self.width is None or self.height is None:
+            raise RuntimeError(f"Failed to determine stream resolution for {pipeline_type}.")
+
+        command = ['ffmpeg', '-hide_banner', '-loglevel', 'error']
+        
+        # Use prefer_tcp flag, which is more robust for forcing TCP transport
+        command.extend(['-rtsp_flags', 'prefer_tcp'])
+
+        if error_tolerant: # Moved error tolerant flags here
+            command.extend(['-err_detect', 'ignore_err', '-fflags', '+discardcorrupt'])
+
+        if use_hw_accel:
+            if self.hw_decoder_name == 'hevc_qsv':
+                command.extend(['-init_hw_device', 'qsv=hw', '-filter_hw_device', 'hw']) # QSV specific
+                command.extend(['-hwaccel', 'qsv', '-c:v', 'hevc_qsv'])
+            elif self.hw_decoder_name == 'hevc_cuvid':
+                command.extend(['-hwaccel', 'cuda', '-c:v', 'hevc_cuvid'])
+        else: # Software HEVC decoding
+            command.extend(['-c:v', 'hevc']) # Explicitly use software HEVC decoder
+            
+        command.extend([
+            '-i', self.rtsp_url,
+            '-f', 'rawvideo',
+            '-pix_fmt', 'bgr24',
+            '-'
+        ])
+
+        self.proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, preexec_fn=_ignore_sigint)
+        
+        frame_size = self.width * self.height * 3
+        print(f"{pipeline_type}: FFmpeg process started. Reading {frame_size} byte raw frames ({self.width}x{self.height}).")
+
         while not self.stop_threads:
+            in_bytes = self.proc.stdout.read(frame_size)
+            if not in_bytes:
+                print(f"{pipeline_type}: FFmpeg stdout pipe closed unexpectedly.")
+                return False
+            if len(in_bytes) != frame_size:
+                print(f"{pipeline_type}: Warning: Incomplete frame (expected {frame_size}, got {len(in_bytes)}). Dropping.")
+                continue
+
+            frame = np.frombuffer(in_bytes, dtype=np.uint8).reshape((self.height, self.width, 3))
+            if frame is not None:
+                if self.q.full(): self.q.get_nowait()
+                self.q.put(frame)
+        
+        return True # Loop exited because of stop_threads
+
+    def _start_sw_mjpeg_pipeline(self):
+        """Starts the robust but slower MJPEG software pipeline."""
+        print(f"Starting software MJPEG pipeline for {self.rtsp_url}...")
+        command = [
+            'ffmpeg', '-hide_banner', '-loglevel', 'error',
+            '-rtsp_flags', 'prefer_tcp', # Also use prefer_tcp for MJPEG pipeline
+            '-i', self.rtsp_url,
+            '-f', 'image2pipe', '-c:v', 'mjpeg', '-q:v', '2', '-'
+        ]
+        self.proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, preexec_fn=_ignore_sigint)
+        
+        image_buffer = bytearray()
+        while not self.stop_threads:
+            chunk = self.proc.stdout.read(4096)
+            if not chunk:
+                print("Software MJPEG: FFmpeg stdout pipe closed. Will attempt to reconnect.")
+                return False
+
+            image_buffer.extend(chunk)
+            a, b = image_buffer.find(b'\xff\xd8'), image_buffer.find(b'\xff\xd9')
+            if a != -1 and b != -1 and b > a:
+                frame = cv2.imdecode(np.frombuffer(image_buffer[a:b+2], dtype=np.uint8), cv2.IMREAD_COLOR)
+                image_buffer = image_buffer[b+2:]
+                if frame is not None:
+                    if self.q.full(): self.q.get_nowait()
+                    self.q.put(frame)
+        return True # Loop exited because of stop_threads
+
+    def _reader_manager(self):
+        """Manages the video pipeline, attempting HW accel first, then err-tolerant raw, then SW MJPEG."""
+        while not self.stop_threads:
+            pipeline_success = False
             try:
-                print(f"Attempting to start FFmpeg MJPEG pipe for {self.rtsp_url}...")
-                command = [
-                    'ffmpeg',
-                    '-hide_banner',
-                    '-loglevel', 'error',
-                    '-rtsp_transport', 'tcp',
-                    '-i', self.rtsp_url,
-                    '-f', 'image2pipe',
-                    '-c:v', 'mjpeg',
-                    '-q:v', '2',
-                    '-'
-                ]
-                # Use preexec_fn to make the child process ignore Ctrl+C
-                self.proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=_ignore_sigint)
+                # 1. Try Hardware Accelerated Raw Video Pipeline
+                if self.hw_decoder_name != 'cpu':
+                    try:
+                        print("Trying HW accelerated raw pipeline...")
+                        pipeline_success = self._start_raw_video_pipeline(use_hw_accel=True)
+                    except Exception as e:
+                        print(f"HW accelerated raw pipeline failed: {e}. Falling back to software.")
+                        pipeline_success = False
+                
+                # 2. If HW failed (or not available), try Error-Tolerant Raw Video Pipeline (Software)
+                if not pipeline_success and not self.stop_threads:
+                    try:
+                        print("Trying error-tolerant raw pipeline...")
+                        pipeline_success = self._start_raw_video_pipeline(use_hw_accel=False, error_tolerant=True)
+                    except Exception as e:
+                        print(f"Error-tolerant raw pipeline failed: {e}.")
+                        pipeline_success = False
 
-                stderr_thread = threading.Thread(target=self._log_stderr, args=(self.proc.stderr,))
-                stderr_thread.daemon = True
-                stderr_thread.start()
-
-                image_buffer = bytearray()
-                while not self.stop_threads:
-                    chunk = self.proc.stdout.read(4096)
-                    if not chunk:
-                        print("FFmpeg stdout pipe closed.")
-                        break
-                    
-                    image_buffer.extend(chunk)
-                    
-                    a = image_buffer.find(b'\xff\xd8')
-                    b = image_buffer.find(b'\xff\xd9')
-
-                    if a != -1 and b != -1 and b > a:
-                        jpg_data = image_buffer[a:b+2]
-                        image_buffer = image_buffer[b+2:]
-                        frame = cv2.imdecode(np.frombuffer(jpg_data, dtype=np.uint8), cv2.IMREAD_COLOR)
-                        if frame is not None:
-                            if self.q.full():
-                                self.q.get_nowait()
-                            self.q.put(frame)
-                        else:
-                            print("Warning: cv2.imdecode failed to decode frame.")
+                # 3. If all above failed, fall back to robust Software MJPEG Pipeline
+                if not pipeline_success and not self.stop_threads:
+                    print("Trying software MJPEG pipeline (final fallback)...")
+                    pipeline_success = self._start_sw_mjpeg_pipeline()
 
             except Exception as e:
-                print(f"Error in FFmpeg reader thread: {e}")
+                print(f"Unhandled error in reader manager: {e}")
             finally:
-                if self.proc and self.proc.poll() is None:
-                    # If the process is still running, it means we exited the loop
-                    # due to an error, not a clean shutdown. Terminate it.
-                    self.proc.terminate()
-                    self.proc.wait(timeout=1) # Give it a moment to die
-
-                # Reconnect logic only runs if it's not a planned shutdown
-                if not self.stop_threads:
-                    print("Waiting 5 seconds before attempting to reconnect...")
-                    time.sleep(5)
+                if self.proc:
+                    # Clean up the process if it's still running
+                    if self.proc.poll() is None:
+                        print(f"FFmpeg process {self.proc.pid} still running. Sending SIGTERM.")
+                        self.proc.terminate()
+                        try:
+                            self.proc.wait(timeout=1)
+                        except subprocess.TimeoutExpired:
+                            print(f"FFmpeg process {self.proc.pid} did not terminate in time. Sending SIGKILL.")
+                            self.proc.kill()
+                    self.proc = None # Clear handle
+            
+            if not self.stop_threads:
+                print("Pipeline ended. Reconnecting in 5 seconds...")
+                time.sleep(5)
 
     def read(self):
-        """
-        Retrieves the latest frame from the queue.
-        """
+        """Retrieves the latest frame from the queue."""
         try:
             return self.q.get(timeout=2)
         except queue.Empty:
-            print("Frame queue is empty after 2 seconds.")
             return None
 
     def terminate(self):
@@ -117,9 +239,11 @@ class VideoCapture:
         print(f"Terminating camera connection to {self.rtsp_url}...")
         self.stop_threads = True
         if self.proc and self.proc.poll() is None:
-            print("Sending SIGTERM to FFmpeg process...")
+            print(f"Sending SIGTERM to FFmpeg process {self.proc.pid}...")
             self.proc.terminate()
-        
-        # The daemon thread will exit as the main program shuts down.
-        # We don't need to join it.
-        print(f"Camera connection to {self.rtsp_url} terminated.")
+            try:
+                self.proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                print(f"FFmpeg process {self.proc.pid} did not terminate in time. Sending SIGKILL.")
+                self.proc.kill()
+        print(f"Camera connection for {self.rtsp_url} terminated.")
