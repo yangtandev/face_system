@@ -20,7 +20,7 @@ from init.camera import VideoCapture
 from init.model import Detector, Comparison
 from function import *
 
-from PyQt5.QtCore import QLibraryInfo
+from PyQt5.QtCore import QLibraryInfo, QTimer, QSocketNotifier
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QApplication
 from PyQt5 import QtWidgets
@@ -78,9 +78,9 @@ class CameraSystem:
     - 僅負責根據 Comparison 模組提供的狀態來繪製畫面。
     - 控制聲音播報與 UI 更新。
     """
-    def __init__(self, ip, frame_num, n, system):
+    def __init__(self, ip, frame_num, n, system, config_data):
         self.system = system
-        self.camera = VideoCapture(ip)
+        self.camera = VideoCapture(ip, config_data=config_data)
         self.frame_num = frame_num
         self.stop_threads = False
         self.show_frame = np.array([])
@@ -250,13 +250,16 @@ class CameraSystem:
             if staffname != "":
                 self.save_name_last = staffname
 
-    def terminate(self, k=None):
+    def terminate(self, event):
+        print(f"Terminating CameraSystem for window {self.frame_num}...")
         self.stop_threads = True
         if hasattr(self, 'win'):
             self.win.my_thread.exit()
         self.camera.terminate()
         self.detect.terminate()
         self.compar.terminate()
+        print(f"CameraSystem {self.frame_num} terminated. Accepting close event.")
+        event.accept()
 
 #-------------------------------------
 # Load configuration
@@ -341,13 +344,33 @@ class FaceRecognitionSystem:
     def run(self):
         """
         啟動系統主流程：
-        - 立即載入本地現有模型開始辨識。
-        - 在背景啟動一個執行緒來執行首次的資料同步與更新。
-        - 建立 UI 與攝影機視窗。
+        - 建立 PyQt Application。
+        - 設定安全的訊號處理機制。
+        - 載入模型、啟動背景更新、建立攝影機。
         - 進入 PyQt 事件主迴圈。
         """
+        app = QApplication(sys.argv)
+
+        # Set up a pipe-based mechanism for safe shutdown from signals.
+        # This is the most robust way to handle POSIX signals in a Qt app.
+        safe_shutdown_pipe_read, self.safe_shutdown_pipe_write = os.pipe()
+
+        def signal_handler(sig, frame):
+            print(f"接收到訊號 {signal.Signals(sig).name}，觸發安全關閉...")
+            # Write a byte to the pipe. This is an async-signal-safe operation.
+            os.write(self.safe_shutdown_pipe_write, b'x')
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        # QSocketNotifier will watch the read end of the pipe in the Qt event loop.
+        self.shutdown_notifier = QSocketNotifier(safe_shutdown_pipe_read, QSocketNotifier.Read)
+        # We need to manually add self as a context for lambda to have access to it, even if it's not a QObject
+        self.shutdown_notifier.activated.connect(lambda: (os.read(safe_shutdown_pipe_read, 1), self._safe_shutdown()))
+
+
         print("系統啟動中...")
-        # 1. 嘗試載入本地現有模型，讓系統可以立即開始服務
+        # 1. 嘗試載入本地現有模型
         self._load_svc_model()
         self._load_features_and_profiles()
 
@@ -357,8 +380,9 @@ class FaceRecognitionSystem:
 
         # 3. 啟動UI和攝影機
         self.update_inout_log()
-        app = QApplication(sys.argv)
         self.setup_cameras()
+        
+        # 4. 進入 PyQt 事件主迴圈
         sys.exit(app.exec_())
 
     def update_data_and_model(self, initial_run=True):
@@ -380,33 +404,26 @@ class FaceRecognitionSystem:
             pic_bak_path = os.path.join(self.local_media_path, "pic_bak")
             descriptors_path = os.path.join(self.local_media_path, "descriptors")
 
-            # 步驟 2: 強制清除所有舊的特徵檔，以確保全部重新產生
-            print("正在清除舊的特徵檔以進行全面更新...")
-            for f in os.listdir(descriptors_path):
-                if f.lower().endswith('.npy'):
-                    os.remove(os.path.join(descriptors_path, f))
-            print("舊特徵檔清除完畢。")
-
-            # 步驟 3: 找出新增和刪除的圖片 (現在會包含所有圖片)
+            # 步驟 2: 找出新增和刪除的圖片
             local_pics = set(f.split('.')[0] for f in os.listdir(pic_bak_path))
-            local_descriptors = set(f.split('.')[0] for f in os.listdir(descriptors_path)) # Should be empty now
+            local_descriptors = set(f.split('.')[0] for f in os.listdir(descriptors_path))
 
             new_files = [f"{name}.jpg" for name in local_pics - local_descriptors]
             deleted_files = [f"{name}.npy" for name in local_descriptors - local_pics]
 
             update_needed = bool(new_files or deleted_files)
-            print(f"檔案比對完成：準備為 {len(new_files)} 張圖片產生新特徵檔。")
+            print(f"檔案比對完成：發現 {len(new_files)} 張新圖片，{len(deleted_files)} 個過期特徵檔。")
 
-            # 步驟 4: 處理檔案變動
+            # 步驟 3: 處理檔案變動
             if update_needed:
                 self._process_deleted_descriptors(deleted_files, descriptors_path)
                 self._generate_new_descriptors(new_files, pic_bak_path, descriptors_path)
 
-                # 步驟 5: 重新載入特徵並訓練模型
+                # 步驟 4: 重新載入特徵並訓練模型
                 features, X_train, y_train, X_test, y_test = self._load_features_from_disk()
                 self._train_and_save_svc_model(X_train, y_train, X_test, y_test)
 
-                # 步驟 6: 熱更新系統狀態
+                # 步驟 5: 熱更新系統狀態
                 self.state.features_dict = features
                 self._update_profile_pictures()
                 print("模型與資料已熱更新完畢。")
@@ -420,7 +437,9 @@ class FaceRecognitionSystem:
                 print(f"===== 背景資料更新流程結束，將在 300 秒後再次執行 =====")
 
             # 設定下一次定時器
-            threading.Timer(300, self.update_data_and_model, args=[False]).start()
+            timer = threading.Timer(300, self.update_data_and_model, args=[False])
+            timer.daemon = True
+            timer.start()
 
     def _sync_files_with_server(self):
         """與遠端伺服器同步檔案"""
@@ -574,7 +593,7 @@ class FaceRecognitionSystem:
         self.cameras = []
         for i, ip in enumerate(ips):
             if ip != "0":
-                self.cameras.append(CameraSystem(ip, i, n, self))
+                self.cameras.append(CameraSystem(ip, i, n, self, CONFIG))
 
         for i in range(len(self.cameras)-(2-n)):
             self.cameras[i].win.show()
@@ -594,48 +613,33 @@ class FaceRecognitionSystem:
                     self.state.check_time[staff_id] = [False, time.time()-100]
                 elif staff_id in self.state.check_time.keys():
                     self.state.check_time[staff_id] = [True, 0]
-                    threading.Timer(5,clear_leave_employee, (self, staff_id, )).start()
+                    leave_timer = threading.Timer(5,clear_leave_employee, (self, staff_id, ))
+                    leave_timer.daemon = True
+                    leave_timer.start()
             print(date_str, "更新已簽到名單")
             LOGGER.info("更新已簽到名單")
 
         except Exception as e:
             LOGGER.info("已簽到名單更新失敗"+str(e))
             print(date_str, "已簽到名單更新失敗", e)
-        updata_log_timer = threading.Timer(300, self.update_inout_log)
-        updata_log_timer.start()
+            updata_log_timer = threading.Timer(300, self.update_inout_log)
+            updata_log_timer.daemon = True
+            updata_log_timer.start()
 
-    def shutdown(self):
+    def _safe_shutdown(self):
         """
-        安全地關閉所有攝影機執行緒。
+        在 Qt 事件迴圈中安全地執行關閉程序。
         """
-        print("\nShutting down... Please wait.")
-        if hasattr(self, 'cameras'):
-            for cam in self.cameras:
-                cam.terminate()
-        # 等待一小段時間確保執行緒都已收到終止信號
-        time.sleep(1)
-        os._exit(0)
+        print("\nShutting down... Closing all windows.")
+        # Closing all windows will trigger their respective closeEvents,
+        # which are connected to the `terminate` method of each CameraSystem.
+        QApplication.closeAllWindows()
 
 if __name__ == "__main__":
-    face_recognition_system = FaceRecognitionSystem()
-    # face_recognition_system.run()
-
-    # 建立系統實例
-    face_recognition_system = FaceRecognitionSystem()
-
-    # 定義一個新的訊號處理函式，讓它可以存取到 face_recognition_system 實例
-    def signal_handler(sig, frame):
-        face_recognition_system.shutdown()
-
-    # 將 SIGINT (Ctrl+C) 訊號綁定到新的處理函式
-    signal.signal(signal.SIGINT, signal_handler)
-
-    # 啟動主程式
     try:
+        face_recognition_system = FaceRecognitionSystem()
         face_recognition_system.run()
-    except SystemExit:
-        # 捕捉由 app.exec_() 關閉時可能引發的 SystemExit
-        face_recognition_system.shutdown()
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        face_recognition_system.shutdown()
+        print(f"An unexpected error occurred during startup: {e}")
+        # In case of startup error before app.exec_(), just exit.
+        os._exit(1)
