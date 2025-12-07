@@ -12,6 +12,9 @@ default_config = {
         "in_camera": "rtsp://192.168.50.71",
         "out_camera": "rtsp://192.168.50.71"
     },
+    "camera_default_width": 1920,
+    "camera_default_height": 1080,
+    "ffprobe_timeout": None,
     "Server": {
         "ip": "43.213.128.240",
         "username": "ubuntu",
