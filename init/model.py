@@ -260,7 +260,7 @@ class Comparison:
         dummy_input = tensor_test_img
 
         while not self.stop_threads:
-            time.sleep(0.01)
+            time.sleep(0.065)
             now = time.time()
 
             # 清除畫面上的人員名稱（如果超過顯示時間）

@@ -190,7 +190,7 @@ class CameraSystem:
                 if self.clothes_de and CONFIG["test_mod"]:
                     print("updata_screen", e)
                 pass
-            time.sleep(0.00001)
+            time.sleep(0.065)
         LOGGER.info("updata_screen, 已跳出迴圈")
 
     def show_main(self):
