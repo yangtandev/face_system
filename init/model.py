@@ -13,6 +13,7 @@ import pytz
 from PIL import Image
 from function import crop_face_without_forehead
 
+
 @nb.jit
 def cosine_similarity(vec1, vec2):
     """
@@ -30,20 +31,24 @@ def cosine_similarity(vec1, vec2):
     norm_vec2 = np.linalg.norm(vec2)
     return dot_product / (norm_vec1 * norm_vec2)
 
-#載入設定檔
+
+# 載入設定檔
 with open(os.path.join(os.path.dirname(__file__), "../config.json"), "r", encoding="utf-8") as json_file:
     CONFIG = json.load(json_file)
-CAMERA = {0:"inCamera", 1:"outCamera"}
+CAMERA = {0: "inCamera", 1: "outCamera"}
 
-test_img = cv2.imread(os.path.join(os.path.dirname(__file__), "../other/test_img.jpg"))
-test_img = cv2.resize(test_img,(224,224))
+test_img = cv2.imread(os.path.join(
+    os.path.dirname(__file__), "../other/test_img.jpg"))
+test_img = cv2.resize(test_img, (224, 224))
 tensor_test_img = torch.from_numpy(test_img).unsqueeze(0).permute(0, 3, 1, 2)
+
 
 class Detector:
     """
     從系統中的即時畫面中偵測人臉，並觸發衣著（反光衣、安全帽）辨識功能。
     若為主畫面 (frame_num == 0)，會進行暖機與衣著辨識。
     """
+
     def __init__(self, frame_num, system):
         """
         初始化 Detector 實例並啟動背景執行緒。
@@ -70,7 +75,8 @@ class Detector:
         last_box = None
         last_points = None
         last_time = 0
-        dummy_input = tensor_test_img[0]#torch.zeros(3, 224, 224)  # 用於 MTCNN 模型暖機的假圖像
+        # torch.zeros(3, 224, 224)  # 用於 MTCNN 模型暖機的假圖像
+        dummy_input = tensor_test_img[0]
 
         while not self.stop_threads:
             # 如果有新的畫面可以處理
@@ -88,10 +94,12 @@ class Detector:
                 self.mask_frame = mask_frame.copy()
 
                 # 嘗試偵測臉部
-                boxes, _, landmarks = self.system.mtcnn.detect(mask_frame, landmarks=True)
+                boxes, _, landmarks = self.system.mtcnn.detect(
+                    mask_frame, landmarks=True)
                 if boxes is None:
                     # 若失敗，使用直方圖均衡化後重試
-                    boxes, _, landmarks = self.system.mtcnn.detect(self.equalize(mask_frame), landmarks=True)
+                    boxes, _, landmarks = self.system.mtcnn.detect(
+                        self.equalize(mask_frame), landmarks=True)
 
                 if boxes is not None:
                     self.last_face_time = time.time()
@@ -107,7 +115,7 @@ class Detector:
 
                 # 若超過 1 秒沒偵測到臉，則檢查是否重置衣著狀態
                 elif time.time() - self.last_face_time > 1 and \
-                     CONFIG["Clothes_show"] and self.frame_num == 0:
+                        CONFIG["Clothes_show"] and self.frame_num == 0:
                     for i in range(3):
                         if time.time() - self.clothe_time[i] > 3:
                             self.system.state.clothes[i] = False
@@ -123,14 +131,15 @@ class Detector:
             # 每 10 秒暖機一次 MTCNN 模型，避免延遲推論
             elif time.time() - last_time > 10 and self.frame_num == 0:
                 try:
-                    if CONFIG["Clothes_show"] :
+                    if CONFIG["Clothes_show"]:
                         _ = self.system.model_clothes(
                             source=dummy_input.unsqueeze(0),
                             iou=0.45,
                             conf=0.2,
                             verbose=False
                         )[0]
-                    __, _, _ = self.system.mtcnn.detect(dummy_input, landmarks=True)
+                    __, _, _ = self.system.mtcnn.detect(
+                        dummy_input, landmarks=True)
                     last_time = time.time()
                 except:
                     pass
@@ -193,7 +202,8 @@ class Detector:
 
         # 套用遮罩後回傳遮罩區域與偏移量
         masked_frame = cv2.bitwise_and(frame, mask)
-        masked_frame = frame[0:, width // close_N : (close_N - 1) * width // close_N]
+        masked_frame = frame[0:, width //
+                             close_N: (close_N - 1) * width // close_N]
         return masked_frame, width // close_N
 
     def equalize(self, img):
@@ -218,6 +228,7 @@ class Detector:
         # 外部終止此執行緒
         self.stop_threads = True
 
+
 class Comparison:
     """
     負責臉部向量比對與身份預測：
@@ -225,6 +236,7 @@ class Comparison:
     - 採用單次辨識成功即觸發的機制。
     - 引入顯示狀態保持機制，解決畫面閃爍問題。
     """
+
     def __init__(self, frame_num, system):
         self.system = system
         self.frame_num = frame_num
@@ -235,7 +247,7 @@ class Comparison:
         self.last_recognition_time = 0
 
         self.DISPLAY_STATE_HOLD_SECONDS = 3  # 辨識成功後，名稱顯示的持續時間
-        self.CONFIDENCE_THRESHOLD = 0.65     # 單次辨識的信賴度門檻
+        self.CONFIDENCE_THRESHOLD = 0.7     # 單次辨識的信賴度門檻
         self.RECOGNITION_COOLDOWN = 5        # 同一個攝影機在辨識成功後的冷卻時間(秒)
 
         self.TIMEZONE = pytz.timezone('Asia/Taipei')
@@ -280,7 +292,7 @@ class Comparison:
             # 檢查臉部大小是否足夠
             if _box[2] - _box[0] < self.system.state.min_face:
                 continue
-            
+
             # 檢查是否在辨識冷卻時間內
             if now - self.last_recognition_time < self.RECOGNITION_COOLDOWN:
                 continue
@@ -288,14 +300,17 @@ class Comparison:
             # 提取人臉特徵向量
             try:
                 # Convert BGR frame to PIL Image
-                frame_image = Image.fromarray(cv2.cvtColor(self.system.state.frame_mtcnn[self.frame_num], cv2.COLOR_BGR2RGB))
-                
+                frame_image = Image.fromarray(cv2.cvtColor(
+                    self.system.state.frame_mtcnn[self.frame_num], cv2.COLOR_BGR2RGB))
+
                 # Crop face without forehead using shared function
-                img_cropped = crop_face_without_forehead(frame_image, _box, _points)
-                
+                img_cropped = crop_face_without_forehead(
+                    frame_image, _box, _points)
+
                 # Add batch dimension and get embedding
-                face_embedding_list = self.system.resnet(img_cropped.unsqueeze(0))
-                
+                face_embedding_list = self.system.resnet(
+                    img_cropped.unsqueeze(0))
+
                 if face_embedding_list is None or len(face_embedding_list) == 0:
                     continue
                 current_face_vec = face_embedding_list[0].detach().numpy()
@@ -303,29 +318,48 @@ class Comparison:
                 LOGGER.error(f"[ERROR][Cam {self.frame_num}] 臉部特徵提取失敗: {e}")
                 continue
 
-            # 進行預測與信賴度計算
+            # 進行預測與信賴度計算 (修正後邏輯)
             try:
-                predicted_id = self.system.svc.predict([current_face_vec])[0]
-                registered_embeddings = self.system.state.features_dict.get(predicted_id, [])
-                if not registered_embeddings:
-                    continue
-                total_similarity = sum(cosine_similarity(current_face_vec, emb) for emb in registered_embeddings)
-                confidence = total_similarity / len(registered_embeddings)
+                best_match_id = "None"
+                max_similarity = 0.0
+
+                # 遍歷資料庫中所有已註冊的人員
+                for person_id, embeddings in self.system.state.features_dict.items():
+                    if person_id == "id_name" or not embeddings:
+                        continue
+
+                    # 計算與當前人員所有特徵的平均相似度
+                    total_similarity = sum(cosine_similarity(
+                        current_face_vec, emb) for emb in embeddings)
+                    avg_similarity = total_similarity / len(embeddings)
+
+                    # 如果找到更高相似度的人，則更新最佳匹配
+                    if avg_similarity > max_similarity:
+                        max_similarity = avg_similarity
+                        best_match_id = person_id
+
+                confidence = max_similarity
+                predicted_id = best_match_id
+
             except Exception as e:
                 LOGGER.error(f"[ERROR][Cam {self.frame_num}] 預測或信賴度計算失敗: {e}")
                 continue
 
             # 標記每一次辨識事件（無論成功與否）
-            log_time = datetime.now(self.TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')
-            staff_name = self.system.state.features_dict.get("id_name", {}).get(predicted_id, "未知")
-            LOGGER.info(f"{log_time} [辨識事件][Cam {self.frame_num}] 偵測到 {staff_name} (ID: {predicted_id}), 信賴度: {confidence:.2%}")
+            log_time = datetime.now(
+                self.TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')
+            staff_name = self.system.state.features_dict.get(
+                "id_name", {}).get(predicted_id, "未知")
+            LOGGER.info(
+                f"{log_time} [辨識事件][Cam {self.frame_num}] 偵測到 {staff_name} (ID: {predicted_id}), 信賴度: {confidence:.2%}")
 
             # 如果單次信賴度超過門檻，則直接視為成功
             if confidence >= self.CONFIDENCE_THRESHOLD:
                 person_id = predicted_id
-                
+
                 # 觸發成功事件 (例如：開門)
-                self.system.state.same_people[self.frame_num] = confidence # Store confidence here
+                # Store confidence here
+                self.system.state.same_people[self.frame_num] = confidence
                 # 更新UI顯示的人員名稱
                 self._update_display_state(person_id)
                 # 更新最後辨識成功的時間

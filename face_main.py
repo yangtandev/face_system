@@ -405,11 +405,15 @@ class FaceRecognitionSystem:
             descriptors_path = os.path.join(self.local_media_path, "descriptors")
 
             # 步驟 2: 找出新增和刪除的圖片
-            local_pics = set(f.split('.')[0] for f in os.listdir(pic_bak_path))
-            local_descriptors = set(f.split('.')[0] for f in os.listdir(descriptors_path))
+            pic_map = {os.path.splitext(f)[0]: f for f in os.listdir(pic_bak_path) if f.lower().endswith(('.png', '.jpg', '.jpeg'))}
+            local_pics_basenames = set(pic_map.keys())
+            local_descriptors_basenames = set(os.path.splitext(f)[0] for f in os.listdir(descriptors_path) if f.lower().endswith('.npy'))
 
-            new_files = [f"{name}.jpg" for name in local_pics - local_descriptors]
-            deleted_files = [f"{name}.npy" for name in local_descriptors - local_pics]
+            new_basenames = local_pics_basenames - local_descriptors_basenames
+            deleted_basenames = local_descriptors_basenames - local_pics_basenames
+
+            new_files = [pic_map[name] for name in new_basenames]
+            deleted_files = [f"{name}.npy" for name in deleted_basenames]
 
             update_needed = bool(new_files or deleted_files)
             print(f"檔案比對完成：發現 {len(new_files)} 張新圖片，{len(deleted_files)} 個過期特徵檔。")
@@ -479,27 +483,23 @@ class FaceRecognitionSystem:
             try:
                 image = Image.open(image_path).convert('RGB')
                 
-                # Detect faces and landmarks
                 boxes, probs, points = self.mtcnn.detect(image, landmarks=True)
                 
-                # Ensure a face was detected and landmarks are available
                 if boxes is not None and points is not None:
-                    # We take the first detected face, assuming it's the most likely one
                     box = boxes[0]
                     point = points[0]
                     
-                    # Crop the face without the forehead and standardize it
                     img_cropped = crop_face_without_forehead(image, box, point)
                     
-                    # Add a batch dimension and get the embedding
                     img_embedding = self.resnet(img_cropped.unsqueeze(0))
                     
-                    np.save(os.path.join(descriptors_path, f"{filename.split('.')[0]}.npy"), img_embedding[0].detach().numpy())
+                    basename = os.path.splitext(filename)[0]
+                    np.save(os.path.join(descriptors_path, f"{basename}.npy"), img_embedding[0].detach().numpy())
                 else:
-                    print(f"警告：在圖片 {filename} 中未偵測到人臉或特徵點。")
+                    LOGGER.warning(f"在圖片 {filename} 中未偵測到人臉或特徵點，跳過此檔案。")
 
             except Exception as e:
-                print(f"處理圖片 {filename} 時發生錯誤: {e}")
+                LOGGER.error(f"處理圖片 {filename} 時發生錯誤: {e}")
 
     def _load_features_from_disk(self):
         """從硬碟載入所有特徵檔，並劃分訓練/測試集"""
