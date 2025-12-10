@@ -31,17 +31,49 @@
 
 ## 系統設定
 
-在執行應用程式之前，您必須完成以下設定：
+在執行應用程式之前，您必須完成以下設定。
 
-### 1. 設定 `config.json`
+### 1. 修改預設設定
 
-本系統所有設定都集中管理於 `config.json` 檔案。您可以直接編輯此檔案，或執行 `setting/bulid_config.py` 來生成或更新設定檔，確保設定檔結構與程式同步。
+本系統的所有預設設定都集中管理於 `setting/bulid_config.py` 檔案中的 `default_config` 字典。
+
+**首次設定或需要修改預設值時，請直接編輯此檔案，並根據您的實際環境修改以下重要設定：**
+
+*   **SSH 金鑰路徑**：
+    `Server` -> `ssh_key_path`: 確保此路徑指向您正確的 SSH **私鑰**檔案。
+    ```python
+    # setting/bulid_config.py
+
+    "Server": {
+        "ip": "43.213.128.240",
+        "username": "ubuntu",
+        "ssh_key_path": "/home/your_username/.ssh/id_rsa",  # <-- 修改成您的路徑
+        # ...
+    },
+    ```
+
+*   **攝影機 IP**：
+    `cameraIP`: 修改 `in_camera` 和 `out_camera` 的值，填入您實際的 RTSP 串流 URL。
+    ```python
+    # setting/bulid_config.py
+
+    "cameraIP": {
+        "in_camera": "rtsp://your_camera_ip_here",      # <-- 修改成您的攝影機 IP
+        "out_camera": "rtsp://your_other_camera_ip_here" # <-- 修改成您的攝影機 IP
+    },
+    ```
+
+### 2. 生成 `config.json` 設定檔
+
+完成 `setting/bulid_config.py` 的修改後，請執行以下指令來生成系統實際會讀取的 `config.json` 檔案：
 
 ```bash
 python setting/bulid_config.py
 ```
 
-### 2. 設定 SSH 金鑰 (SSH Key)
+`config.json` 檔案會被 `.gitignore` 忽略，不應手動修改或提交至版本控制。
+
+### 3. 設定 SSH 金鑰 (SSH Key)
 
 系統使用 SSH 金鑰來安全地與遠端伺服器連線，取代了不安全的明碼密碼。
 
@@ -70,23 +102,7 @@ iii. **複製公鑰至遠端伺服器**：
 `bash
     ssh-copy-id -i ~/.ssh/id_rsa.pub <username>@<server_ip>
     `
-請將 `<username>` 和 `<server_ip>` 替換成您在 `config.json` 中設定的伺服器使用者名稱與 IP。
-
-iv. **確認 `config.json` 中的路徑**：
-確保 `config.json` 中 `Server` -> `ssh_key_path` 的路徑指向您剛剛建立的**私鑰**檔案 (預設為 `/home/ubuntu/.ssh/id_rsa`)。
-
-### 3. 更新攝影機 IP
-
-**這一步非常重要！** 請務必更新 `config.json` 中的攝影機串流位址。
-
-在 `cameraIP` 區塊中，修改 `in_camera` 和 `out_camera` 的值，填入您實際的 RTSP 串流 URL。
-
-```json
-"cameraIP": {
-    "in_camera": "rtsp://your_camera_ip_here",
-    "out_camera": "rtsp://your_other_camera_ip_here"
-},
-```
+請將 `<username>` 和 `<server_ip>` 替換成您在 `setting/bulid_config.py` 中設定的伺服器使用者名稱與 IP。
 
 ## 執行應用程式
 
