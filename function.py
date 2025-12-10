@@ -131,7 +131,7 @@ def check_in_out_excel(staff_name):
 
     :param staff_name: 簽到人員的名字
     """
-    url = "http://192.168.31.130:8080/attendance-record"
+    url = f"http://{CONFIG['ip_set']['ip_address']}:8080/attendance-record"
     data = {"name": staff_name, "time": datetime.datetime.today().strftime("%Y-%m-%d %H:%M:%S"), "location": "gini"}
     
     try:
