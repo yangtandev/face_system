@@ -36,6 +36,7 @@ img_log/
 log/
 *.txt
 !requirements.txt
+config.json
 
 start_rtsp.py
 
