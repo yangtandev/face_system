@@ -4,7 +4,7 @@ import os
 # 預設的設定資料
 default_config = {
     "ip_set": {
-        "ip_address": "192.168.31.130",
+        "ip_address": "127.0.0.1",
         "ip_gateway": "192.168.31.254",
         "ip_mask": "255.255.255.0"
     },
