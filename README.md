@@ -209,3 +209,46 @@ python face_main.py
 ```bash
 sudo apt-get update && sudo apt-get install -y libxcb-xinerama0 libxcb-xfixes0 libxcb-shape0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
 ```
+
+## 每日辨識成效報告設定 (Daily Recognition Performance Report Setup)
+
+為了持續監控系統的辨識效能與趨勢，我們新增了一個自動化的報告工具 (`analytics_reporter.py`)。它會定期執行，分析日誌，並產生詳細的報告。
+
+### 報告產出
+
+腳本執行後，會將報告存儲在專案根目錄下的 `reports` 資料夾中：
+1.  **`report-YYYY-MM-DD.txt`**: 每日詳細報告。每次執行都會將最新的統計結果（帶有精確時間戳記）追加到當天的日報檔案中。
+2.  **`data-YYYY-MM-DD.json`**: 每日原始數據。以 JSON 格式保存當天的統計數據，每次執行會覆寫最新的數據，供趨勢分析使用。
+3.  **`summary_7_days.txt`**: 滾動式七日總結報告。這份報告每天都會更新，分析並總結過去七天的辨識成效趨勢。
+
+腳本會自動清理超過七天的舊日報與數據檔案。
+
+### 排程設定 (推薦使用 Cron)
+
+建議使用 Linux 系統的 `cron` 排程服務，讓 `analytics_reporter.py` 腳本每小時自動執行一次。
+
+1.  **打開 Crontab 編輯器**：
+    在終端機中輸入 `crontab -e`，然後按 Enter。
+
+2.  **新增排程條目**：
+    在打開的文字編輯器中，將以下這一整行指令複製並貼上到檔案的最後。
+
+    **重要提示：**
+    *   請務必將 `<您的專案絕對路徑>` 替換成您的 `face_system` **專案所在的絕對路徑** (例如：`/home/your_username/face_system`)。您可以使用 `pwd` 命令在專案根目錄下查詢。
+
+    ```bash
+    0 * * * * <您的專案絕對路徑>/venv/bin/python <您的專案絕對路徑>/analytics_reporter.py >> <您的專案絕對路徑>/log/reporter.log 2>&1
+    ```
+    替換後的範例：
+    ```bash
+    0 * * * * /home/your_username/face_system/venv/bin/python /home/your_username/face_system/analytics_reporter.py >> /home/your_username/face_system/log/reporter.log 2>&1
+    ```
+
+3.  **儲存並關閉**：
+    儲存並關閉編輯器。Cron 服務會自動讀取新的設定。
+
+### 查看報告
+
+*   **每日詳細報告**：請查看 `reports/report-YYYY-MM-DD.txt`。
+*   **七日總結報告**：請查看 `reports/summary_7_days.txt`。
+*   **報表腳本日誌**：請查看 `log/reporter.log`
