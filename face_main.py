@@ -25,8 +25,7 @@ from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QApplication
 from PyQt5 import QtWidgets
 
-from sklearn.svm import LinearSVC
-import pickle
+
 import signal
 
 from dataclasses import dataclass
@@ -318,7 +317,7 @@ class FaceRecognitionSystem:
         self.state.max_points = [None, None]
         self.state.last_speak_time = {}
 
-        self.svc = LinearSVC(C=1, multi_class='ovr')
+
         self.mtcnn = mtcnn.MTCNN(image_size=160, min_face_size=95, keep_all=True, select_largest=True)
         self.resnet = inception_resnet_v1.InceptionResnetV1(pretrained='vggface2').eval()
 
@@ -332,7 +331,7 @@ class FaceRecognitionSystem:
 
         self.speaker = Say_()
         self.local_media_path = os.path.join(os.path.dirname(__file__), "media")
-        self.model_path = os.path.join(self.local_media_path, "linear_svc_model.pkl")
+
 
         # 確保所有必要的 media 子目錄都存在
         os.makedirs(os.path.join(self.local_media_path, "descriptors"), exist_ok=True)
@@ -371,7 +370,7 @@ class FaceRecognitionSystem:
 
         print("系統啟動中...")
         # 1. 嘗試載入本地現有模型
-        self._load_svc_model()
+
         self._load_features_and_profiles()
 
         # 2. 在背景啟動資料更新流程
@@ -425,7 +424,7 @@ class FaceRecognitionSystem:
 
                 # 步驟 4: 重新載入特徵並訓練模型
                 features, X_train, y_train, X_test, y_test = self._load_features_from_disk()
-                self._train_and_save_svc_model(X_train, y_train, X_test, y_test)
+
 
                 # 步驟 5: 熱更新系統狀態
                 self.state.features_dict = features
@@ -529,36 +528,9 @@ class FaceRecognitionSystem:
         print(f"特徵檔載入完成。訓練集: {len(X_train)}, 測試集: {len(X_test)}")
         return features, X_train, y_train, X_test, y_test
 
-    def _train_and_save_svc_model(self, X_train, y_train, X_test, y_test):
-        """訓練 SVC 模型並儲存"""
-        if not X_train or not y_train:
-            print("警告：訓練集為空，無法訓練模型。")
-            return
 
-        print("開始訓練 SVC 模型...")
-        self.svc.fit(X_train, y_train)
-        print("模型訓練完畢。")
 
-        if X_test and y_test:
-            score = self.svc.score(X_test, y_test)
-            print(f"模型驗證分數 (Accuracy): {score:.2%}")
 
-        with open(self.model_path, 'wb') as f:
-            pickle.dump(self.svc, f)
-        print(f"模型已儲存到: {self.model_path}")
-
-    def _load_svc_model(self):
-        """載入本地現有的 SVC 模型"""
-        if os.path.exists(self.model_path):
-            print(f"正在從 {self.model_path} 載入現有模型...")
-            try:
-                with open(self.model_path, 'rb') as f:
-                    self.svc = pickle.load(f)
-                print("模型載入成功。")
-            except Exception as e:
-                print(f"載入模型失敗: {e}")
-        else:
-            print("本地找不到現有模型，將在首次同步後建立。")
 
     def _load_features_and_profiles(self):
         """載入本地現有的特徵和頭像資料"""
