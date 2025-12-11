@@ -272,6 +272,7 @@ class Comparison:
         - 如果信賴度超過門檻，則觸發成功事件。
         - 管理UI顯示狀態，並移除信賴度分數的顯示。
         - 引入 Z-Score 離群值分析，以提高在高相似度誤判情況下的準確性。
+        - 新增辨識品質評級 (可靠/模糊/低信賴度) 至日誌。
         """
         last_warmup_time = 0
         dummy_input = tensor_test_img
@@ -350,6 +351,7 @@ class Comparison:
                 predicted_id = best_match_id
 
                 # Z-Score 離群值分析
+                z_score = 0.0 # 預設 Z-Score
                 if len(all_similarity_scores) > 1: # 至少需要兩筆數據才能計算標準差
                     all_similarity_array = np.array(all_similarity_scores)
                     mean_score = np.mean(all_similarity_array)
@@ -359,16 +361,7 @@ class Comparison:
                         z_score = (max_similarity - mean_score) / std_dev_score
                     else: # 所有分數都相同，此情況下如果分數很高且達到門檻，則視為通過
                         z_score = Z_SCORE_THRESHOLD if max_similarity >= self.CONFIDENCE_THRESHOLD else 0
-                        LOGGER.warning(
-                            f"Z-Score分析 [Cam {self.frame_num}] 所有相似度分數皆相同 ({max_similarity:.2%})。"
-                        )
-                else: # 只有一個人或沒有人可比對，Z-Score 不適用
-                    z_score = 0 # 預設為不通過
-                    LOGGER.warning(
-                        f"Z-Score分析 [Cam {self.frame_num}] 可比對人員不足 ({len(all_similarity_scores)}人)。"
-                    )
-
-
+                
             except Exception as e:
                 LOGGER.error(f"[ERROR][Cam {self.frame_num}] 預測或信賴度計算失敗: {e}")
                 continue
@@ -379,13 +372,31 @@ class Comparison:
             staff_name = self.system.state.features_dict.get(
                 "id_name", {}).get(predicted_id, "未知")
             
-            # 原始日誌，顯示最高分的候選人及其信賴度
-            LOGGER.info(
-                f"{log_time} [辨識事件][Cam {self.frame_num}] 偵測到 {staff_name} (ID: {predicted_id}), 信賴度: {confidence:.2%}, Z-Score: {z_score:.2f}"
-            )
-
-            # 根據 Z-Score 決定是否為有效辨識
+            # 新增：決定辨識品質評級
+            rating_str = "低信賴度 (Low Confidence)"
+            is_reliable = False
+            
             if confidence >= self.CONFIDENCE_THRESHOLD and z_score >= Z_SCORE_THRESHOLD:
+                rating_str = "可靠 (Reliable)"
+                is_reliable = True
+            elif confidence >= self.CONFIDENCE_THRESHOLD:
+                rating_str = "模糊 (Ambiguous)"
+
+            # 更新日誌，顯示評級
+            log_message = (
+                f"{log_time} [辨識事件][Cam {self.frame_num}] 偵測到 {staff_name} (ID: {predicted_id}), "
+                f"信賴度: {confidence:.2%}, Z-Score: {z_score:.2f} [評級: {rating_str}]"
+            )
+            
+            if is_reliable:
+                LOGGER.info(log_message)
+            elif rating_str == "模糊 (Ambiguous)":
+                LOGGER.warning(log_message) # 對於模糊匹配使用 warning 級別
+            else:
+                LOGGER.info(log_message) # 對於低信賴度使用 info 級別
+
+            # 根據評級決定是否為有效辨識
+            if is_reliable:
                 person_id = predicted_id
 
                 # 觸發成功事件 (例如：開門)
@@ -394,12 +405,6 @@ class Comparison:
                 self._update_display_state(person_id)
                 # 更新最後辨識成功的時間
                 self.last_recognition_time = now
-            elif confidence >= self.CONFIDENCE_THRESHOLD: # 分數夠高但 Z-Score 不夠，可能是模糊匹配或虛高誤判
-                LOGGER.warning(
-                    f"[模糊辨識][Cam {self.frame_num}] {staff_name} 分數 {confidence:.2%}, 但 Z-Score ({z_score:.2f}) 未達門檻 ({Z_SCORE_THRESHOLD:.2f})，可能為誤判或模糊匹配。"
-                )
-            # else: 低於信賴度門檻，直接不辨識，不做額外記錄以避免日誌過於冗長
-
 
             # 模型暖機
             if time.time() - last_warmup_time > 10 and self.frame_num == 0:
