@@ -67,7 +67,8 @@ class Detector:
     def face_detector(self):
         """
         背景執行的臉部與衣著偵測流程：
-        - 每次處理新影像進行臉部偵測。
+        - 透過 DETECTION_INTERVAL 控制偵測頻率，降低 CPU 負載。
+        - 移除第二次偵測，確保處理時間穩定。
         - 若啟用衣著辨識且為主畫面，則觸發衣著辨識。
         - 若超過一定時間未偵測到人臉，則清除衣著標記。
         - 每 10 秒進行模型暖機以減少推論延遲。
@@ -75,58 +76,60 @@ class Detector:
         last_box = None
         last_points = None
         last_time = 0
-        # torch.zeros(3, 224, 224)  # 用於 MTCNN 模型暖機的假圖像
+        last_detection_time = 0
+        DETECTION_INTERVAL = 0.2  # 每 0.2 秒 (5 FPS) 執行一次人臉偵測
         dummy_input = tensor_test_img[0]
 
         while not self.stop_threads:
+            now = time.time()
             # 如果有新的畫面可以處理
             if self.system.state.frame[self.frame_num] is not None:
-                self.system.state.max_box[self.frame_num] = last_box
-                self.system.state.max_points[self.frame_num] = last_points
-                new_frame = self.system.state.frame[self.frame_num].copy()
+                
+                if now - last_detection_time > DETECTION_INTERVAL:
+                    last_detection_time = now # 重置計時器
+                    
+                    self.system.state.max_box[self.frame_num] = last_box
+                    self.system.state.max_points[self.frame_num] = last_points
+                    new_frame = self.system.state.frame[self.frame_num].copy()
 
-                # 預設為無臉框
-                box = None
-                points = None
+                    # 預設為無臉框
+                    box = None
+                    points = None
 
-                # 套用遮罩處理取得 ROI 區域
-                mask_frame, X_offset = self.apply_mask(new_frame)
-                self.mask_frame = mask_frame.copy()
+                    # 套用遮罩處理取得 ROI 区域
+                    mask_frame, X_offset = self.apply_mask(new_frame)
+                    self.mask_frame = mask_frame.copy()
 
-                # 嘗試偵測臉部
-                boxes, _, landmarks = self.system.mtcnn.detect(
-                    mask_frame, landmarks=True)
-                if boxes is None:
-                    # 若失敗，使用直方圖均衡化後重試
+                    # **優化**: 僅嘗試偵測臉部一次，移除備案
                     boxes, _, landmarks = self.system.mtcnn.detect(
-                        self.equalize(mask_frame), landmarks=True)
+                        mask_frame, landmarks=True)
 
-                if boxes is not None:
-                    self.last_face_time = time.time()
-                    x1, y1, x2, y2 = map(int, boxes[0])
-                    x1, x2 = x1 + X_offset, x2 + X_offset
-                    box = [x1, y1, x2, y2]
-                    points = landmarks[0]
+                    if boxes is not None:
+                        self.last_face_time = time.time()
+                        x1, y1, x2, y2 = map(int, boxes[0])
+                        x1, x2 = x1 + X_offset, x2 + X_offset
+                        box = [x1, y1, x2, y2]
+                        points = landmarks[0]
 
-                    # 若為主要畫面（frame_num=0）且開啟衣著檢測，則執行衣著辨識
-                    if CONFIG["Clothes_show"] and self.frame_num == 0 and \
-                       (not self.system.state.clothes[0] or not self.system.state.clothes[2]):
-                        self.clothes_detector(X_offset)
+                        # 若為主要畫面（frame_num=0）且開啟衣著檢測，則執行衣著辨識
+                        if CONFIG["Clothes_show"] and self.frame_num == 0 and \
+                           (not self.system.state.clothes[0] or not self.system.state.clothes[2]):
+                            self.clothes_detector(X_offset)
 
-                # 若超過 1 秒沒偵測到臉，則檢查是否重置衣著狀態
-                elif time.time() - self.last_face_time > 1 and \
-                        CONFIG["Clothes_show"] and self.frame_num == 0:
-                    for i in range(3):
-                        if time.time() - self.clothe_time[i] > 3:
-                            self.system.state.clothes[i] = False
+                    # 若超過 1 秒沒偵測到臉，則檢查是否重置衣著狀態
+                    elif time.time() - self.last_face_time > 1 and \
+                            CONFIG["Clothes_show"] and self.frame_num == 0:
+                        for i in range(3):
+                            if time.time() - self.clothe_time[i] > 3:
+                                self.system.state.clothes[i] = False
 
-                # 更新 MTCNN 結果與最新臉框
-                self.system.state.max_box[self.frame_num] = box
-                self.system.state.max_points[self.frame_num] = points
-                self.system.state.frame_mtcnn[self.frame_num] = new_frame
-                last_box = box
-                last_points = points
-                last_time = time.time()
+                    # 更新 MTCNN 結果與最新臉框
+                    self.system.state.max_box[self.frame_num] = box
+                    self.system.state.max_points[self.frame_num] = points
+                    self.system.state.frame_mtcnn[self.frame_num] = new_frame
+                    last_box = box
+                    last_points = points
+                    last_time = time.time()
 
             # 每 10 秒暖機一次 MTCNN 模型，避免延遲推論
             elif time.time() - last_time > 10 and self.frame_num == 0:
@@ -144,7 +147,8 @@ class Detector:
                 except:
                     pass
 
-            time.sleep(0.00001)
+            # **優化**: 使用 0.01 秒休眠，避免忙碌等待並讓出 CPU
+            time.sleep(0.01)
 
     def clothes_detector(self, X_offset):
         """
@@ -267,9 +271,11 @@ class Comparison:
         - 與資料庫比對並計算信賴度。
         - 如果信賴度超過門檻，則觸發成功事件。
         - 管理UI顯示狀態，並移除信賴度分數的顯示。
+        - 引入 Z-Score 離群值分析，以提高在高相似度誤判情況下的準確性。
         """
         last_warmup_time = 0
         dummy_input = tensor_test_img
+        Z_SCORE_THRESHOLD = 2.5 # Z-Score 門檻，最高分需顯著高於平均值 (2.5 通常代表 99% 信心水準)
 
         while not self.stop_threads:
             time.sleep(0.065)
@@ -318,10 +324,11 @@ class Comparison:
                 LOGGER.error(f"[ERROR][Cam {self.frame_num}] 臉部特徵提取失敗: {e}")
                 continue
 
-            # 進行預測與信賴度計算 (修正後邏輯)
+            # 進行預測與信賴度計算 (Z-Score 離群值分析)
             try:
                 best_match_id = "None"
                 max_similarity = 0.0
+                all_similarity_scores = [] # 收集所有相似度分數
 
                 # 遍歷資料庫中所有已註冊的人員
                 for person_id, embeddings in self.system.state.features_dict.items():
@@ -332,14 +339,35 @@ class Comparison:
                     total_similarity = sum(cosine_similarity(
                         current_face_vec, emb) for emb in embeddings)
                     avg_similarity = total_similarity / len(embeddings)
+                    all_similarity_scores.append(avg_similarity) # 收集分數
 
-                    # 如果找到更高相似度的人，則更新最佳匹配
+                    # 更新最高相似度
                     if avg_similarity > max_similarity:
                         max_similarity = avg_similarity
                         best_match_id = person_id
 
                 confidence = max_similarity
                 predicted_id = best_match_id
+
+                # Z-Score 離群值分析
+                if len(all_similarity_scores) > 1: # 至少需要兩筆數據才能計算標準差
+                    all_similarity_array = np.array(all_similarity_scores)
+                    mean_score = np.mean(all_similarity_array)
+                    std_dev_score = np.std(all_similarity_array)
+
+                    if std_dev_score > 0: # 避免除以零
+                        z_score = (max_similarity - mean_score) / std_dev_score
+                    else: # 所有分數都相同，此情況下如果分數很高且達到門檻，則視為通過
+                        z_score = Z_SCORE_THRESHOLD if max_similarity >= self.CONFIDENCE_THRESHOLD else 0
+                        LOGGER.warning(
+                            f"Z-Score分析 [Cam {self.frame_num}] 所有相似度分數皆相同 ({max_similarity:.2%})。"
+                        )
+                else: # 只有一個人或沒有人可比對，Z-Score 不適用
+                    z_score = 0 # 預設為不通過
+                    LOGGER.warning(
+                        f"Z-Score分析 [Cam {self.frame_num}] 可比對人員不足 ({len(all_similarity_scores)}人)。"
+                    )
+
 
             except Exception as e:
                 LOGGER.error(f"[ERROR][Cam {self.frame_num}] 預測或信賴度計算失敗: {e}")
@@ -350,20 +378,28 @@ class Comparison:
                 self.TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')
             staff_name = self.system.state.features_dict.get(
                 "id_name", {}).get(predicted_id, "未知")
+            
+            # 原始日誌，顯示最高分的候選人及其信賴度
             LOGGER.info(
-                f"{log_time} [辨識事件][Cam {self.frame_num}] 偵測到 {staff_name} (ID: {predicted_id}), 信賴度: {confidence:.2%}")
+                f"{log_time} [辨識事件][Cam {self.frame_num}] 偵測到 {staff_name} (ID: {predicted_id}), 信賴度: {confidence:.2%}, Z-Score: {z_score:.2f}"
+            )
 
-            # 如果單次信賴度超過門檻，則直接視為成功
-            if confidence >= self.CONFIDENCE_THRESHOLD:
+            # 根據 Z-Score 決定是否為有效辨識
+            if confidence >= self.CONFIDENCE_THRESHOLD and z_score >= Z_SCORE_THRESHOLD:
                 person_id = predicted_id
 
                 # 觸發成功事件 (例如：開門)
-                # Store confidence here
                 self.system.state.same_people[self.frame_num] = confidence
                 # 更新UI顯示的人員名稱
                 self._update_display_state(person_id)
                 # 更新最後辨識成功的時間
                 self.last_recognition_time = now
+            elif confidence >= self.CONFIDENCE_THRESHOLD: # 分數夠高但 Z-Score 不夠，可能是模糊匹配或虛高誤判
+                LOGGER.warning(
+                    f"[模糊辨識][Cam {self.frame_num}] {staff_name} 分數 {confidence:.2%}, 但 Z-Score ({z_score:.2f}) 未達門檻 ({Z_SCORE_THRESHOLD:.2f})，可能為誤判或模糊匹配。"
+                )
+            # else: 低於信賴度門檻，直接不辨識，不做額外記錄以避免日誌過於冗長
+
 
             # 模型暖機
             if time.time() - last_warmup_time > 10 and self.frame_num == 0:
