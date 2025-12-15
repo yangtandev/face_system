@@ -149,12 +149,20 @@ def calculate_statistics(log_events, staff_id_to_name, valid_staff_ids):
 
     return dict(overall_stats), final_person_stats
 
-def append_text_report(overall_stats, per_person_stats, report_path):
-    """Formats the report and appends it to the specified text file."""
+def write_text_report(overall_stats, per_person_stats, report_path):
+    """Formats the report and writes (overwrites) it to the specified text file."""
     report_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     total = overall_stats.get('total_events', 0)
-    if total == 0: return # Do not write empty reports
+    if total == 0: 
+        # If there are no events, write an empty report to clear the file
+        try:
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(f"# Report Last Cleared at: {report_time}\n# No events to report for today.\n")
+            print(f"No events found. Cleared and updated report file at {report_path}")
+        except Exception as e:
+            print(f"Error clearing report file {report_path}: {e}")
+        return
 
     true_pos = overall_stats.get('true_positive_count', 0)
     false_pos = overall_stats.get('false_positive_count', 0)
@@ -163,10 +171,10 @@ def append_text_report(overall_stats, per_person_stats, report_path):
     false_positive_rate = (false_pos / total * 100) if total > 0 else 0
     
     report_lines = [
-        "\n" + "#"*80,
+        "#"*80,
         f"# Report Generated at: {report_time}",
         "#"*80,
-        "\n--- 整體辨識狀況 (Overall Performance) ---\\n",
+        "\n--- 整體辨識狀況 (Overall Performance) ---\n",
         f"總辨識事件 (Total Events): {total}",
         f"  - 我方人員可靠辨識 (True Positives): {true_pos} ({true_pos/total:.2%})",
         f"  - 誤判為陌生人 (False Positives):   {false_pos} ({false_pos/total:.2%})",
@@ -182,7 +190,7 @@ def append_text_report(overall_stats, per_person_stats, report_path):
     unknown_id_stats = {s: d for s, d in per_person_stats.items() if not d['is_valid_staff']}
 
     if known_staff_stats:
-        report_lines.append("\n--- 專案內人員 (Registered Staff) ---\\n")
+        report_lines.append("\n--- 專案內人員 (Registered Staff) ---\n")
         for sid, stats in sorted(known_staff_stats.items(), key=lambda i: i[1]['total_appearances'], reverse=True):
             report_lines.append(f"人員: {stats['name']} (ID: {sid})")
             report_lines.append(f"  - 總出現: {stats['total_appearances']} | 可靠: {stats['reliable_count']} | 模糊/低信賴度: {stats['ambiguous_count']}/{stats['low_confidence_count']}")
@@ -190,7 +198,7 @@ def append_text_report(overall_stats, per_person_stats, report_path):
                 report_lines.append(f"    - 可靠辨識分數 -> 平均信賴度: {stats['avg_confidence']:.2f}%, 信賴度區間: [{stats['min_confidence']:.2f}%, {stats['max_confidence']:.2f}%], 平均 Z-Score: {stats['avg_z_score']:.2f}")
 
     if unknown_id_stats:
-        report_lines.append("\n--- 專案外 ID (Unregistered IDs) ---\\n")
+        report_lines.append("\n--- 專案外 ID (Unregistered IDs) ---\n")
         for sid, stats in sorted(unknown_id_stats.items(), key=lambda i: i[1]['total_appearances'], reverse=True):
             report_lines.append(f"ID: {sid}")
             report_lines.append(f"  - 總出現: {stats['total_appearances']} | 可靠(誤判): {stats['reliable_count']} | 模糊/低信賴度: {stats['ambiguous_count']}/{stats['low_confidence_count']}")
@@ -200,9 +208,9 @@ def append_text_report(overall_stats, per_person_stats, report_path):
     report_lines.append("\n" + "="*80 + "\n")
     
     try:
-        with open(report_path, 'a', encoding='utf-8') as f:
+        with open(report_path, 'w', encoding='utf-8') as f:
             f.write("\n".join(report_lines))
-        print(f"Successfully appended text report to {report_path}")
+        print(f"Successfully wrote (overwrote) text report to {report_path}")
     except Exception as e:
         print(f"Error writing text report to file {report_path}: {e}")
 
@@ -317,9 +325,9 @@ def main():
     report_dir = os.path.join(os.path.dirname(__file__), "reports")
     os.makedirs(report_dir, exist_ok=True)
     
-    # 1. Append text report for the current run
+    # 1. Write (overwrite) text report for the current run
     text_report_path = os.path.join(report_dir, f"report-{target_date.strftime('%Y-%m-%d')}.txt")
-    append_text_report(overall_stats, per_person_stats, text_report_path)
+    write_text_report(overall_stats, per_person_stats, text_report_path)
 
     # 2. Overwrite the JSON data file with the latest full-day stats
     json_data_path = os.path.join(report_dir, f"data-{target_date.strftime('%Y-%m-%d')}.json")
