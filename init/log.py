@@ -51,3 +51,37 @@ def setup_log(log_name):
 
 
 LOGGER = setup_log("../log/faceLog")
+
+def setup_perf_log(log_name):
+    """
+    建立並設定一個專門用於效能數據的每日輪轉 logger，使用簡化格式。
+    """
+    logger = logging.getLogger(log_name)
+    log_path = os.path.join(os.path.dirname(__file__), log_name)
+
+    if not os.path.isdir(os.path.join(os.path.dirname(__file__), "../log")):
+        os.makedirs(os.path.join(os.path.dirname(__file__), "../log"))
+
+    logger.setLevel(logging.INFO)
+
+    # 避免重複加入 handler
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    file_handler = logging.handlers.TimedRotatingFileHandler(
+        filename=log_path,
+        when="MIDNIGHT",
+        interval=1,
+        backupCount=6,
+        encoding='utf-8'
+    )
+    file_handler.suffix = "%Y-%m-%d.log"
+    file_handler.extMatch = re.compile(r"^\d{4}-\d{2}-\d{2}.log$")
+
+    # 效能日誌只記錄原始訊息
+    file_handler.setFormatter(logging.Formatter('%(message)s'))
+    
+    logger.addHandler(file_handler)
+    return logger
+
+PERF_LOGGER = setup_perf_log("../log/perfLog")

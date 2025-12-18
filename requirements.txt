@@ -16,3 +16,4 @@ paramiko==3.4.1
 numba==0.60.0
 scikit-learn==1.5.1
 tqdm
+faiss-cpu==1.8.0

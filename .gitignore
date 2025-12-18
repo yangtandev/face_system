@@ -40,4 +40,4 @@ config.json
 
 start_rtsp.py
 
-CACHED
+CACHED\n# Generated reports\nreports/

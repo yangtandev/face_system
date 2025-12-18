@@ -46,20 +46,17 @@ def get_staff_master_list(config):
         print(f"Error during API call: {e}")
         return None, None
 
-def parse_log_file(target_date: date):
-    """
-    Parses the log file for a specific date and extracts recognition events.
-    """
+def parse_recognition_log(target_date: date):
+    """Parses the faceLog file for a specific date and extracts recognition events."""
     log_dir = os.path.join(os.path.dirname(__file__), "log")
     log_file_path = os.path.join(log_dir, f"faceLog.{target_date.strftime('%Y-%m-%d')}.log")
     
-    # If today's log is being parsed, it might not have the date extension yet
     if target_date == date.today() and not os.path.exists(log_file_path):
         log_file_path = os.path.join(log_dir, "faceLog")
 
-    print(f"Parsing log file: {log_file_path}...")
+    print(f"Parsing recognition log: {log_file_path}...")
     if not os.path.exists(log_file_path):
-        print(f"Log file not found for date {target_date}.")
+        print(f"Recognition log not found for date {target_date}.")
         return []
 
     log_pattern = re.compile(
@@ -75,7 +72,7 @@ def parse_log_file(target_date: date):
                 match = log_pattern.search(line)
                 if match:
                     try:
-                        staff_id, confidence, z_score, rating = match.groups()[:4] # Take only the first 4 groups
+                        staff_id, confidence, z_score, rating = match.groups()[:4]
                         parsed_events.append({
                             "staff_id": staff_id.strip(),
                             "confidence": float(confidence.strip()),
@@ -83,12 +80,41 @@ def parse_log_file(target_date: date):
                             "rating": rating.strip().split(" ")[0]
                         })
                     except (ValueError, IndexError):
-                        continue # Skip malformed lines
+                        continue
     except Exception as e:
-        print(f"Error reading log file {log_file_path}: {e}")
+        print(f"Error reading recognition log file {log_file_path}: {e}")
 
     print(f"Found {len(parsed_events)} recognition events.")
     return parsed_events
+
+def parse_performance_log(target_date: date):
+    """Parses the perfLog file for a specific date and extracts performance JSON data."""
+    log_dir = os.path.join(os.path.dirname(__file__), "log")
+    log_file_path = os.path.join(log_dir, f"perfLog.{target_date.strftime('%Y-%m-%d')}.log")
+
+    if target_date == date.today() and not os.path.exists(log_file_path):
+        log_file_path = os.path.join(log_dir, "perfLog")
+
+    print(f"Parsing performance log: {log_file_path}...")
+    if not os.path.exists(log_file_path):
+        print(f"Performance log not found for date {target_date}.")
+        return []
+    
+    performance_events = []
+    try:
+        with open(log_file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    if line.strip():
+                        performance_events.append(json.loads(line.strip()))
+                except json.JSONDecodeError:
+                    continue # Skip malformed lines
+    except Exception as e:
+        print(f"Error reading performance log file {log_file_path}: {e}")
+    
+    print(f"Found {len(performance_events)} performance events.")
+    return performance_events
+
 
 def calculate_statistics(log_events, staff_id_to_name, valid_staff_ids):
     """
@@ -149,42 +175,86 @@ def calculate_statistics(log_events, staff_id_to_name, valid_staff_ids):
 
     return dict(overall_stats), final_person_stats
 
-def write_text_report(overall_stats, per_person_stats, report_path):
+def calculate_performance_statistics(perf_events):
+    """
+    Calculates performance statistics from parsed performance events.
+    """
+    print("Calculating performance statistics...")
+    if not perf_events:
+        return None
+
+    detection_times = [e['duration_sec'] for e in perf_events if e['type'] == 'detection']
+    comparison_times = [e['duration_sec'] for e in perf_events if e['type'] == 'comparison']
+    
+    per_person_comparison = defaultdict(list)
+    for e in perf_events:
+        if e['type'] == 'comparison' and 'person_id' in e:
+            per_person_comparison[e['person_id']].append(e['duration_sec'])
+
+    stats = {
+        'detection': {},
+        'comparison': {},
+        'per_person_comparison_avg': {}
+    }
+
+    if detection_times:
+        stats['detection'] = {
+            'avg': np.mean(detection_times),
+            'min': np.min(detection_times),
+            'max': np.max(detection_times),
+            'count': len(detection_times)
+        }
+    
+    if comparison_times:
+        stats['comparison'] = {
+            'avg': np.mean(comparison_times),
+            'min': np.min(comparison_times),
+            'max': np.max(comparison_times),
+            'count': len(comparison_times)
+        }
+
+    if per_person_comparison:
+        stats['per_person_comparison_avg'] = {
+            person_id: np.mean(times) for person_id, times in per_person_comparison.items()
+        }
+
+    return stats
+
+def write_text_report(overall_stats, per_person_stats, perf_stats, report_path):
     """Formats the report and writes (overwrites) it to the specified text file."""
     report_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     total = overall_stats.get('total_events', 0)
-    if total == 0: 
-        # If there are no events, write an empty report to clear the file
-        try:
-            with open(report_path, 'w', encoding='utf-8') as f:
-                f.write(f"# Report Last Cleared at: {report_time}\n# No events to report for today.\n")
-            print(f"No events found. Cleared and updated report file at {report_path}")
-        except Exception as e:
-            print(f"Error clearing report file {report_path}: {e}")
-        return
-
-    true_pos = overall_stats.get('true_positive_count', 0)
-    false_pos = overall_stats.get('false_positive_count', 0)
-    ambiguous = overall_stats.get('ambiguous_count', 0)
-    low_conf = overall_stats.get('low_confidence_count', 0)
-    false_positive_rate = (false_pos / total * 100) if total > 0 else 0
     
+    # Start with recognition report
     report_lines = [
         "#"*80,
         f"# Report Generated at: {report_time}",
         "#"*80,
         "\n--- 整體辨識狀況 (Overall Performance) ---\n",
-        f"總辨識事件 (Total Events): {total}",
-        f"  - 我方人員可靠辨識 (True Positives): {true_pos} ({true_pos/total:.2%})",
-        f"  - 誤判為陌生人 (False Positives):   {false_pos} ({false_pos/total:.2%})",
-        f"  - 模糊辨識 (Ambiguous):           {ambiguous} ({ambiguous/total:.2%})",
-        f"  - 低信賴度 (Low Conf):             {low_conf} ({low_conf/total:.2%})",
-        f"\n真實誤判率 (False Positive Rate): {false_positive_rate:.2f}%",
-        "\n* 真實誤判率 = (誤判為陌生人) / 總事件數",
-        "\n" + "-"*80,
-        "--- 個別人員辨識統計 (Per-Person Statistics) ---"
     ]
+
+    if total == 0:
+        report_lines.append("No recognition events to report for today.")
+    else:
+        true_pos = overall_stats.get('true_positive_count', 0)
+        false_pos = overall_stats.get('false_positive_count', 0)
+        ambiguous = overall_stats.get('ambiguous_count', 0)
+        low_conf = overall_stats.get('low_confidence_count', 0)
+        false_positive_rate = (false_pos / total * 100) if total > 0 else 0
+        
+        report_lines.extend([
+            f"總辨識事件 (Total Events): {total}",
+            f"  - 我方人員可靠辨識 (True Positives): {true_pos} ({true_pos/total:.2%})",
+            f"  - 誤判為陌生人 (False Positives):   {false_pos} ({false_pos/total:.2%})",
+            f"  - 模糊辨識 (Ambiguous):           {ambiguous} ({ambiguous/total:.2%})",
+            f"  - 低信賴度 (Low Conf):             {low_conf} ({low_conf/total:.2%})",
+            f"\n真實誤判率 (False Positive Rate): {false_positive_rate:.2f}%",
+            "\n* 真實誤判率 = (誤判為陌生人) / 總事件數",
+        ])
+
+    report_lines.append("\n" + "-"*80)
+    report_lines.append("--- 個別人員辨識統計 (Per-Person Statistics) ---")
 
     known_staff_stats = {s: d for s, d in per_person_stats.items() if d['is_valid_staff']}
     unknown_id_stats = {s: d for s, d in per_person_stats.items() if not d['is_valid_staff']}
@@ -204,6 +274,38 @@ def write_text_report(overall_stats, per_person_stats, report_path):
             report_lines.append(f"  - 總出現: {stats['total_appearances']} | 可靠(誤判): {stats['reliable_count']} | 模糊/低信賴度: {stats['ambiguous_count']}/{stats['low_confidence_count']}")
             if stats['reliable_count'] > 0:
                  report_lines.append(f"    - 誤判分數 -> 平均信賴度: {stats['avg_confidence']:.2f}%, 信賴度區間: [{stats['min_confidence']:.2f}%, {stats['max_confidence']:.2f}%], 平均 Z-Score: {stats['avg_z_score']:.2f}")
+    
+    # Add performance statistics section
+    report_lines.append("\n" + "-"*80)
+    report_lines.append("--- 系統效能統計 (System Performance Statistics) ---")
+
+    if not perf_stats:
+        report_lines.append("\nNo performance data found for today.")
+    else:
+        if 'detection' in perf_stats and perf_stats['detection']:
+            d_stats = perf_stats['detection']
+            report_lines.append(f"\n人臉偵測 (Face Detection) - 共 {d_stats['count']} 次:")
+            report_lines.append(f"  - 平均耗時: {d_stats['avg']*1000:.2f} ms")
+            report_lines.append(f"  - 最快耗時: {d_stats['min']*1000:.2f} ms")
+            report_lines.append(f"  - 最慢耗時: {d_stats['max']*1000:.2f} ms")
+        
+        if 'comparison' in perf_stats and perf_stats['comparison']:
+            c_stats = perf_stats['comparison']
+            report_lines.append(f"\n人臉比對 (Face Comparison) - 共 {c_stats['count']} 次:")
+            report_lines.append(f"  - 平均耗時: {c_stats['avg']*1000:.2f} ms")
+            report_lines.append(f"  - 最快耗時: {c_stats['min']*1000:.2f} ms")
+            report_lines.append(f"  - 最慢耗時: {c_stats['max']*1000:.2f} ms")
+
+        if 'per_person_comparison_avg' in perf_stats and perf_stats['per_person_comparison_avg']:
+            report_lines.append("\n個別人員平均比對耗時 (Per-Person Avg. Comparison Time):")
+            # Get names for the IDs
+            all_names = {**{s: d['name'] for s,d in known_staff_stats.items()}, 
+                         **{s: f"未知ID ({s})" for s,d in unknown_id_stats.items()}}
+            
+            sorted_perf = sorted(perf_stats['per_person_comparison_avg'].items(), key=lambda i: i[1], reverse=True)
+            for person_id, avg_time in sorted_perf:
+                name = all_names.get(person_id, f"未知ID ({person_id})")
+                report_lines.append(f"  - {name:<20}: {avg_time*1000:.2f} ms")
 
     report_lines.append("\n" + "="*80 + "\n")
     
@@ -213,6 +315,7 @@ def write_text_report(overall_stats, per_person_stats, report_path):
         print(f"Successfully wrote (overwrote) text report to {report_path}")
     except Exception as e:
         print(f"Error writing text report to file {report_path}: {e}")
+
 
 def save_stats_as_json(overall_stats, per_person_stats, json_path):
     """Saves the raw statistics as a JSON file, overwriting it."""
@@ -314,24 +417,26 @@ def main():
         return
 
     target_date = date.today()
-    log_events = parse_log_file(target_date)
+    recognition_events = parse_recognition_log(target_date)
+    performance_events = parse_performance_log(target_date)
     
-    if not log_events:
-        print("No log events found for today. Nothing to report.")
+    if not recognition_events and not performance_events:
+        print("No log events of any type found for today. Nothing to report.")
         return
         
-    overall_stats, per_person_stats = calculate_statistics(log_events, staff_id_to_name, valid_staff_ids)
+    overall_stats, per_person_stats = calculate_statistics(recognition_events, staff_id_to_name, valid_staff_ids)
+    perf_stats = calculate_performance_statistics(performance_events)
     
     report_dir = os.path.join(os.path.dirname(__file__), "reports")
     os.makedirs(report_dir, exist_ok=True)
     
     # 1. Write (overwrite) text report for the current run
     text_report_path = os.path.join(report_dir, f"report-{target_date.strftime('%Y-%m-%d')}.txt")
-    write_text_report(overall_stats, per_person_stats, text_report_path)
+    write_text_report(overall_stats, per_person_stats, perf_stats, text_report_path)
 
-    # 2. Overwrite the JSON data file with the latest full-day stats
+    # 2. Overwrite the JSON data file with the latest full-day stats (optional: could add perf_stats here too)
     json_data_path = os.path.join(report_dir, f"data-{target_date.strftime('%Y-%m-%d')}.json")
-    save_stats_as_json(overall_stats, per_person_stats, json_data_path)
+    save_stats_as_json(overall_stats, per_person_stats, json_data_path) # Note: perf_stats is not saved to JSON for now
 
     # 3. Regenerate the 7-day rolling summary
     generate_rolling_summary(report_dir)

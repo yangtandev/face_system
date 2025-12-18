@@ -7,9 +7,10 @@ import cv2
 import numpy as np
 import numba as nb
 import torch
-from init.log import LOGGER
+from init.log import LOGGER, PERF_LOGGER
 from datetime import datetime
 import pytz
+import json
 from PIL import Image
 from function import crop_face_without_forehead
 
@@ -36,6 +37,7 @@ def cosine_similarity(vec1, vec2):
 with open(os.path.join(os.path.dirname(__file__), "../config.json"), "r", encoding="utf-8") as json_file:
     CONFIG = json.load(json_file)
 CAMERA = {0: "inCamera", 1: "outCamera"}
+CAM_NAME_MAP = {0: "入口", 1: "出口"}
 
 test_img = cv2.imread(os.path.join(
     os.path.dirname(__file__), "../other/test_img.jpg"))
@@ -59,6 +61,7 @@ class Detector:
         """
         self.system = system
         self.frame_num = frame_num
+        self.TIMEZONE = pytz.timezone('Asia/Taipei')
         self.stop_threads = False
         self.last_face_time = 0       # 最後一次偵測到人臉的時間
         self.clothe_time = [0, 0, 0]  # 各項穿著檢測的最後更新時間
@@ -101,8 +104,19 @@ class Detector:
                     self.mask_frame = mask_frame.copy()
 
                     # **優化**: 僅嘗試偵測臉部一次，移除備案
+                    detect_start_time = time.monotonic()
                     boxes, _, landmarks = self.system.mtcnn.detect(
                         mask_frame, landmarks=True)
+                    detect_duration = time.monotonic() - detect_start_time
+                    
+                    # Add structured performance logging
+                    perf_data = {
+                        "type": "detection",
+                        "duration_sec": detect_duration,
+                        "camera_name": CAM_NAME_MAP.get(self.frame_num, f"Cam {self.frame_num}"),
+                        "timestamp": datetime.now(self.TIMEZONE).isoformat()
+                    }
+                    PERF_LOGGER.info(json.dumps(perf_data))
 
                     if boxes is not None:
                         self.last_face_time = time.time()
@@ -276,9 +290,10 @@ class Comparison:
         """
         last_warmup_time = 0
         dummy_input = tensor_test_img
-        Z_SCORE_THRESHOLD = 2.5 # Z-Score 門檻，最高分需顯著高於平均值 (2.5 通常代表 99% 信心水準)
+        Z_SCORE_THRESHOLD = 1.2 # Z-Score 門檻，最高分需顯著高於平均值 (2.5 通常代表 99% 信心水準)
 
         while not self.stop_threads:
+            camera_name = CAM_NAME_MAP.get(self.frame_num, f'Cam {self.frame_num}')
             time.sleep(0.065)
             now = time.time()
 
@@ -306,6 +321,7 @@ class Comparison:
 
             # 提取人臉特徵向量
             try:
+                comparison_start_time = time.monotonic()
                 # Convert BGR frame to PIL Image
                 frame_image = Image.fromarray(cv2.cvtColor(
                     self.system.state.frame_mtcnn[self.frame_num], cv2.COLOR_BGR2RGB))
@@ -322,48 +338,69 @@ class Comparison:
                     continue
                 current_face_vec = face_embedding_list[0].detach().numpy()
             except Exception as e:
-                LOGGER.error(f"[ERROR][Cam {self.frame_num}] 臉部特徵提取失敗: {e}")
+                LOGGER.error(f"[ERROR][{camera_name}] 臉部特徵提取失敗: {e}")
                 continue
 
             # 進行預測與信賴度計算 (Z-Score 離群值分析)
             try:
-                best_match_id = "None"
-                max_similarity = 0.0
-                all_similarity_scores = [] # 收集所有相似度分數
+                # 檢查 AnnIndex 是否準備就緒
+                if self.system.state.ann_index is None or self.system.state.ann_index.index is None or self.system.state.ann_index.index.ntotal == 0:
+                    LOGGER.warning(f"[{camera_name}] Faiss 索引未準備就緒或為空，跳過比對。")
+                    predicted_id = "None"
+                    confidence = 0.0
+                    z_score = 0.0
+                    top_k_similarities = np.array([])
+                    comparison_duration = time.monotonic() - comparison_start_time
+                    num_people_in_index = 0
+                else:
+                    # 使用 Faiss 進行搜尋 (k=5 獲取前5個最相似結果)
+                    # Faiss returns Inner Product (cosine similarity for normalized vectors)
+                    distances, faiss_person_ids = self.system.state.ann_index.search(current_face_vec, k=min(5, self.system.state.ann_index.index.ntotal))
 
-                # 遍歷資料庫中所有已註冊的人員
-                for person_id, embeddings in self.system.state.features_dict.items():
-                    if person_id == "id_name" or not embeddings:
-                        continue
+                    if faiss_person_ids is None or len(faiss_person_ids) == 0:
+                        predicted_id = "None"
+                        confidence = 0.0
+                        z_score = 0.0
+                        top_k_similarities = np.array([])
+                    else:
+                        best_match_id = faiss_person_ids[0]
+                        max_similarity = distances[0] # The highest cosine similarity
+                        
+                        # Store all top-k similarities for Z-score calculation
+                        top_k_similarities = np.array(distances)
+                        
+                        predicted_id = best_match_id
+                        confidence = max_similarity
 
-                    # 計算與當前人員所有特徵的平均相似度
-                    total_similarity = sum(cosine_similarity(
-                        current_face_vec, emb) for emb in embeddings)
-                    avg_similarity = total_similarity / len(embeddings)
-                    all_similarity_scores.append(avg_similarity) # 收集分數
+                        # Z-Score 離群值分析 (使用 top-k 結果)
+                        z_score = 0.0
+                        if len(top_k_similarities) > 1: # 至少需要兩個結果來計算標準差
+                            mean_score = np.mean(top_k_similarities)
+                            std_dev_score = np.std(top_k_similarities)
 
-                    # 更新最高相似度
-                    if avg_similarity > max_similarity:
-                        max_similarity = avg_similarity
-                        best_match_id = person_id
-
-                confidence = max_similarity
-                predicted_id = best_match_id
-
-                # Z-Score 離群值分析
-                z_score = 0.0 # 預設 Z-Score
-                if len(all_similarity_scores) > 1: # 至少需要兩筆數據才能計算標準差
-                    all_similarity_array = np.array(all_similarity_scores)
-                    mean_score = np.mean(all_similarity_array)
-                    std_dev_score = np.std(all_similarity_array)
-
-                    if std_dev_score > 0: # 避免除以零
-                        z_score = (max_similarity - mean_score) / std_dev_score
-                    else: # 所有分數都相同，此情況下如果分數很高且達到門檻，則視為通過
-                        z_score = Z_SCORE_THRESHOLD if max_similarity >= self.CONFIDENCE_THRESHOLD else 0
+                            if std_dev_score > 0:
+                                z_score = (max_similarity - mean_score) / std_dev_score
+                            else: # 所有分數都相同，若分數高且達門檻，視為通過
+                                z_score = Z_SCORE_THRESHOLD if max_similarity >= self.CONFIDENCE_THRESHOLD else 0
+                        else: # 只有一個結果時，無法計算 Z-score，預設為通過（若信賴度達標）
+                            z_score = Z_SCORE_THRESHOLD if max_similarity >= self.CONFIDENCE_THRESHOLD else 0
+                    
+                    comparison_duration = time.monotonic() - comparison_start_time
+                    num_people_in_index = self.system.state.ann_index.index.ntotal if self.system.state.ann_index.index else 0
                 
+                # Add structured performance logging
+                perf_data = {
+                    "type": "comparison",
+                    "duration_sec": comparison_duration,
+                    "person_id": predicted_id,
+                    "num_compared": num_people_in_index,
+                    "camera_name": camera_name,
+                    "timestamp": datetime.now(self.TIMEZONE).isoformat()
+                }
+                PERF_LOGGER.info(json.dumps(perf_data))
+
             except Exception as e:
-                LOGGER.error(f"[ERROR][Cam {self.frame_num}] 預測或信賴度計算失敗: {e}")
+                LOGGER.error(f"[ERROR][{camera_name}] 預測或信賴度計算失敗: {e}")
                 continue
 
             # 標記每一次辨識事件（無論成功與否）
@@ -384,7 +421,7 @@ class Comparison:
 
             # 更新日誌，顯示評級
             log_message = (
-                f"{log_time} [辨識事件][Cam {self.frame_num}] 偵測到 {staff_name} (ID: {predicted_id}), "
+                f"{log_time} [辨識事件][{camera_name}] 偵測到 {staff_name} (ID: {predicted_id}), "
                 f"信賴度: {confidence:.2%}, Z-Score: {z_score:.2f} [評級: {rating_str}]"
             )
             
