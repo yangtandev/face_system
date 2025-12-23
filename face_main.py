@@ -811,17 +811,35 @@ class FaceRecognitionSystem:
             print(f"載入本地特徵時發生錯誤: {e}")
 
     def _update_profile_pictures(self):
-        """更新大頭照字典"""
-        profile_path = os.path.join(self.local_media_path, "profile_pictures")
-        if not os.path.isdir(profile_path): return
+        """更新大頭照字典，改為從 pic_bak 中根據檔名日期尋找每個人的最新照片"""
+        pic_bak_path = os.path.join(self.local_media_path, "pic_bak")
+        if not os.path.isdir(pic_bak_path):
+            self.state.profile_dict = {}
+            return
 
-        copy_profile = {}
-        for filename in os.listdir(profile_path):
-            basename = os.path.splitext(filename)[0]
-            category = basename.split("_")[0]
-            if category not in copy_profile:
-                copy_profile[category] = os.path.join(profile_path, filename)
-        self.state.profile_dict = copy_profile
+        latest_pics = {}
+        for filename in os.listdir(pic_bak_path):
+            try:
+                base_name = os.path.splitext(filename)[0]
+                parts = base_name.split('_', 1)
+                if len(parts) < 2:
+                    continue # 忽略不含底線的檔名
+
+                category = parts[0].upper() # 強制轉為大寫以確保一致性
+                sort_key = parts[1] # e.g., "2025_1114_0319_50_421000_Yang"
+
+                # 因為時間戳是左邊對齊且格式固定，可以直接用字串比較來找到最新的
+                if category not in latest_pics or sort_key > latest_pics[category]['sort_key']:
+                    latest_pics[category] = {
+                        'path': os.path.join(pic_bak_path, filename),
+                        'sort_key': sort_key
+                    }
+            except IndexError:
+                # 忽略格式不符的檔案
+                continue
+        
+        # 建立最終的 profile_dict
+        self.state.profile_dict = {cat: data['path'] for cat, data in latest_pics.items()}
 
     # setup_cameras, update_inout_log, shutdown 等方法維持不變
     def _load_or_build_index(self, force_rebuild=False):
