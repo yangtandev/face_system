@@ -901,6 +901,10 @@ class FaceRecognitionSystem:
         # which are connected to the `terminate` method of each CameraSystem.
         QApplication.closeAllWindows()
 
+        # 在這裡加入一個保險措施，確保終端機能夠恢復
+        print("Restoring terminal settings...")
+        os.system('reset')
+
 if __name__ == "__main__":
     try:
         face_recognition_system = FaceRecognitionSystem()
