@@ -817,7 +817,8 @@ class FaceRecognitionSystem:
 
         copy_profile = {}
         for filename in os.listdir(profile_path):
-            category = filename.split("_")[0]
+            basename = os.path.splitext(filename)[0]
+            category = basename.split("_")[0]
             if category not in copy_profile:
                 copy_profile[category] = os.path.join(profile_path, filename)
         self.state.profile_dict = copy_profile

@@ -222,7 +222,7 @@ def async_api_call(func, args=(), callback=None, max_retries=20, retry_delay=0.5
                             LOGGER.error(f"API成功後更新人員 {staff_id} 狀態失敗: {e}")
                     return
                 else:
-                    LOGGER.warning(f"[{func.__name__}] 嘗試 {attempt} 次：回傳非 {result}（應為 201 或 202）")
+                    LOGGER.warning(f"[{func.__name__}] 嘗試 {attempt} 次：API 回傳代碼 {result} (非預期的 201 或 202)")
                     time.sleep(retry_delay)
 
             except Exception as e:
