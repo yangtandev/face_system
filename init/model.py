@@ -265,7 +265,8 @@ class Comparison:
         self.last_recognition_time = 0
 
         self.DISPLAY_STATE_HOLD_SECONDS = 3  # 辨識成功後，名稱顯示的持續時間
-        self.CONFIDENCE_THRESHOLD = 0.7     # 單次辨識的信賴度門檻
+        self.CONFIDENCE_THRESHOLD = 0.68     # 可靠辨識的信賴度門檻 (員工)
+        self.VISITOR_CONF_THRESHOLD = 0.55   # 訪客辨識的信賴度門檻 (低於此值為訪客)
         self.RECOGNITION_COOLDOWN = 5        # 同一個攝影機在辨識成功後的冷卻時間(秒)
 
         self.TIMEZONE = pytz.timezone('Asia/Taipei')
@@ -410,30 +411,25 @@ class Comparison:
                 "id_name", {}).get(predicted_id, "未知")
             
             # 新增：決定辨識品質評級
-            rating_str = "低信賴度 (Low Confidence)"
-            is_reliable = False
+            is_reliable = confidence >= self.CONFIDENCE_THRESHOLD and z_score >= Z_SCORE_THRESHOLD
+            is_visitor = confidence < self.VISITOR_CONF_THRESHOLD
             
-            if confidence >= self.CONFIDENCE_THRESHOLD and z_score >= Z_SCORE_THRESHOLD:
+            rating_str = "模糊 (Ambiguous)"
+            if is_reliable:
                 rating_str = "可靠 (Reliable)"
-                is_reliable = True
-            elif confidence >= self.CONFIDENCE_THRESHOLD:
-                rating_str = "模糊 (Ambiguous)"
+            elif is_visitor:
+                rating_str = "訪客 (Visitor)"
 
-            # 更新日誌，顯示評級
+
+            # 更新日誌
             log_message = (
                 f"{log_time} [辨識事件][{camera_name}] 偵測到 {staff_name} (ID: {predicted_id}), "
                 f"信賴度: {confidence:.2%}, Z-Score: {z_score:.2f} [評級: {rating_str}]"
             )
             
-            if is_reliable:
-                LOGGER.info(log_message)
-            elif rating_str == "模糊 (Ambiguous)":
-                LOGGER.warning(log_message) # 對於模糊匹配使用 warning 級別
-            else:
-                LOGGER.info(log_message) # 對於低信賴度使用 info 級別
-
             # 根據評級決定是否為有效辨識
             if is_reliable:
+                LOGGER.info(log_message)
                 person_id = predicted_id
 
                 # 觸發成功事件 (例如：開門)
@@ -442,6 +438,15 @@ class Comparison:
                 self._update_display_state(person_id)
                 # 更新最後辨識成功的時間
                 self.last_recognition_time = now
+            elif is_visitor:
+                 LOGGER.info(log_message)
+                 # 標記為訪客，但不觸發打卡
+                 self.system.state.same_people[self.frame_num] = 0.0
+                 self._update_display_state("__VISITOR__")
+            else: # Ambiguous Case
+                 LOGGER.info(log_message)
+                 # 在模糊區間內，不做任何操作，讓UI保持辨識中
+                 pass
 
             # 模型暖機
             if time.time() - last_warmup_time > 10 and self.frame_num == 0:
