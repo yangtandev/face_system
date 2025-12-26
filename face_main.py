@@ -29,6 +29,7 @@ from PyQt5 import QtWidgets
 import signal
 
 from dataclasses import dataclass
+from collections import defaultdict
 
 from typing import List, Dict, Any
 
@@ -700,6 +701,10 @@ class FaceRecognitionSystem:
             else:
                 print("資料無變動，無需更新模型。")
 
+            # 無論資料是否變動，都執行一次數量更新，以確保與伺服器的資料一致性
+            # 改為非同步執行，避免阻塞更新主流程
+            threading.Thread(target=self._update_descriptor_counts_on_server, daemon=True).start()
+
         finally:
             self.update_lock.release()
             # 如果不是初次運行，則設定下一次的定時更新
@@ -866,6 +871,82 @@ class FaceRecognitionSystem:
             else:
                 print("找不到現有的 Faiss 索引，將建立新的索引。")
             self.state.ann_index.build(self.state.features_dict)
+
+    def _get_valid_staff_ids(self):
+        """從 API 獲取合法的員工 ID 總名單。"""
+        api_url = CONFIG["Server"]["API_url"]
+        staffs_endpoint = f"{api_url}/staffs/"
+        try:
+            response = requests.get(staffs_endpoint, timeout=10)
+            response.raise_for_status()  # Will raise an exception for 4xx/5xx status
+            staff_data = response.json()
+            valid_ids = {item["staff_id"] for item in staff_data}
+            LOGGER.info(f"從伺服器成功獲取 {len(valid_ids)} 位合法員工ID。")
+            return valid_ids
+        except requests.exceptions.RequestException as e:
+            LOGGER.error(f"從 {staffs_endpoint} 獲取員工總名單失敗: {e}")
+            return None
+        except Exception as e:
+            LOGGER.error(f"解析員工總名單時發生錯誤: {e}")
+            return None
+
+    def _update_descriptor_counts_on_server(self):
+        """
+        計算每位人員的 .npy 檔案數量，並只對合法員工透過 PATCH 請求更新到伺服器。
+        """
+        # 步驟 1: 從伺服器獲取合法的員工ID列表
+        valid_staff_ids = self._get_valid_staff_ids()
+        if valid_staff_ids is None:
+            print("無法獲取合法員工名單，中止特徵檔數量更新。")
+            LOGGER.error("無法獲取合法員工名單，中止特徵檔數量更新。")
+            return
+
+        print("開始更新伺服器上的人員特徵檔數量(僅限合法員工)...")
+        LOGGER.info("開始更新伺服器上的人員特徵檔數量(僅限合法員工)...")
+
+        descriptors_path = os.path.join(self.local_media_path, "descriptors")
+        if not os.path.isdir(descriptors_path):
+            LOGGER.warning("特徵檔目錄不存在，跳過更新。")
+            return
+
+        # 步驟 2: 計算本地每個 staff_id 的檔案數量
+        staff_counts = defaultdict(int)
+        for filename in os.listdir(descriptors_path):
+            if filename.lower().endswith('.npy'):
+                try:
+                    staff_id = filename.split('_')[0]
+                    staff_counts[staff_id] += 1
+                except IndexError:
+                    continue
+
+        # 步驟 3: 只遍歷合法的員工ID，並更新他們的計數
+        api_url = CONFIG["Server"]["API_url"]
+        updated_count = 0
+        failed_staff = []
+
+        for staff_id in valid_staff_ids:
+            count = staff_counts.get(staff_id, 0)  # 如果本地沒有檔案，則數量為0
+            url = f"{api_url}/staffs/{staff_id}/"
+            payload = {"descriptors": count}
+            
+            try:
+                response = requests.patch(url, json=payload, timeout=5)
+                if response.status_code == 200:
+                    # 成功的日誌可以選擇性記錄，避免過多訊息
+                    # LOGGER.info(f"成功更新人員 {staff_id} 的特徵檔數量為 {count}。")
+                    updated_count += 1
+                else:
+                    LOGGER.error(f"更新人員 {staff_id} 失敗。伺服器回應: {response.status_code} - {response.text}")
+                    failed_staff.append(staff_id)
+            except requests.exceptions.RequestException as e:
+                LOGGER.error(f"向 {url} 發送 PATCH 請求時發生網路錯誤: {e}")
+                failed_staff.append(staff_id)
+
+        print(f"特徵檔數量更新完成。在 {len(valid_staff_ids)} 位合法員工中，成功更新 {updated_count} 位。")
+        LOGGER.info(f"特徵檔數量更新完成。在 {len(valid_staff_ids)} 位合法員工中，成功更新 {updated_count} 位。")
+        if failed_staff:
+            LOGGER.warning(f"更新失敗的合法員工ID: {failed_staff}")
+            print(f"更新失敗的合法員工ID: {failed_staff}")
 
     def setup_cameras(self):
         """
