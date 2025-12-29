@@ -265,13 +265,68 @@ class Comparison:
         self.last_recognition_time = 0
 
         self.DISPLAY_STATE_HOLD_SECONDS = 3  # 辨識成功後，名稱顯示的持續時間
-        self.CONFIDENCE_THRESHOLD = 0.68     # 可靠辨識的信賴度門檻 (員工)
-        self.VISITOR_CONF_THRESHOLD = 0.55   # 訪客辨識的信賴度門檻 (低於此值為訪客)
+        self.CONFIDENCE_THRESHOLD = 0.7      # 可靠辨識的信賴度門檻 (員工)
+        self.VISITOR_CONF_THRESHOLD = 0.5    # 訪客辨識的信賴度門檻 (低於此值為訪客)
         self.RECOGNITION_COOLDOWN = 5        # 同一個攝影機在辨識成功後的冷卻時間(秒)
 
         self.TIMEZONE = pytz.timezone('Asia/Taipei')
 
         threading.Thread(target=self.face_comparison, daemon=True).start()
+
+    def check_face_quality(self, points):
+        """
+        檢查人臉品質：
+        1. 側臉 (Yaw)
+        2. 歪頭 (Roll)
+        3. 五官比例 (可用於過濾手遮嘴等遮擋造成的特徵點位移)
+        """
+        # MTCNN points: [left_eye, right_eye, nose, left_mouth, right_mouth]
+        left_eye = points[0]
+        right_eye = points[1]
+        nose = points[2]
+        left_mouth = points[3]
+        right_mouth = points[4]
+
+        # 1. Yaw (側臉檢查)
+        # 鼻尖到左右眼的水平距離
+        dist_l_eye = abs(nose[0] - left_eye[0])
+        dist_r_eye = abs(right_eye[0] - nose[0])
+        # 避免分母為 0
+        if dist_l_eye == 0 or dist_r_eye == 0:
+            return False, "側臉嚴重 (Eye-Nose Dist is 0)"
+            
+        ratio_yaw = min(dist_l_eye, dist_r_eye) / max(dist_l_eye, dist_r_eye)
+        # 若比例小於 0.4 (即一邊是另一邊的 2.5 倍以上)，視為側臉
+        if ratio_yaw < 0.4:
+             return False, f"側臉 (Yaw ratio: {ratio_yaw:.2f})"
+
+        # 2. Roll (歪頭檢查)
+        # 雙眼連線的角度
+        dy = right_eye[1] - left_eye[1]
+        dx = right_eye[0] - left_eye[0]
+        angle = abs(np.degrees(np.arctan2(dy, dx)))
+        if angle > 20:
+             return False, f"頭部傾斜 (Angle: {angle:.1f})"
+
+        # 3. Vertical Ratio (五官垂直比例 - 檢測遮擋/張嘴/變形)
+        eye_mid_y = (left_eye[1] + right_eye[1]) / 2
+        mouth_mid_y = (left_mouth[1] + right_mouth[1]) / 2
+        nose_y = nose[1]
+        
+        h_upper = nose_y - eye_mid_y # 眉眼到鼻子的距離
+        h_lower = mouth_mid_y - nose_y # 鼻子到嘴巴的距離
+        
+        if h_upper <= 0 or h_lower <= 0:
+             return False, "特徵點錯位 (Vertical dist <= 0)"
+
+        v_ratio = h_lower / h_upper
+        # 正常人臉約在 0.8 ~ 1.2 之間。
+        # 手摀嘴時，MTCNN 常把嘴巴點抓在手上，導致 h_lower 變小或變大。
+        # 設定寬鬆範圍 0.5 ~ 1.8
+        if v_ratio < 0.5 or v_ratio > 1.8:
+             return False, f"五官比例異常 (V-Ratio: {v_ratio:.2f}, 可能遮擋)"
+
+        return True, "Pass"
 
     def _update_display_state(self, person_id):
         """更新當前顯示的人員ID和時間"""
@@ -314,6 +369,14 @@ class Comparison:
 
             # 檢查臉部大小是否足夠
             if _box[2] - _box[0] < self.system.state.min_face:
+                continue
+
+            # 檢查人臉品質 (側臉/歪頭/遮擋幾何檢查)
+            is_good_face, quality_msg = self.check_face_quality(_points)
+            if not is_good_face:
+                # 若為 Debug 模式，可考慮 log 出來，這裡選擇靜默跳過以免洗版，
+                # 但偶爾 log 一次對於調整參數有幫助。
+                LOGGER.debug(f"[{camera_name}] 跳過: {quality_msg}")
                 continue
 
             # 檢查是否在辨識冷卻時間內

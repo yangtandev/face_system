@@ -156,7 +156,7 @@ class CameraSystem:
 
         self.clothes_de = (CONFIG["Clothes_show"] and self.frame_num == 0)
 
-
+        self.last_visitor_face_img = None
 
         self.detect = Detector(frame_num, system)
 
@@ -262,6 +262,18 @@ class CameraSystem:
                 if current_class == "__VISITOR__":
 
                     now_frame = put_chinese_text(now_frame, "訪客", (x1, y1-55), font_path, font_size, (0, 0, 255)) # Blue for visitor
+                    
+                    # Capture visitor face from clean frame
+                    try:
+                        h, w, _ = resized_frame.shape
+                        # Ensure coordinates are within bounds
+                        fy1, fy2 = max(0, y1), min(h, y2)
+                        fx1, fx2 = max(0, x1), min(w, x2)
+                        
+                        if fy2 > fy1 and fx2 > fx1:
+                            self.last_visitor_face_img = resized_frame[fy1:fy2, fx1:fx2].copy()
+                    except Exception:
+                        pass
 
                 elif current_class != "None":
 
@@ -407,6 +419,18 @@ class CameraSystem:
 
         if current_class == "__VISITOR__":
 
+            # Prioritize showing the captured visitor face
+            if self.last_visitor_face_img is not None and self.last_visitor_face_img.size > 0:
+                try:
+                    # Convert BGR (OpenCV) to RGB (Qt)
+                    img_rgb = cv2.cvtColor(self.last_visitor_face_img, cv2.COLOR_BGR2RGB)
+                    h, w, ch = img_rgb.shape
+                    bytes_per_line = ch * w
+                    qimg = QImage(img_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+                    return QPixmap.fromImage(qimg)
+                except Exception:
+                    pass # Fallback to mask if conversion fails
+            
             path = f'{main_path}/other/mask.png' # 使用通用圖示代表訪客
 
         elif current_class != "None":
