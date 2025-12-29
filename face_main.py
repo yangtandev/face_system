@@ -1,6 +1,7 @@
 from pathlib import Path
 import time, threading, queue, json, os, subprocess
 import sys
+import termios
 
 from models import mtcnn, inception_resnet_v1
 from PIL import Image, ImageDraw, ImageFont
@@ -278,7 +279,7 @@ class CameraSystem:
 
                 if self.system.state.same_people[self.frame_num] > 0:
 
-                    LOGGER.info(f"成功辨識到人員，觸發後續的打卡流程。 সন")
+                    LOGGER.info(f"成功辨識到人員，觸發後續的打卡流程。")
 
                     confidence = self.system.state.same_people[self.frame_num]
 
@@ -298,7 +299,7 @@ class CameraSystem:
 
                         else:
 
-                            LOGGER.warning(f"人員: {success_staff_name} 辨識成功 (信賴度: {confidence:.2%}), 但因衣物未穿戴整齊而跳過打卡。 সন")
+                            LOGGER.warning(f"人員: {success_staff_name} 辨識成功 (信賴度: {confidence:.2%}), 但因衣物未穿戴整齊而跳過打卡。")
 
                         
 
@@ -767,9 +768,15 @@ class FaceRecognitionSystem:
         
 
         # 4. 進入 PyQt 事件主迴圈
-
-        sys.exit(app.exec_())
-
+        try:
+            ret = app.exec_()
+        finally:
+            # 使用延遲的子程序來修復終端機，避開 PyQt 清理過程的覆蓋
+            subprocess.Popen("sleep 0.1; stty sane", shell=True)
+            try:
+                sys.exit(ret)
+            except UnboundLocalError:
+                sys.exit(0)
 
     def update_data_and_model(self, initial_run=True):
 
@@ -781,7 +788,7 @@ class FaceRecognitionSystem:
 
         if not self.update_lock.acquire(blocking=False):
 
-            print("更新流程已在運行中，跳過本次觸發。 সন")
+            print("更新流程已在運行中，跳過本次觸發。")
 
             return
 
@@ -797,7 +804,7 @@ class FaceRecognitionSystem:
 
             if not sync_success:
 
-                print("檔案同步失敗，中止本次更新。 সন")
+                print("檔案同步失敗，中止本次更新。")
 
                 return
 
@@ -833,7 +840,7 @@ class FaceRecognitionSystem:
 
             update_needed = bool(new_files or deleted_files)
 
-            print(f"檔案比對完成：發現 {len(new_files)} 張新圖片，{len(deleted_files)} 個過期特徵檔。 সন")
+            print(f"檔案比對完成：發現 {len(new_files)} 張新圖片，{len(deleted_files)} 個過期特徵檔。")
 
 
 
@@ -862,11 +869,11 @@ class FaceRecognitionSystem:
 
                 self._load_or_build_index(force_rebuild=True) # Force rebuild Faiss index
 
-                print("模型與資料已熱更新完畢。 সন")
+                print("模型與資料已熱更新完畢。")
 
             else:
 
-                print("資料無變動，無需更新模型。 সন")
+                print("資料無變動，無需更新模型。")
 
 
 
@@ -999,7 +1006,7 @@ class FaceRecognitionSystem:
 
                 else:
 
-                    LOGGER.warning(f"在圖片 {filename} 中未偵測到人臉或特徵點，跳過此檔案。 সন")
+                    LOGGER.warning(f"在圖片 {filename} 中未偵測到人臉或特徵點，跳過此檔案。")
 
 
 
@@ -1080,7 +1087,7 @@ class FaceRecognitionSystem:
 
             self._load_or_build_index(force_rebuild=False) # Attempt to load or build index
 
-            print("本地特徵與頭像資料載入完成。 সন")
+            print("本地特徵與頭像資料載入完成。")
 
         except Exception as e:
 
@@ -1160,7 +1167,7 @@ class FaceRecognitionSystem:
 
         if not self.state.features_dict or not any(self.state.features_dict.values()):
 
-            print("沒有人臉特徵資料可供建立 Faiss 索引，跳過。 সন")
+            print("沒有人臉特徵資料可供建立 Faiss 索引，跳過。")
 
             return
 
@@ -1178,7 +1185,7 @@ class FaceRecognitionSystem:
 
             if self.state.ann_index.index is not None and self.state.ann_index.index.ntotal == current_features_count:
 
-                print("已成功載入現有的 Faiss 索引。 সন")
+                print("已成功載入現有的 Faiss 索引。")
 
             else:
 
@@ -1194,7 +1201,7 @@ class FaceRecognitionSystem:
 
             else:
 
-                print("找不到現有的 Faiss 索引，將建立新的索引。 সন")
+                print("找不到現有的 Faiss 索引，將建立新的索引。")
 
             self.state.ann_index.build(self.state.features_dict)
 
@@ -1217,7 +1224,7 @@ class FaceRecognitionSystem:
 
             valid_ids = {item["staff_id"] for item in staff_data}
 
-            LOGGER.info(f"從伺服器成功獲取 {len(valid_ids)} 位合法員工ID。 সন")
+            LOGGER.info(f"從伺服器成功獲取 {len(valid_ids)} 位合法員工ID。")
 
             return valid_ids
 
@@ -1248,9 +1255,9 @@ class FaceRecognitionSystem:
 
         if valid_staff_ids is None:
 
-            print("無法獲取合法員工名單，中止特徵檔數量更新。 সন")
+            print("無法獲取合法員工名單，中止特徵檔數量更新。")
 
-            LOGGER.error("無法獲取合法員工名單，中止特徵檔數量更新。 সন")
+            LOGGER.error("無法獲取合法員工名單，中止特徵檔數量更新。")
 
             return
 
@@ -1266,7 +1273,7 @@ class FaceRecognitionSystem:
 
         if not os.path.isdir(descriptors_path):
 
-            LOGGER.warning("特徵檔目錄不存在，跳過更新。 সন")
+            LOGGER.warning("特徵檔目錄不存在，跳過更新。")
 
             return
 
@@ -1320,7 +1327,7 @@ class FaceRecognitionSystem:
 
                     # 成功的日誌可以選擇性記錄，避免過多訊息
 
-                    # LOGGER.info(f"成功更新人員 {staff_id} 的特徵檔數量為 {count}。 সন")
+                    # LOGGER.info(f"成功更新人員 {staff_id} 的特徵檔數量為 {count}。")
 
                     updated_count += 1
 
@@ -1338,9 +1345,9 @@ class FaceRecognitionSystem:
 
 
 
-        print(f"特徵檔數量更新完成。在 {len(valid_staff_ids)} 位合法員工中，成功更新 {updated_count} 位。 সন")
+        print(f"特徵檔數量更新完成。在 {len(valid_staff_ids)} 位合法員工中，成功更新 {updated_count} 位。")
 
-        LOGGER.info(f"特徵檔數量更新完成。在 {len(valid_staff_ids)} 位合法員工中，成功更新 {updated_count} 位。 সন")
+        LOGGER.info(f"特徵檔數量更新完成。在 {len(valid_staff_ids)} 位合法員工中，成功更新 {updated_count} 位。")
 
         if failed_staff:
 
@@ -1434,30 +1441,13 @@ class FaceRecognitionSystem:
 
 
     def _safe_shutdown(self):
-
         """
-
         在 Qt 事件迴圈中安全地執行關閉程序。
-
         """
-
         print("\nShutting down... Closing all windows.")
-
         # Closing all windows will trigger their respective closeEvents,
-
         # which are connected to the `terminate` method of each CameraSystem.
-
         QApplication.closeAllWindows()
-
-
-
-        # 在這裡加入一個保險措施，確保終端機能夠恢復
-
-        print("Restoring terminal settings...")
-
-        os.system('reset')
-
-
 
 if __name__ == "__main__":
 
