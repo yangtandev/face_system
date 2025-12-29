@@ -235,9 +235,10 @@ class CameraSystem:
 
             
 
-            # Store and use the resized frame for all subsequent operations
+            # Store resized frame for detection and display, and high-res frame for recognition
 
             self.system.state.frame[self.frame_num] = resized_frame
+            self.system.state.frame_high_res[self.frame_num] = original_frame
 
             now_frame = resized_frame.copy()
 
@@ -263,15 +264,25 @@ class CameraSystem:
 
                     now_frame = put_chinese_text(now_frame, "訪客", (x1, y1-55), font_path, font_size, (0, 0, 255)) # Blue for visitor
                     
-                    # Capture visitor face from clean frame
+                    # Capture visitor face from high-resolution frame
                     try:
-                        h, w, _ = resized_frame.shape
+                        h_orig, w_orig, _ = original_frame.shape
+                        h_small, w_small, _ = resized_frame.shape
+                        scale_x = w_small / w_orig
+                        scale_y = h_small / h_orig
+                        
+                        # Scale coordinates back to original resolution
+                        orig_x1 = int(x1 / scale_x)
+                        orig_x2 = int(x2 / scale_x)
+                        orig_y1 = int(y1 / scale_y)
+                        orig_y2 = int(y2 / scale_y)
+                        
                         # Ensure coordinates are within bounds
-                        fy1, fy2 = max(0, y1), min(h, y2)
-                        fx1, fx2 = max(0, x1), min(w, x2)
+                        fy1, fy2 = max(0, orig_y1), min(h_orig, orig_y2)
+                        fx1, fx2 = max(0, orig_x1), min(w_orig, orig_x2)
                         
                         if fy2 > fy1 and fx2 > fx1:
-                            self.last_visitor_face_img = resized_frame[fy1:fy2, fx1:fx2].copy()
+                            self.last_visitor_face_img = original_frame[fy1:fy2, fx1:fx2].copy()
                     except Exception:
                         pass
 
@@ -588,6 +599,10 @@ class GlobalState:
     frame: List[Any] = None
 
     frame_mtcnn: List[Any] = None
+    
+    frame_high_res: List[Any] = None # 儲存原始高解析度影像
+    
+    frame_mtcnn_high_res: List[Any] = None # 儲存與偵測同步的高解析度影像快照
 
     clothes: List[bool] = None
 
@@ -646,6 +661,10 @@ class FaceRecognitionSystem:
         self.state.frame = [None, None]
 
         self.state.frame_mtcnn = [None, None]
+        
+        self.state.frame_high_res = [None, None]
+        
+        self.state.frame_mtcnn_high_res = [None, None]
 
         self.state.clothes = [False, False, False]
 

@@ -94,6 +94,11 @@ class Detector:
                     self.system.state.max_box[self.frame_num] = last_box
                     self.system.state.max_points[self.frame_num] = last_points
                     new_frame = self.system.state.frame[self.frame_num].copy()
+                    
+                    # Capture high-res frame snapshot
+                    new_high_res = None
+                    if self.system.state.frame_high_res is not None and self.system.state.frame_high_res[self.frame_num] is not None:
+                         new_high_res = self.system.state.frame_high_res[self.frame_num].copy()
 
                     # 預設為無臉框
                     box = None
@@ -141,6 +146,7 @@ class Detector:
                     self.system.state.max_box[self.frame_num] = box
                     self.system.state.max_points[self.frame_num] = points
                     self.system.state.frame_mtcnn[self.frame_num] = new_frame
+                    self.system.state.frame_mtcnn_high_res[self.frame_num] = new_high_res
                     last_box = box
                     last_points = points
                     last_time = time.time()
@@ -386,13 +392,43 @@ class Comparison:
             # 提取人臉特徵向量
             try:
                 comparison_start_time = time.monotonic()
+                
+                # Determine which frame to use (High Res or Low Res)
+                frame_to_use = self.system.state.frame_mtcnn[self.frame_num]
+                box_to_use = list(_box)
+                points_to_use = _points.copy()
+                
+                high_res_snapshot = self.system.state.frame_mtcnn_high_res[self.frame_num]
+                
+                if high_res_snapshot is not None and high_res_snapshot.size > 0:
+                    h_high, w_high, _ = high_res_snapshot.shape
+                    h_low, w_low, _ = frame_to_use.shape
+                    
+                    # Only scale if high res is actually larger
+                    if h_high > h_low: 
+                        scale_x = w_low / w_high
+                        scale_y = h_low / h_high
+                        
+                        # Scale box
+                        box_to_use = [
+                            int(_box[0] / scale_x),
+                            int(_box[1] / scale_y),
+                            int(_box[2] / scale_x),
+                            int(_box[3] / scale_y)
+                        ]
+                        
+                        # Scale points (numpy array)
+                        points_to_use = _points / [scale_x, scale_y]
+                        
+                        frame_to_use = high_res_snapshot
+
                 # Convert BGR frame to PIL Image
                 frame_image = Image.fromarray(cv2.cvtColor(
-                    self.system.state.frame_mtcnn[self.frame_num], cv2.COLOR_BGR2RGB))
+                    frame_to_use, cv2.COLOR_BGR2RGB))
 
                 # Crop face without forehead using shared function
                 img_cropped = crop_face_without_forehead(
-                    frame_image, _box, _points)
+                    frame_image, box_to_use, points_to_use)
 
                 # Add batch dimension and get embedding
                 face_embedding_list = self.system.resnet(
