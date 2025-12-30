@@ -624,6 +624,9 @@ class GlobalState:
 
     ann_index: Any = None
 
+    detection_interval: float = 0.1
+    comparison_interval: float = 0.1
+
 
 
 class FaceRecognitionSystem:
@@ -727,62 +730,94 @@ class FaceRecognitionSystem:
 
         os.makedirs(os.path.join(self.local_media_path, "profile_pictures"), exist_ok=True)
 
-
-
         self.update_lock = threading.Lock() # 用於防止多個更新執行緒同時運行
 
+        # 執行效能自動調校
+        self._auto_tune_performance()
 
+    def _auto_tune_performance(self):
+        """
+        啟動時執行效能基準測試，根據 CPU 能力自動決定偵測與辨識的 FPS。
+        """
+        LOGGER.info("正在執行硬體效能自動調校 (Auto-Tuning)...")
+        print("正在執行硬體效能自動調校...")
+        
+        # 1. 準備測試數據 (模擬真實運作情境)
+        # 偵測用: 800x600 (因為主程式會先 resize 才丟進去)
+        dummy_det_img = np.random.randint(0, 255, (600, 800, 3), dtype=np.uint8)
+        # 辨識用: 160x160 (ResNet 的標準輸入尺寸)
+        dummy_rec_tensor = torch.randn(1, 3, 160, 160)
+
+        # 2. 模型暖機
+        try:
+            self.mtcnn.detect(dummy_det_img)
+            self.resnet(dummy_rec_tensor)
+        except Exception:
+            pass
+
+        # 3. 測試偵測速度 (MTCNN @ 800x600)
+        t0 = time.time()
+        for _ in range(5):
+            self.mtcnn.detect(dummy_det_img)
+        avg_det_time = (time.time() - t0) / 5
+
+        # 4. 測試辨識速度 (ResNet @ 160x160)
+        t0 = time.time()
+        for _ in range(5):
+            self.resnet(dummy_rec_tensor)
+        avg_rec_time = (time.time() - t0) / 5
+
+        # 5. 計算建議間隔 (加入安全係數以保留 CPU 給 UI)
+        # 偵測係數 3.0: 考慮雙鏡頭 + UI 開銷 + 系統抖動
+        det_interval_raw = avg_det_time * 3.0
+        # 辨識係數 1.5: 辨識較快，且非每幀觸發，係數可稍低
+        rec_interval_raw = avg_rec_time * 1.5
+
+        # 6. 設定上下限 (Max 15 FPS, Min 2 FPS)
+        self.state.detection_interval = max(0.066, min(0.5, det_interval_raw))
+        self.state.comparison_interval = max(0.066, min(0.5, rec_interval_raw))
+
+        # 7. 輸出詳細日誌
+        det_fps = 1 / self.state.detection_interval
+        rec_fps = 1 / self.state.comparison_interval
+        
+        log_msg = (
+            f"\n===== 效能調校結果 (Auto-Tuning) =====\n"
+            f"CPU 單次偵測耗時 (800x600): {avg_det_time*1000:.2f} ms\n"
+            f"CPU 單次辨識耗時 (160x160): {avg_rec_time*1000:.2f} ms\n"
+            f"--------------------------------------\n"
+            f"設定偵測頻率: {det_fps:.1f} FPS (間隔 {self.state.detection_interval:.3f}s)\n"
+            f"設定辨識頻率: {rec_fps:.1f} FPS (間隔 {self.state.comparison_interval:.3f}s)\n"
+            f"======================================"
+        )
+        LOGGER.info(log_msg)
+        print(log_msg)
 
     def run(self):
-
         """
-
         啟動系統主流程：
-
         - 建立 PyQt Application。
-
         - 設定安全的訊號處理機制。
-
         - 載入模型、啟動背景更新、建立攝影機。
-
         - 進入 PyQt 事件主迴圈。
-
         """
-
         app = QApplication(sys.argv)
 
-
-
         # Set up a pipe-based mechanism for safe shutdown from signals.
-
         # This is the most robust way to handle POSIX signals in a Qt app.
-
         safe_shutdown_pipe_read, self.safe_shutdown_pipe_write = os.pipe()
 
-
-
         def signal_handler(sig, frame):
-
             print(f"接收到訊號 {signal.Signals(sig).name}，觸發安全關閉...")
-
             # Write a byte to the pipe. This is an async-signal-safe operation.
-
             os.write(self.safe_shutdown_pipe_write, b'x')
 
-
-
         signal.signal(signal.SIGINT, signal_handler)
-
         signal.signal(signal.SIGTERM, signal_handler)
 
-
-
         # QSocketNotifier will watch the read end of the pipe in the Qt event loop.
-
         self.shutdown_notifier = QSocketNotifier(safe_shutdown_pipe_read, QSocketNotifier.Read)
-
         # We need to manually add self as a context for lambda to have access to it, even if it's not a QObject
-
         self.shutdown_notifier.activated.connect(lambda: (os.read(safe_shutdown_pipe_read, 1), self._safe_shutdown()))
 
 

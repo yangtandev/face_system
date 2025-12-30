@@ -80,7 +80,7 @@ class Detector:
         last_points = None
         last_time = 0
         last_detection_time = 0
-        DETECTION_INTERVAL = 0.2  # 每 0.2 秒 (5 FPS) 執行一次人臉偵測
+        DETECTION_INTERVAL = self.system.state.detection_interval
         dummy_input = tensor_test_img[0]
 
         while not self.stop_threads:
@@ -356,7 +356,7 @@ class Comparison:
 
         while not self.stop_threads:
             camera_name = CAM_NAME_MAP.get(self.frame_num, f'Cam {self.frame_num}')
-            time.sleep(0.065)
+            time.sleep(self.system.state.comparison_interval)
             now = time.time()
 
             # 清除畫面上的人員名稱（如果超過顯示時間）
