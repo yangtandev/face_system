@@ -616,7 +616,7 @@ class GlobalState:
 
     leave: int = 0
 
-    min_face: int = 0
+    min_face: List[int] = None
 
     max_points: List[Any] = None
 
@@ -676,7 +676,11 @@ class FaceRecognitionSystem:
 
         self.state.display_history = [[], []]
 
-        self.state.min_face = CONFIG["min_face"]
+        # 分別讀取入出口的最小人臉設定，若無則使用全域設定
+        global_min_face = CONFIG.get("min_face", 100)
+        in_min = CONFIG.get("inCamera", {}).get("min_face", global_min_face)
+        out_min = CONFIG.get("outCamera", {}).get("min_face", global_min_face)
+        self.state.min_face = [in_min, out_min]
 
         self.state.max_points = [None, None]
 

@@ -374,7 +374,7 @@ class Comparison:
                 continue
 
             # 檢查臉部大小是否足夠
-            if _box[2] - _box[0] < self.system.state.min_face:
+            if _box[2] - _box[0] < self.system.state.min_face[self.frame_num]:
                 continue
 
             # 檢查人臉品質 (側臉/歪頭/遮擋幾何檢查)

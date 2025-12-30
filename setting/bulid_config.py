@@ -29,10 +29,12 @@ default_config = {
         "clothes": "\u8acb\u6b63\u78ba\u8457\u88dd"
     },
     "inCamera": {
-        "close": False
+        "close": False,
+        "min_face": 95
     },
     "outCamera": {
-        "close": False
+        "close": False,
+        "min_face": 95
     },
     "door": "0",
     "Clothes_detection": False,
