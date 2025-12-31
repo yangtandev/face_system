@@ -259,8 +259,12 @@ class CameraSystem:
                 # 根據 same_class 狀態決定顯示文字
 
                 current_class = self.system.state.same_class[self.frame_num]
+                hint_msg = self.system.state.hint_text[self.frame_num]
 
-                if current_class == "__VISITOR__":
+                if hint_msg:
+                    now_frame = put_chinese_text(now_frame, hint_msg, (x1, y1-55), font_path, font_size, (255, 85, 0)) # Orange for hint
+
+                elif current_class == "__VISITOR__":
 
                     now_frame = put_chinese_text(now_frame, "訪客", (x1, y1-55), font_path, font_size, (0, 0, 255)) # Blue for visitor
                     
@@ -626,6 +630,8 @@ class GlobalState:
 
     detection_interval: float = 0.1
     comparison_interval: float = 0.1
+    
+    hint_text: List[str] = None # 用於顯示即時提示 (例如: 請靠近鏡頭)
 
 
 
@@ -684,12 +690,16 @@ class FaceRecognitionSystem:
         in_min = CONFIG.get("inCamera", {}).get("min_face", global_min_face)
         out_min = CONFIG.get("outCamera", {}).get("min_face", global_min_face)
         self.state.min_face = [in_min, out_min]
+        
+        LOGGER.info(f"人臉最小像素設定 (Min Face): 全域={global_min_face}, 入口(Cam0)={in_min}, 出口(Cam1)={out_min}")
 
         self.state.max_points = [None, None]
 
         self.state.last_speak_time = {}
 
         self.state.ann_index = AnnIndex() # Initialize AnnIndex
+        
+        self.state.hint_text = ["", ""]
 
 
 

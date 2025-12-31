@@ -2,6 +2,7 @@ import json
 import os
 import threading
 import time
+from collections import defaultdict
 
 import cv2
 import numpy as np
@@ -277,9 +278,44 @@ class Comparison:
         self.VISITOR_CONF_THRESHOLD = 0.5    # 訪客辨識的信賴度門檻 (低於此值為訪客)
         self.RECOGNITION_COOLDOWN = 5        # 同一個攝影機在辨識成功後的冷卻時間(秒)
 
+        # --- 新增: 潛在辨識失敗分析與統計 ---
+        self.width_stats = defaultdict(int)  # 統計人臉寬度分佈 (區間:次數)
+        self.last_stats_log_time = 0         # 上次輸出統計表的時間
+        self.potential_miss_ratio = 0.8      # 潛在失敗判定門檻 (min_face * ratio)
+        self.last_potential_miss_log_time = 0 # 上次記錄潛在失敗的時間 (限流用)
+        self.hint_clear_time = 0             # 提示文字清除時間
+        # ---------------------------------
+
         self.TIMEZONE = pytz.timezone('Asia/Taipei')
 
         threading.Thread(target=self.face_comparison, daemon=True).start()
+
+    def _save_potential_miss_image(self, frame, width, threshold, camera_name):
+        """
+        儲存潛在辨識失敗的截圖 (寬度介於意圖區間的人臉)。
+        """
+        try:
+            today_str = datetime.now(self.TIMEZONE).strftime('%Y_%m_%d')
+            time_str = datetime.now(self.TIMEZONE).strftime('%H;%M;%S')
+            
+            # 決定位置標記
+            cam_tag = "Out" if "Out" in camera_name or "出口" in camera_name else "In"
+            if "Cam" in camera_name: # Fallback for "Cam 0", "Cam 1"
+                 cam_tag = "Out" if "1" in camera_name else "In"
+
+            # 建立目錄 img_log/potential_miss/YYYY_MM_DD
+            save_dir = os.path.join(os.getcwd(), "img_log", "potential_miss", today_str)
+            os.makedirs(save_dir, exist_ok=True)
+            
+            # 檔名格式: HH;MM;SS_In_W{width}_T{threshold}.jpg
+            filename = f"{time_str}_{cam_tag}_W{width}_T{threshold}.jpg"
+            filepath = os.path.join(save_dir, filename)
+            
+            cv2.imwrite(filepath, frame)
+            return filepath
+        except Exception as e:
+            LOGGER.error(f"儲存潛在失敗截圖時發生錯誤: {e}")
+            return None
 
     def check_face_quality(self, points):
         """
@@ -357,29 +393,71 @@ class Comparison:
         Z_SCORE_THRESHOLD = 1.2 # Z-Score 門檻，最高分需顯著高於平均值 (2.5 通常代表 99% 信心水準)
 
         while not self.stop_threads:
-            camera_name = CAM_NAME_MAP.get(self.frame_num, f'Cam {self.frame_num}')
+            # 動態調整頻率
             time.sleep(self.system.state.comparison_interval)
             now = time.time()
+            
+            # 清除過期的 UI 提示
+            if now > self.hint_clear_time:
+                self.system.state.hint_text[self.frame_num] = ""
 
             # 清除畫面上的人員名稱（如果超過顯示時間）
             if self.display_state['person_id'] != 'None' and \
                now - self.display_state['last_update'] > self.DISPLAY_STATE_HOLD_SECONDS:
                 self._update_display_state('None')
 
-            # 清空歷史紀錄，確保不顯示信賴度分數
-            self.system.state.display_history[self.frame_num] = []
-
-            # 檢查是否有臉部框和特徵點
+            # Check if we have a detected face
             _box = self.system.state.max_box[self.frame_num]
             _points = self.system.state.max_points[self.frame_num]
             if _box is None or _points is None or self.system.state.frame_mtcnn[self.frame_num] is None:
                 continue
+            
+            camera_name = CAM_NAME_MAP.get(self.frame_num, f"Cam {self.frame_num}")
 
             # 檢查臉部大小是否足夠
             face_width = _box[2] - _box[0]
             min_face_threshold = self.system.state.min_face[self.frame_num]
+            
+            # --- 統計: 記錄人臉寬度分佈 (每 10px 為一個區間) ---
+            width_bin = (face_width // 10) * 10
+            self.width_stats[f"{width_bin}-{width_bin+9}"] += 1
+            
+            # 定期輸出統計摘要 (每小時一次)
+            if now - self.last_stats_log_time > 3600:
+                stats_str = ", ".join([f"{k}: {v}" for k, v in sorted(self.width_stats.items())])
+                LOGGER.info(f"[統計] 過去一小時人臉寬度分佈: {stats_str}")
+                self.width_stats.clear() # 重置統計
+                self.last_stats_log_time = now
+            # -----------------------------------------------
+
             if face_width < min_face_threshold:
-                LOGGER.info(f"[{camera_name}] 人臉太小被忽略: 寬度 {face_width} < 門檻 {min_face_threshold}")
+                # --- 新增: 潛在辨識失敗偵測 (Near Miss Detection) ---
+                potential_threshold = min_face_threshold * self.potential_miss_ratio
+                
+                # 如果寬度落在 [min_face * 0.8, min_face) 區間，視為有意圖但失敗
+                if face_width >= potential_threshold:
+                    # 限流: 同一鏡頭 3 秒內只記錄一次，避免洗版
+                    if now - self.last_potential_miss_log_time > 3:
+                        
+                        # 嘗試截取當前畫面 (使用 High Res 如果有)
+                        snapshot = self.system.state.frame_mtcnn_high_res[self.frame_num]
+                        if snapshot is None:
+                            snapshot = self.system.state.frame_mtcnn[self.frame_num]
+                            
+                        saved_path = "無影像"
+                        if snapshot is not None:
+                            saved_path = self._save_potential_miss_image(snapshot, face_width, min_face_threshold, camera_name)
+                            
+                        LOGGER.info(f"[{camera_name}][潛在失敗] 偵測到人臉但過小 (寬度: {face_width}, 門檻: {min_face_threshold}) - 已存檔: {saved_path}")
+                        self.last_potential_miss_log_time = now
+                        
+                        # 設定 UI 提示
+                        self.system.state.hint_text[self.frame_num] = "請靠近鏡頭"
+                        self.hint_clear_time = now + 2.0
+                
+                # 原有的 Log (人臉太小被忽略)，現在可以只針對非潛在失敗的更小人臉 (路人) 輸出，或者保留作為 Debug
+                # 為了避免 Log 爆炸，這裡我們只保留上述的「潛在失敗」Log，對於純路人(更小)的就不 Log 了，以免干擾視聽。
+                # LOGGER.info(f"[{camera_name}] 人臉太小被忽略: 寬度 {face_width} < 門檻 {min_face_threshold}") 
                 continue
 
             # 檢查人臉品質 (側臉/歪頭/遮擋幾何檢查)
@@ -440,6 +518,7 @@ class Comparison:
                     img_cropped.unsqueeze(0))
 
                 if face_embedding_list is None or len(face_embedding_list) == 0:
+                    LOGGER.warning(f"[{camera_name}] 特徵提取回傳空值 (ResNet Output is None)")
                     continue
                 current_face_vec = face_embedding_list[0].detach().numpy()
             except Exception as e:
