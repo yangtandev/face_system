@@ -4,6 +4,7 @@
 import json
 import os
 import re
+import shutil
 from datetime import datetime, date, timedelta
 import requests
 import numpy as np
@@ -115,6 +116,60 @@ def parse_performance_log(target_date: date):
     print(f"Found {len(performance_events)} performance events.")
     return performance_events
 
+def parse_width_stats(target_date: date):
+    """Parses faceLog to aggregate hourly width distribution statistics."""
+    log_dir = os.path.join(os.path.dirname(__file__), "log")
+    log_file_path = os.path.join(log_dir, f"faceLog.{target_date.strftime('%Y-%m-%d')}.log")
+    
+    if target_date == date.today() and not os.path.exists(log_file_path):
+        log_file_path = os.path.join(log_dir, "faceLog")
+
+    if not os.path.exists(log_file_path):
+        return {}
+
+    width_stats = defaultdict(int)
+    stats_pattern = re.compile(r"\[統計\].*?分佈: (.*)")
+    
+    try:
+        with open(log_file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                match = stats_pattern.search(line)
+                if match:
+                    content = match.group(1) # e.g., "80-89: 5, 90-99: 10"
+                    parts = content.split(', ')
+                    for part in parts:
+                        try:
+                            if ': ' in part:
+                                k, v = part.split(': ')
+                                width_stats[k] += int(v)
+                        except ValueError:
+                            continue
+    except Exception as e:
+        print(f"Error parsing width stats: {e}")
+        
+    return dict(width_stats)
+
+def parse_potential_misses(target_date: date):
+    """Counts the number of 'potential miss' events logged."""
+    log_dir = os.path.join(os.path.dirname(__file__), "log")
+    log_file_path = os.path.join(log_dir, f"faceLog.{target_date.strftime('%Y-%m-%d')}.log")
+    
+    if target_date == date.today() and not os.path.exists(log_file_path):
+        log_file_path = os.path.join(log_dir, "faceLog")
+
+    if not os.path.exists(log_file_path):
+        return 0
+
+    count = 0
+    try:
+        with open(log_file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if "[潛在失敗]" in line:
+                    count += 1
+    except Exception:
+        pass
+    return count
+
 
 def calculate_statistics(log_events, staff_id_to_name, valid_staff_ids):
     """
@@ -220,7 +275,7 @@ def calculate_performance_statistics(perf_events):
 
     return stats
 
-def write_text_report(overall_stats, per_person_stats, perf_stats, report_path):
+def write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, potential_miss_count, report_path, min_face_settings):
     """Formats the report and writes (overwrites) it to the specified text file."""
     report_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
@@ -252,6 +307,52 @@ def write_text_report(overall_stats, per_person_stats, perf_stats, report_path):
             f"\n真實誤判率 (False Positive Rate): {false_positive_rate:.2f}%",
             "\n* 真實誤判率 = (誤判為陌生人) / 總事件數",
         ])
+
+    # --- 新增: 潛在失敗與寬度分佈分析 ---
+    report_lines.append("\n" + "-"*80)
+    report_lines.append("--- 辨識門檻與寬度分析 (Threshold & Width Analysis) ---")
+    
+    # 顯示當前設定
+    in_min = min_face_settings.get('in', 'N/A')
+    out_min = min_face_settings.get('out', 'N/A')
+    report_lines.append(f"\n目前設定 (Current Settings):")
+    report_lines.append(f"  - 入口 min_face: {in_min} px")
+    report_lines.append(f"  - 出口 min_face: {out_min} px")
+    
+    # 計算參考用的意圖區間 (以較小的 min_face 為準，或顯示範圍)
+    ref_min_face = 150 # Default fallback
+    if isinstance(in_min, int): ref_min_face = in_min
+    
+    intent_min = int(ref_min_face * 0.8)
+    report_lines.append(f"  - 意圖偵測區間 (約): {intent_min} ~ {ref_min_face} px")
+
+    report_lines.append(f"\n[潛在失敗偵測] (Near Misses): {potential_miss_count} 次")
+    report_lines.append(f"  * 定義：人臉寬度介於 {intent_min} ~ {ref_min_face} px 之間，雖有辨識意圖但因距離稍遠而失敗。")
+    report_lines.append("  * 建議：若此數值過高，請考慮降低 'min_face' 設定。")
+
+    if width_stats:
+        report_lines.append(f"\n[人臉寬度分佈統計] (所有偵測到的人臉):")
+        # Sort by bin range (e.g., 80-89, 90-99)
+        def sort_key(k):
+            try:
+                return int(k.split('-')[0])
+            except: return 0
+            
+        sorted_stats = sorted(width_stats.items(), key=lambda i: sort_key(i[0]))
+        
+        for bin_range, count in sorted_stats:
+            bin_start = sort_key(bin_range)
+            # 判斷是否低於門檻
+            marker = " [有效]"
+            if bin_start < ref_min_face:
+                marker = " [低於門檻]"
+            if bin_start < intent_min:
+                marker = " [過小/路人]"
+                
+            report_lines.append(f"  - {bin_range} px: {count} 次{marker}")
+    else:
+        report_lines.append("\n[人臉寬度分佈統計]: 無數據 (尚未累積滿一小時或無人經過)")
+    # ------------------------------------
 
     report_lines.append("\n" + "-"*80)
     report_lines.append("--- 個別人員辨識統計 (Per-Person Statistics) ---")
@@ -382,25 +483,58 @@ def generate_rolling_summary(report_dir):
     except Exception as e:
         print(f"Error writing rolling summary: {e}")
 
-def cleanup_old_files(directory, days_to_keep=7):
-    """Deletes report and data files older than a specified number of days."""
-    print(f"Cleaning up files older than {days_to_keep} days in {directory}...")
-    if not os.path.isdir(directory):
-        return
-
+def cleanup_old_files(report_dir, days_to_keep=7):
+    """
+    Deletes report files and image directories older than a specified number of days.
+    """
+    print(f"Starting cleanup process (keeping last {days_to_keep} days)...")
     cutoff_date = date.today() - timedelta(days=days_to_keep)
-    
-    for filename in os.listdir(directory):
-        if filename.startswith("report-") or filename.startswith("data-"):
-            try:
-                date_str = re.search(r'\d{4}-\d{2}-\d{2}', filename).group()
-                file_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+
+    # 1. Cleanup Report Files
+    if os.path.isdir(report_dir):
+        print(f"Cleaning up reports in {report_dir}...")
+        for filename in os.listdir(report_dir):
+            if filename.startswith("report-") or filename.startswith("data-"):
+                try:
+                    date_str = re.search(r'\d{4}-\d{2}-\d{2}', filename).group()
+                    file_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                    
+                    if file_date < cutoff_date:
+                        file_path = os.path.join(report_dir, filename)
+                        os.remove(file_path)
+                        print(f"Deleted old report: {file_path}")
+                except (AttributeError, ValueError):
+                    continue
+
+    # 2. Cleanup Image Directories
+    # Define paths relative to the script location
+    base_dir = os.path.dirname(__file__)
+    img_dirs_to_clean = [
+        os.path.join(base_dir, "img_log", "face"),
+        os.path.join(base_dir, "img_log", "potential_miss")
+    ]
+
+    for img_dir in img_dirs_to_clean:
+        if not os.path.isdir(img_dir):
+            continue
+            
+        print(f"Cleaning up images in {img_dir}...")
+        for dirname in os.listdir(img_dir):
+            dir_path = os.path.join(img_dir, dirname)
+            if not os.path.isdir(dir_path):
+                continue
                 
-                if file_date < cutoff_date:
-                    file_path = os.path.join(directory, filename)
-                    os.remove(file_path)
-                    print(f"Deleted old file: {file_path}")
-            except (AttributeError, ValueError):
+            # Try to parse date from directory name (supports YYYY-MM-DD and YYYY_MM_DD)
+            try:
+                # Replace underscore with dash to unify format for parsing
+                normalized_date_str = dirname.replace('_', '-')
+                dir_date = datetime.strptime(normalized_date_str, '%Y-%m-%d').date()
+                
+                if dir_date < cutoff_date:
+                    shutil.rmtree(dir_path)
+                    print(f"Deleted old image directory: {dir_path}")
+            except ValueError:
+                # Skip directories that don't match the date format
                 continue
 
 def main():
@@ -420,7 +554,19 @@ def main():
     recognition_events = parse_recognition_log(target_date)
     performance_events = parse_performance_log(target_date)
     
-    if not recognition_events and not performance_events:
+    # New: Parse width stats and potential misses
+    width_stats = parse_width_stats(target_date)
+    potential_miss_count = parse_potential_misses(target_date)
+    
+    # Extract min_face settings for reporting
+    min_face_settings = {'in': 'N/A', 'out': 'N/A'}
+    if config:
+        try:
+            min_face_settings['in'] = config.get("inCamera", {}).get("min_face", "N/A")
+            min_face_settings['out'] = config.get("outCamera", {}).get("min_face", "N/A")
+        except: pass
+
+    if not recognition_events and not performance_events and not width_stats and potential_miss_count == 0:
         print("No log events of any type found for today. Nothing to report.")
         return
         
@@ -432,7 +578,7 @@ def main():
     
     # 1. Write (overwrite) text report for the current run
     text_report_path = os.path.join(report_dir, f"report-{target_date.strftime('%Y-%m-%d')}.txt")
-    write_text_report(overall_stats, per_person_stats, perf_stats, text_report_path)
+    write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, potential_miss_count, text_report_path, min_face_settings)
 
     # 2. Overwrite the JSON data file with the latest full-day stats (optional: could add perf_stats here too)
     json_data_path = os.path.join(report_dir, f"data-{target_date.strftime('%Y-%m-%d')}.json")
