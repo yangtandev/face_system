@@ -41,3 +41,4 @@ config.json
 start_rtsp.py
 
 CACHED\n# Generated reports\nreports/
+handover_notes.md
