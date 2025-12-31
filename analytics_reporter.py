@@ -315,20 +315,26 @@ def write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, 
     # 顯示當前設定
     in_min = min_face_settings.get('in', 'N/A')
     out_min = min_face_settings.get('out', 'N/A')
+    
     report_lines.append(f"\n目前設定 (Current Settings):")
-    report_lines.append(f"  - 入口 min_face: {in_min} px")
-    report_lines.append(f"  - 出口 min_face: {out_min} px")
     
-    # 計算參考用的意圖區間 (以較小的 min_face 為準，或顯示範圍)
-    ref_min_face = 150 # Default fallback
-    if isinstance(in_min, int): ref_min_face = in_min
-    
-    intent_min = int(ref_min_face * 0.8)
-    report_lines.append(f"  - 意圖偵測區間 (約): {intent_min} ~ {ref_min_face} px")
+    # 入口設定詳情
+    in_intent_str = "N/A"
+    if isinstance(in_min, int):
+        in_intent_min = int(in_min * 0.8)
+        in_intent_str = f"{in_intent_min} ~ {in_min} px"
+    report_lines.append(f"  - 入口 (In/Cam0): min_face = {in_min} px | 意圖區間 (Intent Zone) ≈ {in_intent_str}")
+
+    # 出口設定詳情
+    out_intent_str = "N/A"
+    if isinstance(out_min, int):
+        out_intent_min = int(out_min * 0.8)
+        out_intent_str = f"{out_intent_min} ~ {out_min} px"
+    report_lines.append(f"  - 出口 (Out/Cam1): min_face = {out_min} px | 意圖區間 (Intent Zone) ≈ {out_intent_str}")
 
     report_lines.append(f"\n[潛在失敗偵測] (Near Misses): {potential_miss_count} 次")
-    report_lines.append(f"  * 定義：人臉寬度介於 {intent_min} ~ {ref_min_face} px 之間，雖有辨識意圖但因距離稍遠而失敗。")
-    report_lines.append("  * 建議：若此數值過高，請考慮降低 'min_face' 設定。")
+    report_lines.append(f"  * 定義：人臉寬度介於該鏡頭 'min_face' 的 80%~100% 之間。")
+    report_lines.append("  * 建議：若此數值過高，請考慮降低對應鏡頭的 'min_face' 設定。")
 
     if width_stats:
         report_lines.append(f"\n[人臉寬度分佈統計] (所有偵測到的人臉):")
@@ -340,14 +346,18 @@ def write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, 
             
         sorted_stats = sorted(width_stats.items(), key=lambda i: sort_key(i[0]))
         
+        # 決定標記用的參考門檻 (取較小者以避免過度標記，或取平均)
+        # 這裡為了保守起見，如果出入口不同，我們標記「低於任一門檻」
+        ref_thresholds = []
+        if isinstance(in_min, int): ref_thresholds.append(in_min)
+        if isinstance(out_min, int): ref_thresholds.append(out_min)
+        min_threshold = min(ref_thresholds) if ref_thresholds else 150
+
         for bin_range, count in sorted_stats:
             bin_start = sort_key(bin_range)
-            # 判斷是否低於門檻
             marker = " [有效]"
-            if bin_start < ref_min_face:
-                marker = " [低於門檻]"
-            if bin_start < intent_min:
-                marker = " [過小/路人]"
+            if bin_start < min_threshold:
+                marker = " [低於最小門檻]"
                 
             report_lines.append(f"  - {bin_range} px: {count} 次{marker}")
     else:
