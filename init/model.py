@@ -64,6 +64,7 @@ class Detector:
         self.TIMEZONE = pytz.timezone('Asia/Taipei')
         self.stop_threads = False
         self.last_face_time = 0       # 最後一次偵測到人臉的時間
+        self.last_no_face_log_time = 0 # 用於控制 "未偵測到人臉" Log 的輸出頻率
         self.clothe_time = [0, 0, 0]  # 各項穿著檢測的最後更新時間
         threading.Thread(target=self.face_detector, daemon=True).start()
 
@@ -135,12 +136,18 @@ class Detector:
                            (not self.system.state.clothes[0] or not self.system.state.clothes[2]):
                             self.clothes_detector(X_offset)
 
-                    # 若超過 1 秒沒偵測到臉，則檢查是否重置衣著狀態
-                    elif time.time() - self.last_face_time > 1 and \
-                            CONFIG["Clothes_show"] and self.frame_num == 0:
-                        for i in range(3):
-                            if time.time() - self.clothe_time[i] > 3:
-                                self.system.state.clothes[i] = False
+                    else:
+                        # --- 除錯日誌: 每 5 秒記錄一次未偵測到人臉的情況 ---
+                        if now - self.last_no_face_log_time > 5:
+                            LOGGER.info(f"[Detector {self.frame_num}] MTCNN 未偵測到人臉 (已裁切區域)")
+                            self.last_no_face_log_time = now
+                        
+                        # 若超過 1 秒沒偵測到臉，則檢查是否重置衣著狀態
+                        if time.time() - self.last_face_time > 1 and \
+                                CONFIG["Clothes_show"] and self.frame_num == 0:
+                            for i in range(3):
+                                if time.time() - self.clothe_time[i] > 3:
+                                    self.system.state.clothes[i] = False
 
                     # 更新 MTCNN 結果與最新臉框
                     self.system.state.max_box[self.frame_num] = box
@@ -212,9 +219,9 @@ class Detector:
         # 遮罩處理，保留畫面中間的區域進行臉部偵測
         height, width, _ = frame.shape
         mask = np.zeros_like(frame)
-        close_N = 3
+        close_N = 6 # 預設保留中間 4/6 (約 66%)，原為 3 (保留 33%)
         if CONFIG[CAMERA[self.frame_num]]["close"]:
-            close_N = 4
+            close_N = 8 # 近距離模式保留中間 6/8 (約 75%)，原為 4 (保留 50%)
 
         # 產生白色矩形遮罩
         cv2.rectangle(
