@@ -137,11 +137,6 @@ class Detector:
                             self.clothes_detector(X_offset)
 
                     else:
-                        # --- 除錯日誌: 每 5 秒記錄一次未偵測到人臉的情況 ---
-                        if now - self.last_no_face_log_time > 5:
-                            LOGGER.info(f"[Detector {self.frame_num}] MTCNN 未偵測到人臉 (已裁切區域)")
-                            self.last_no_face_log_time = now
-                        
                         # 若超過 1 秒沒偵測到臉，則檢查是否重置衣著狀態
                         if time.time() - self.last_face_time > 1 and \
                                 CONFIG["Clothes_show"] and self.frame_num == 0:
