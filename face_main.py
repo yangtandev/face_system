@@ -768,10 +768,10 @@ class FaceRecognitionSystem:
         avg_rec_time = (time.time() - t0) / 5
 
         # 5. 計算建議間隔 (加入安全係數以保留 CPU 給 UI)
-        # 偵測係數 6.0: 考慮雙鏡頭並行 (x2) + UI 繪圖與系統開銷 (x3)
-        det_interval_raw = avg_det_time * 6.0
-        # 辨識係數 5.0: 辨識運算較重 (ResNet)，且雙鏡頭可能同時觸發，需預留更多緩衝以防 CPU 滿載 (Thread Starvation)
-        rec_interval_raw = avg_rec_time * 5.0
+        # 偵測係數 3.0: 考慮雙鏡頭 + UI 開銷 + 系統抖動
+        det_interval_raw = avg_det_time * 3.0
+        # 辨識係數 1.5: 辨識較快，且非每幀觸發，係數可稍低
+        rec_interval_raw = avg_rec_time * 1.5
 
         # 6. 設定上下限 (Max 15 FPS, Min 2 FPS)
         self.state.detection_interval = max(0.066, min(0.5, det_interval_raw))
