@@ -374,7 +374,10 @@ class Comparison:
                 continue
 
             # 檢查臉部大小是否足夠
-            if _box[2] - _box[0] < self.system.state.min_face[self.frame_num]:
+            face_width = _box[2] - _box[0]
+            min_face_threshold = self.system.state.min_face[self.frame_num]
+            if face_width < min_face_threshold:
+                LOGGER.info(f"[{camera_name}] 人臉太小被忽略: 寬度 {face_width} < 門檻 {min_face_threshold}")
                 continue
 
             # 檢查人臉品質 (側臉/歪頭/遮擋幾何檢查)
