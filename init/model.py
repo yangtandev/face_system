@@ -302,8 +302,8 @@ class Comparison:
             return False, "側臉嚴重 (Eye-Nose Dist is 0)"
             
         ratio_yaw = min(dist_l_eye, dist_r_eye) / max(dist_l_eye, dist_r_eye)
-        # 若比例小於 0.4 (即一邊是另一邊的 2.5 倍以上)，視為側臉
-        if ratio_yaw < 0.4:
+        # 若比例小於 0.3 (即一邊是另一邊的 3.3 倍以上)，視為側臉
+        if ratio_yaw < 0.3:
              return False, f"側臉 (Yaw ratio: {ratio_yaw:.2f})"
 
         # 2. Roll (歪頭檢查)
@@ -311,7 +311,7 @@ class Comparison:
         dy = right_eye[1] - left_eye[1]
         dx = right_eye[0] - left_eye[0]
         angle = abs(np.degrees(np.arctan2(dy, dx)))
-        if angle > 20:
+        if angle > 30:
              return False, f"頭部傾斜 (Angle: {angle:.1f})"
 
         # 3. Vertical Ratio (五官垂直比例 - 檢測遮擋/張嘴/變形)
@@ -382,7 +382,7 @@ class Comparison:
             if not is_good_face:
                 # 若為 Debug 模式，可考慮 log 出來，這裡選擇靜默跳過以免洗版，
                 # 但偶爾 log 一次對於調整參數有幫助。
-                LOGGER.debug(f"[{camera_name}] 跳過: {quality_msg}")
+                LOGGER.info(f"[{camera_name}] 跳過: {quality_msg}")
                 continue
 
             # 檢查是否在辨識冷卻時間內
