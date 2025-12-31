@@ -54,7 +54,13 @@ class Say_:
                     full_path = os.path.join(self.path, filename)
                     try:
                         # 在載入新音訊前，強制停止所有正在播放的音訊，確保即時性
-                        mixer.music.stop() 
+                        try:
+                            mixer.music.stop()
+                            mixer.quit()
+                        except:
+                            pass
+                        
+                        mixer.init()
 
                         if not os.path.isfile(full_path):
                             LOGGER.info(f"語音檔不存在，正在使用 gTTS 產生: {full_path}")
