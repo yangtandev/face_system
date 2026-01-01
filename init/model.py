@@ -422,10 +422,10 @@ class Comparison:
             width_bin = (face_width // 10) * 10
             self.width_stats[f"{width_bin}-{width_bin+9}"] += 1
             
-            # 定期輸出統計摘要 (每小時一次)
-            if now - self.last_stats_log_time > 3600:
+            # 定期輸出統計摘要 (每分鐘一次，方便即時驗證)
+            if now - self.last_stats_log_time > 60:
                 stats_str = ", ".join([f"{k}: {v}" for k, v in sorted(self.width_stats.items())])
-                LOGGER.info(f"[統計] 過去一小時人臉寬度分佈: {stats_str}")
+                LOGGER.info(f"[統計] [{camera_name}] 過去一分鐘人臉寬度分佈: {stats_str}")
                 self.width_stats.clear() # 重置統計
                 self.last_stats_log_time = now
             # -----------------------------------------------

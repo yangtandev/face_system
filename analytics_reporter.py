@@ -117,7 +117,7 @@ def parse_performance_log(target_date: date):
     return performance_events
 
 def parse_width_stats(target_date: date):
-    """Parses faceLog to aggregate hourly width distribution statistics."""
+    """Parses faceLog to aggregate hourly width distribution statistics by camera."""
     log_dir = os.path.join(os.path.dirname(__file__), "log")
     log_file_path = os.path.join(log_dir, f"faceLog.{target_date.strftime('%Y-%m-%d')}.log")
     
@@ -127,27 +127,30 @@ def parse_width_stats(target_date: date):
     if not os.path.exists(log_file_path):
         return {}
 
-    width_stats = defaultdict(int)
-    stats_pattern = re.compile(r"\[統計\].*?分佈: (.*)")
+    # 結構化存儲: {"入口": {"80-89": 5, ...}, "出口": {...}}
+    width_stats = defaultdict(lambda: defaultdict(int))
+    # 支援新格式 "[統計] [入口] ..." 與舊格式 "[統計] ..." (歸類為 未知)
+    stats_pattern = re.compile(r"\[統計\]\s*(?:\[(.*?)\])?.*?分佈:\s*(.*)")
     
     try:
         with open(log_file_path, 'r', encoding='utf-8') as f:
             for line in f:
                 match = stats_pattern.search(line)
                 if match:
-                    content = match.group(1) # e.g., "80-89: 5, 90-99: 10"
+                    cam_name = match.group(1) or "未知"
+                    content = match.group(2) # e.g., "80-89: 5, 90-99: 10"
                     parts = content.split(', ')
                     for part in parts:
                         try:
                             if ': ' in part:
                                 k, v = part.split(': ')
-                                width_stats[k] += int(v)
+                                width_stats[cam_name][k] += int(v)
                         except ValueError:
                             continue
     except Exception as e:
         print(f"Error parsing width stats: {e}")
         
-    return dict(width_stats)
+    return {k: dict(v) for k, v in width_stats.items()}
 
 def parse_potential_misses(target_date: date):
     """Counts the number of 'potential miss' events logged."""
@@ -337,29 +340,32 @@ def write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, 
     report_lines.append("  * 建議：若此數值過高，請考慮降低對應鏡頭的 'min_face' 設定。")
 
     if width_stats:
-        report_lines.append(f"\n[人臉寬度分佈統計] (所有偵測到的人臉):")
-        # Sort by bin range (e.g., 80-89, 90-99)
+        report_lines.append(f"\n[人臉寬度分佈統計] (按出入口區分):")
+        
         def sort_key(k):
             try:
                 return int(k.split('-')[0])
             except: return 0
-            
-        sorted_stats = sorted(width_stats.items(), key=lambda i: sort_key(i[0]))
-        
-        # 決定標記用的參考門檻 (取較小者以避免過度標記，或取平均)
-        # 這裡為了保守起見，如果出入口不同，我們標記「低於任一門檻」
-        ref_thresholds = []
-        if isinstance(in_min, int): ref_thresholds.append(in_min)
-        if isinstance(out_min, int): ref_thresholds.append(out_min)
-        min_threshold = min(ref_thresholds) if ref_thresholds else 150
 
-        for bin_range, count in sorted_stats:
-            bin_start = sort_key(bin_range)
-            marker = " [有效]"
-            if bin_start < min_threshold:
-                marker = " [低於最小門檻]"
-                
-            report_lines.append(f"  - {bin_range} px: {count} 次{marker}")
+        # 取得各自門檻以便對比
+        threshold_map = {
+            "入口": in_min if isinstance(in_min, int) else 0,
+            "出口": out_min if isinstance(out_min, int) else 0,
+            "未知": 150
+        }
+
+        for cam_name, stats in sorted(width_stats.items()):
+            cam_threshold = threshold_map.get(cam_name, 150)
+            report_lines.append(f"\n  * {cam_name} (當前門檻: {cam_threshold} px):")
+            
+            sorted_stats = sorted(stats.items(), key=lambda i: sort_key(i[0]))
+            for bin_range, count in sorted_stats:
+                bin_start = sort_key(bin_range)
+                marker = " [有效]"
+                if bin_start < cam_threshold:
+                    marker = " [低於目前門檻]"
+                    
+                report_lines.append(f"    - {bin_range} px: {count} 次{marker}")
     else:
         report_lines.append("\n[人臉寬度分佈統計]: 無數據 (尚未累積滿一小時或無人經過)")
     # ------------------------------------
