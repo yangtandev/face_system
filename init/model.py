@@ -319,10 +319,11 @@ class Comparison:
 
     def check_face_quality(self, points):
         """
-        檢查人臉品質：
-        1. 側臉 (Yaw)
-        2. 歪頭 (Roll)
-        3. 五官比例 (可用於過濾手遮嘴等遮擋造成的特徵點位移)
+        評估人臉品質並計算懲罰係數。
+        
+        Returns:
+        quality_score (float): 1.0 代表完美，數值越低代表品質越差 (側臉或歪頭)
+        msg (str): 評估訊息
         """
         # MTCNN points: [left_eye, right_eye, nose, left_mouth, right_mouth]
         left_eye = points[0]
@@ -331,46 +332,71 @@ class Comparison:
         left_mouth = points[3]
         right_mouth = points[4]
 
-        # 1. Yaw (側臉檢查)
-        # 鼻尖到左右眼的水平距離
+        penalty_factor = 1.0
+        msgs = []
+
+        # 1. Yaw (側臉檢查) - 權重補償
         dist_l_eye = abs(nose[0] - left_eye[0])
         dist_r_eye = abs(right_eye[0] - nose[0])
-        # 避免分母為 0
-        if dist_l_eye == 0 or dist_r_eye == 0:
-            return False, "側臉嚴重 (Eye-Nose Dist is 0)"
+        
+        # --- 新增: 絕對距離檢查 (針對極端側臉) ---
+        # 計算眼睛到鼻子的距離佔臉部總寬度的比例
+        # _box[2]-_box[0] 是臉部寬度
+        face_w = max(10, self.system.state.max_box[self.frame_num][2] - self.system.state.max_box[self.frame_num][0])
+        min_dist_ratio = min(dist_l_eye, dist_r_eye) / face_w
+        
+        # 如果一隻眼睛離鼻子太近 (小於臉寬的 18%)，代表臉轉到極限了
+        if min_dist_ratio < 0.18:
+            loss = 0.25 # 直接重罰 25%
+            penalty_factor -= loss
             
-        ratio_yaw = min(dist_l_eye, dist_r_eye) / max(dist_l_eye, dist_r_eye)
-        # 若比例小於 0.3 (即一邊是另一邊的 3.3 倍以上)，視為側臉
-        if ratio_yaw < 0.3:
-             return False, f"側臉 (Yaw ratio: {ratio_yaw:.2f})"
+            # 找出是哪隻眼睛太近
+            eye_side = "左眼" if dist_l_eye < dist_r_eye else "右眼"
+            dist_val = min(dist_l_eye, dist_r_eye)
+            msgs.append(f"極端側臉({eye_side}距{dist_val:.1f}px, 臉寬{face_w:.1f}px, 比例{min_dist_ratio:.2f}<0.18, -{loss:.2f})")
+            
+        elif dist_l_eye > 0 and dist_r_eye > 0:
+            ratio_yaw = min(dist_l_eye, dist_r_eye) / max(dist_l_eye, dist_r_eye)
+            # 門檻：0.6 以下開始懲罰
+            # 例如 ratio=0.4 (側臉): 懲罰 = 1.0 - (0.6 - 0.4)*0.5 = 0.9 (打九折)
+            # 例如 ratio=0.2 (極側): 懲罰 = 1.0 - (0.6 - 0.2)*0.5 = 0.8 (打八折)
+            if ratio_yaw < 0.6:
+                loss = (0.6 - ratio_yaw) * 0.5
+                penalty_factor -= loss
+                msgs.append(f"側臉(Yaw:{ratio_yaw:.2f}, -{loss:.2f})")
 
-        # 2. Roll (歪頭檢查)
-        # 雙眼連線的角度
+        # 2. Roll (歪頭檢查) - 權重補償
         dy = right_eye[1] - left_eye[1]
         dx = right_eye[0] - left_eye[0]
         angle = abs(np.degrees(np.arctan2(dy, dx)))
-        if angle > 30:
-             return False, f"頭部傾斜 (Angle: {angle:.1f})"
+        
+        # 門檻：10 度以上開始懲罰
+        # 例如 angle=20: 懲罰 = 1.0 - (20-10)*0.01 = 0.9 (打九折)
+        if angle > 10:
+             loss = min((angle - 10) * 0.01, 0.2) # 最多扣 0.2
+             penalty_factor -= loss
+             msgs.append(f"歪頭(Roll:{angle:.1f}, -{loss:.2f})")
 
-        # 3. Vertical Ratio (五官垂直比例 - 檢測遮擋/張嘴/變形)
+        # 3. 五官垂直比例 (嚴重異常直接視為 0 分)
         eye_mid_y = (left_eye[1] + right_eye[1]) / 2
         mouth_mid_y = (left_mouth[1] + right_mouth[1]) / 2
         nose_y = nose[1]
         
-        h_upper = nose_y - eye_mid_y # 眉眼到鼻子的距離
-        h_lower = mouth_mid_y - nose_y # 鼻子到嘴巴的距離
+        h_upper = nose_y - eye_mid_y
+        h_lower = mouth_mid_y - nose_y
         
         if h_upper <= 0 or h_lower <= 0:
-             return False, "特徵點錯位 (Vertical dist <= 0)"
+             return 0.0, "特徵錯位"
 
         v_ratio = h_lower / h_upper
-        # 正常人臉約在 0.8 ~ 1.2 之間。
-        # 手摀嘴時，MTCNN 常把嘴巴點抓在手上，導致 h_lower 變小或變大。
-        # 設定寬鬆範圍 0.5 ~ 1.8
         if v_ratio < 0.5 or v_ratio > 1.8:
-             return False, f"五官比例異常 (V-Ratio: {v_ratio:.2f}, 可能遮擋)"
+             return 0.0, f"五官異常(V-Ratio:{v_ratio:.2f})"
 
-        return True, "Pass"
+        # 確保係數不低於 0
+        penalty_factor = max(0.0, penalty_factor)
+        
+        msg = ", ".join(msgs) if msgs else "Good"
+        return penalty_factor, msg
 
     def _update_display_state(self, person_id):
         """更新當前顯示的人員ID和時間"""
@@ -460,13 +486,13 @@ class Comparison:
                 # LOGGER.info(f"[{camera_name}] 人臉太小被忽略: 寬度 {face_width} < 門檻 {min_face_threshold}") 
                 continue
 
-            # 檢查人臉品質 (側臉/歪頭/遮擋幾何檢查)
-            is_good_face, quality_msg = self.check_face_quality(_points)
-            if not is_good_face:
-                # 若為 Debug 模式，可考慮 log 出來，這裡選擇靜默跳過以免洗版，
-                # 但偶爾 log 一次對於調整參數有幫助。
-                LOGGER.info(f"[{camera_name}] 跳過: {quality_msg}")
-                continue
+            # 檢查人臉品質並取得懲罰係數
+            quality_score, quality_msg = self.check_face_quality(_points)
+            
+            # 若品質嚴重異常 (Score=0)，直接跳過
+            if quality_score <= 0.01:
+                 # LOGGER.info(f"[{camera_name}] 品質過低跳過: {quality_msg}")
+                 continue
 
             # 檢查是否在辨識冷卻時間內
             if now - self.last_recognition_time < self.RECOGNITION_COOLDOWN:
@@ -547,14 +573,16 @@ class Comparison:
                         z_score = 0.0
                         top_k_similarities = np.array([])
                     else:
-                        best_match_id = faiss_person_ids[0]
-                        max_similarity = distances[0] # The highest cosine similarity
-                        
                         # Store all top-k similarities for Z-score calculation
                         top_k_similarities = np.array(distances)
                         
+                        best_match_id = faiss_person_ids[0]
                         predicted_id = best_match_id
-                        confidence = max_similarity
+                        max_similarity = distances[0] # The highest cosine similarity
+                        raw_confidence = max_similarity
+                        
+                        # 套用品質懲罰
+                        confidence = raw_confidence * quality_score
 
                         # Z-Score 離群值分析 (使用 top-k 結果)
                         z_score = 0.0
@@ -563,11 +591,11 @@ class Comparison:
                             std_dev_score = np.std(top_k_similarities)
 
                             if std_dev_score > 0:
-                                z_score = (max_similarity - mean_score) / std_dev_score
+                                z_score = (raw_confidence - mean_score) / std_dev_score # Z-Score 用原始分數算較準
                             else: # 所有分數都相同，若分數高且達門檻，視為通過
-                                z_score = Z_SCORE_THRESHOLD if max_similarity >= self.CONFIDENCE_THRESHOLD else 0
+                                z_score = Z_SCORE_THRESHOLD if confidence >= self.CONFIDENCE_THRESHOLD else 0
                         else: # 只有一個結果時，無法計算 Z-score，預設為通過（若信賴度達標）
-                            z_score = Z_SCORE_THRESHOLD if max_similarity >= self.CONFIDENCE_THRESHOLD else 0
+                            z_score = Z_SCORE_THRESHOLD if confidence >= self.CONFIDENCE_THRESHOLD else 0
                     
                     comparison_duration = time.monotonic() - comparison_start_time
                     num_people_in_index = self.system.state.ann_index.index.ntotal if self.system.state.ann_index.index else 0
@@ -602,13 +630,20 @@ class Comparison:
                 rating_str = "可靠 (Reliable)"
             elif is_visitor:
                 rating_str = "訪客 (Visitor)"
-
+            
+            # 格式化品質資訊 (若有懲罰才顯示細節)
+            quality_info = ""
+            if quality_score < 1.0:
+                quality_info = f" (原:{raw_confidence:.2%}, 品質:{quality_score:.2f} {quality_msg})"
 
             # 更新日誌
             log_message = (
                 f"{log_time} [辨識事件][{camera_name}] 偵測到 {staff_name} (ID: {predicted_id}), "
-                f"信賴度: {confidence:.2%}, Z-Score: {z_score:.2f} [評級: {rating_str}]"
+                f"信賴度: {confidence:.2%}{quality_info}, Z-Score: {z_score:.2f} [評級: {rating_str}]"
             )
+            
+            # 策略：只要是被品質扣分導致失敗的（原本分數夠高，但扣完變低），或者成功但有被扣分的，都強制 Log 出來方便除錯
+            is_penalized_failure = (raw_confidence >= self.CONFIDENCE_THRESHOLD) and (confidence < self.CONFIDENCE_THRESHOLD)
             
             # 根據評級決定是否為有效辨識
             if is_reliable:
@@ -621,14 +656,16 @@ class Comparison:
                 self._update_display_state(person_id)
                 # 更新最後辨識成功的時間
                 self.last_recognition_time = now
+            elif is_penalized_failure:
+                 # 這是關鍵：原本可以過，但因為側臉被擋下來的案例 -> 強制 Log
+                 LOGGER.info(f"[側臉攔截] {log_message}")
             elif is_visitor:
                  LOGGER.info(log_message)
                  # 標記為訪客，但不觸發打卡
                  self.system.state.same_people[self.frame_num] = 0.0
                  self._update_display_state("__VISITOR__")
-            else: # Ambiguous Case
-                 LOGGER.info(log_message)
-                 # 在模糊區間內，不做任何操作，讓UI保持辨識中
+            else: # Ambiguous Case (非扣分導致的普通模糊)
+                 # LOGGER.info(log_message) # 可選：是否要全開 Log
                  pass
 
             # 模型暖機
