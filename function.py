@@ -249,36 +249,48 @@ def fixed_image_standardization(image_tensor):
 
 def crop_face_without_forehead(image, box, points, image_size=160):
     """
-    Crops the face from an image, excluding the forehead, based on eye landmarks.
+    Crops the face from an image, excluding the forehead and chin, based on landmarks.
+    This helps to avoid issues with hats (forehead) and helmet straps (chin).
 
     Args:
         image (PIL.Image): The input image.
         box (list or np.ndarray): The bounding box of the face [x1, y1, x2, y2].
-        points (np.ndarray): Facial landmarks, where points[0] is the left eye and points[1] is the right eye.
+        points (np.ndarray): Facial landmarks (0:LE, 1:RE, 2:Nose, 3:LM, 4:RM).
         image_size (int): The desired output image size.
 
     Returns:
         torch.Tensor: A tensor of the cropped, resized, and standardized face image.
     """
-    # Calculate the y-coordinate of the eyes' center
+    # 1. Calculate Top Crop (Forehead removal)
     eye_y_center = (points[0][1] + points[1][1]) / 2
-    
-    # Get the original bounding box coordinates
     x1, y1, x2, y2 = box
     
-    # Calculate the height of the face box and the distance from the top to the eyes
     box_height = y2 - y1
     eye_to_top_dist = eye_y_center - y1
 
-    # Define the new top of the crop area to be a bit above the eyes
-    # We use a fraction of the eye_to_top_dist to set the new top margin
-    new_y1 = eye_y_center - (eye_to_top_dist * 0.4) # Crop closer to the eyes
-    
-    # Ensure the new y1 is within the original image bounds
+    # Define the new top: slightly above the eyes
+    new_y1 = eye_y_center - (eye_to_top_dist * 0.4)
     new_y1 = max(0, new_y1)
 
+    # 2. Calculate Bottom Crop (Chin removal)
+    # Use mouth position as reference
+    mouth_y_center = (points[3][1] + points[4][1]) / 2
+    nose_y = points[2][1]
+    
+    # Calculate nose-to-mouth distance
+    nose_to_mouth = mouth_y_center - nose_y
+    
+    # Set new bottom: Slightly below the mouth
+    # Keeping about 0.6x of nose-to-mouth distance below the mouth center.
+    # This usually keeps the lips but removes the chin tip/strap area.
+    new_y2 = mouth_y_center + (nose_to_mouth * 0.6)
+    
+    # Ensure new_y2 doesn't exceed original box or image height (implied by crop)
+    # But usually new_y2 < y2, so we take the tighter crop
+    new_y2 = min(new_y2, y2)
+
     # Create the new bounding box
-    new_box = [x1, new_y1, x2, y2]
+    new_box = [x1, new_y1, x2, new_y2]
     
     # Crop the image using the new bounding box
     img_cropped = image.crop(new_box)
