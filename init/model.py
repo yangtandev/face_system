@@ -489,9 +489,16 @@ class Comparison:
             # 檢查人臉品質並取得懲罰係數
             quality_score, quality_msg = self.check_face_quality(_points)
             
-            # 若品質嚴重異常 (Score=0)，直接跳過
+            # 若為側臉 (包含極端側臉)，顯示提示並跳過
+            # 透過檢查 msg 內容來精準鎖定「側臉」情況，避免誤殺其他輕微扣分
+            if "側臉" in quality_msg:
+                 # LOGGER.info(f"[{camera_name}] 偵測到側臉跳過: {quality_msg}")
+                 self.system.state.hint_text[self.frame_num] = "請正對鏡頭"
+                 self.hint_clear_time = now + 1.0
+                 continue
+
+            # 若其他品質嚴重異常 (Score=0)，直接跳過 (例如五官錯位)
             if quality_score <= 0.01:
-                 # LOGGER.info(f"[{camera_name}] 品質過低跳過: {quality_msg}")
                  continue
 
             # 檢查是否在辨識冷卻時間內
