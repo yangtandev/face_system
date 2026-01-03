@@ -317,13 +317,13 @@ class Comparison:
             LOGGER.error(f"儲存潛在失敗截圖時發生錯誤: {e}")
             return None
 
-    def check_face_quality(self, points):
+    def check_face_quality(self, box, points, frame_w, frame_h):
         """
         評估人臉品質並計算懲罰係數。
         
         Returns:
-        quality_score (float): 1.0 代表完美，數值越低代表品質越差 (側臉或歪頭)
-        msg (str): 評估訊息
+        quality_score (float): 1.0 代表完美，0.0 代表未達標
+        msg (str): 詳細的評估訊息 (包含數值與門檻)
         """
         # MTCNN points: [left_eye, right_eye, nose, left_mouth, right_mouth]
         left_eye = points[0]
@@ -332,71 +332,111 @@ class Comparison:
         left_mouth = points[3]
         right_mouth = points[4]
 
-        penalty_factor = 1.0
-        msgs = []
-
-        # 1. Yaw (側臉檢查) - 權重補償
-        dist_l_eye = abs(nose[0] - left_eye[0])
-        dist_r_eye = abs(right_eye[0] - nose[0])
+        # ---------------------------------------------------------
+        # 1. 畫面置中檢查 (Center Alignment)
+        # ---------------------------------------------------------
+        face_center_x = (box[0] + box[2]) / 2
+        frame_center_x = frame_w / 2
+        offset = abs(face_center_x - frame_center_x)
+        limit_offset = frame_w * 0.15 # 允許偏離 15%
         
-        # --- 新增: 絕對距離檢查 (針對極端側臉) ---
-        # 計算眼睛到鼻子的距離佔臉部總寬度的比例
-        # _box[2]-_box[0] 是臉部寬度
-        face_w = max(10, self.system.state.max_box[self.frame_num][2] - self.system.state.max_box[self.frame_num][0])
-        min_dist_ratio = min(dist_l_eye, dist_r_eye) / face_w
-        
-        # 如果一隻眼睛離鼻子太近 (小於臉寬的 18%)，代表臉轉到極限了
-        if min_dist_ratio < 0.18:
-            loss = 0.25 # 直接重罰 25%
-            penalty_factor -= loss
-            
-            # 找出是哪隻眼睛太近
-            eye_side = "左眼" if dist_l_eye < dist_r_eye else "右眼"
-            dist_val = min(dist_l_eye, dist_r_eye)
-            msgs.append(f"極端側臉({eye_side}距{dist_val:.1f}px, 臉寬{face_w:.1f}px, 比例{min_dist_ratio:.2f}<0.18, -{loss:.2f})")
-            
-        elif dist_l_eye > 0 and dist_r_eye > 0:
-            ratio_yaw = min(dist_l_eye, dist_r_eye) / max(dist_l_eye, dist_r_eye)
-            # 門檻：0.6 以下開始懲罰
-            # 例如 ratio=0.4 (側臉): 懲罰 = 1.0 - (0.6 - 0.4)*0.5 = 0.9 (打九折)
-            # 例如 ratio=0.2 (極側): 懲罰 = 1.0 - (0.6 - 0.2)*0.5 = 0.8 (打八折)
-            if ratio_yaw < 0.6:
-                loss = (0.6 - ratio_yaw) * 0.5
-                penalty_factor -= loss
-                msgs.append(f"側臉(Yaw:{ratio_yaw:.2f}, -{loss:.2f})")
+        if offset > limit_offset:
+            return 0.0, f"未置中 (偏離 {offset:.1f}px > 容許 {limit_offset:.1f}px)"
 
-        # 2. Roll (歪頭檢查) - 權重補償
-        dy = right_eye[1] - left_eye[1]
-        dx = right_eye[0] - left_eye[0]
-        angle = abs(np.degrees(np.arctan2(dy, dx)))
-        
-        # 門檻：10 度以上開始懲罰
-        # 例如 angle=20: 懲罰 = 1.0 - (20-10)*0.01 = 0.9 (打九折)
-        if angle > 10:
-             loss = min((angle - 10) * 0.01, 0.2) # 最多扣 0.2
-             penalty_factor -= loss
-             msgs.append(f"歪頭(Roll:{angle:.1f}, -{loss:.2f})")
+        # ---------------------------------------------------------
+        # 2. 特徵點完整性檢查 (Visibility)
+        # ---------------------------------------------------------
+        margin = 5
+        for i, p in enumerate(points):
+            if p[0] < margin or p[0] > frame_w - margin or \
+               p[1] < margin or p[1] > frame_h - margin:
+                 return 0.0, f"特徵點被切除/遮擋 (點{i}座標 {p} 超出邊界)"
 
-        # 3. 五官垂直比例 (嚴重異常直接視為 0 分)
+        # ---------------------------------------------------------
+        # 3. 垂直比例檢查 (Pitch) - 優先級高
+        # ---------------------------------------------------------
         eye_mid_y = (left_eye[1] + right_eye[1]) / 2
         mouth_mid_y = (left_mouth[1] + right_mouth[1]) / 2
         nose_y = nose[1]
         
-        h_upper = nose_y - eye_mid_y
-        h_lower = mouth_mid_y - nose_y
+        h_upper = nose_y - eye_mid_y # 鼻眼距
+        h_lower = mouth_mid_y - nose_y # 鼻嘴距
         
         if h_upper <= 0 or h_lower <= 0:
-             return 0.0, "特徵錯位"
+             return 0.0, "特徵點垂直錯位 (無法計算比例)"
 
         v_ratio = h_lower / h_upper
-        if v_ratio < 0.5 or v_ratio > 1.8:
-             return 0.0, f"五官異常(V-Ratio:{v_ratio:.2f})"
-
-        # 確保係數不低於 0
-        penalty_factor = max(0.0, penalty_factor)
         
-        msg = ", ".join(msgs) if msgs else "Good"
-        return penalty_factor, msg
+        # 3.1 抬頭檢查 (優先排除，避免透視導致嘴寬誤判)
+        if v_ratio > 1.4:
+             return 0.0, f"抬頭 (垂直比例 {v_ratio:.2f} > 門檻 1.40)"
+
+        # 3.2 低頭檢查 (涵蓋所有 V-Ratio 偏低情況)
+        if v_ratio < 0.70:
+             return 0.0, f"低頭 (垂直比例 {v_ratio:.2f} < 門檻 0.70)"
+
+        # ---------------------------------------------------------
+        # 4. 嘴巴遮擋檢查 (Mouth Occlusion)
+        # ---------------------------------------------------------
+        # 只有當垂直比例正常 (0.7 ~ 1.4) 時，才檢查嘴巴細節
+        
+        # 4.1 鼻嘴絕對距離檢查
+        eye_dist = abs(right_eye[0] - left_eye[0])
+        if h_lower < eye_dist * 0.55:
+             return 0.0, f"嘴巴被遮擋/過近 (鼻嘴距 {h_lower:.1f} < 眼距*0.55)"
+
+        # 4.2 嘴巴寬度合理性檢查
+        mouth_width = abs(right_mouth[0] - left_mouth[0])
+        if mouth_width < eye_dist * 0.75:
+             return 0.0, f"嘴巴被遮擋/過小 (嘴寬 {mouth_width:.1f} < 眼距*0.75)"
+
+        # ---------------------------------------------------------
+        # 4. 嘴巴遮擋檢查 (Mouth Occlusion)
+        # ---------------------------------------------------------
+        # 只有當垂直比例正常 (0.7 ~ 1.4) 時，才檢查嘴巴細節
+        # 避免因抬頭/低頭的透視變形而誤判
+        
+        # 4.1 鼻嘴絕對距離檢查
+        eye_dist = abs(right_eye[0] - left_eye[0])
+        if h_lower < eye_dist * 0.55:
+             return 0.0, f"嘴巴被遮擋/過近 (鼻嘴距 {h_lower:.1f} < 眼距*0.55)"
+
+        # 4.2 嘴巴寬度合理性檢查
+        mouth_width = abs(right_mouth[0] - left_mouth[0])
+        if mouth_width < eye_dist * 0.75:
+             return 0.0, f"嘴巴被遮擋/過小 (嘴寬 {mouth_width:.1f} < 眼距*0.75)"
+
+        # ---------------------------------------------------------
+        # 5. 側臉/未正視檢查 (Yaw & Gaze)
+        # ---------------------------------------------------------
+        dist_l_eye = abs(nose[0] - left_eye[0])
+        dist_r_eye = abs(right_eye[0] - nose[0])
+        
+        # 5.1 絕對距離檢查 (眼鼻距)
+        face_w = max(10, box[2] - box[0])
+        min_dist_ratio = min(dist_l_eye, dist_r_eye) / face_w
+        
+        if min_dist_ratio < 0.20:
+            eye_side = "左眼" if dist_l_eye < dist_r_eye else "右眼"
+            return 0.0, f"未正視鏡頭/極端側臉 ({eye_side}鼻距比 {min_dist_ratio:.2f} < 門檻 0.20)"
+
+        # 5.2 左右對稱性檢查
+        if dist_l_eye > 0 and dist_r_eye > 0:
+            ratio_yaw = min(dist_l_eye, dist_r_eye) / max(dist_l_eye, dist_r_eye)
+            if ratio_yaw < 0.65:
+                return 0.0, f"側臉 (左右對稱比 {ratio_yaw:.2f} < 門檻 0.65)"
+
+        # 5.3 歪頭檢查 (Roll)
+        dy = right_eye[1] - left_eye[1]
+        dx = right_eye[0] - left_eye[0]
+        angle = abs(np.degrees(np.arctan2(dy, dx)))
+        
+        if angle > 15:
+             return 0.0, f"歪頭 (角度 {angle:.1f} > 門檻 15.0)"
+
+        # DEBUG: 輸出通過檢查的詳細數值，方便調校
+        # LOGGER.debug(f"品質檢查通過: V-Ratio={v_ratio:.2f}, NM-Dist={h_lower:.1f}(Ref:{eye_dist*0.5:.1f}), Yaw-Ratio={ratio_yaw:.2f}")
+        return 1.0, f"Pass (V:{v_ratio:.2f}, NM:{h_lower:.1f})"
 
     def _update_display_state(self, person_id):
         """更新當前顯示的人員ID和時間"""
@@ -437,6 +477,10 @@ class Comparison:
             _points = self.system.state.max_points[self.frame_num]
             if _box is None or _points is None or self.system.state.frame_mtcnn[self.frame_num] is None:
                 continue
+            
+            # 取得畫面尺寸 (用於置中與邊界檢查)
+            frame_curr = self.system.state.frame_mtcnn[self.frame_num]
+            frame_h, frame_w, _ = frame_curr.shape
             
             camera_name = CAM_NAME_MAP.get(self.frame_num, f"Cam {self.frame_num}")
 
@@ -486,19 +530,32 @@ class Comparison:
                 # LOGGER.info(f"[{camera_name}] 人臉太小被忽略: 寬度 {face_width} < 門檻 {min_face_threshold}") 
                 continue
 
-            # 檢查人臉品質並取得懲罰係數
-            quality_score, quality_msg = self.check_face_quality(_points)
+            # 檢查人臉品質
+            # 傳入 box, points 與畫面寬高
+            quality_score, quality_msg = self.check_face_quality(_box, _points, frame_w, frame_h)
             
-            # 若為側臉 (包含極端側臉)，顯示提示並跳過
-            # 透過檢查 msg 內容來精準鎖定「側臉」情況，避免誤殺其他輕微扣分
-            if "側臉" in quality_msg:
-                 # LOGGER.info(f"[{camera_name}] 偵測到側臉跳過: {quality_msg}")
-                 self.system.state.hint_text[self.frame_num] = "請正對鏡頭"
+            # 若品質不達標 (Score=0)，記錄原因並跳過
+            if quality_score == 0.0:
+                 # 這裡強制 Log 過濾原因
+                 LOGGER.info(f"[{camera_name}][品質過濾] {quality_msg}")
+                 
+                 # 根據原因給出明確的 UI 提示 (Actionable Hint)
+                 if "未置中" in quality_msg:
+                     self.system.state.hint_text[self.frame_num] = "請站到中間"
+                 elif "特徵點被切除/遮擋" in quality_msg:
+                     self.system.state.hint_text[self.frame_num] = "臉部被遮擋/切到"
+                 elif "嘴巴被遮擋" in quality_msg:
+                     self.system.state.hint_text[self.frame_num] = "嘴巴被遮擋"
+                 elif "低頭" in quality_msg:
+                     self.system.state.hint_text[self.frame_num] = "請抬頭"
+                 elif "抬頭" in quality_msg:
+                     self.system.state.hint_text[self.frame_num] = "請低頭"
+                 elif "未正視" in quality_msg or "側臉" in quality_msg or "歪頭" in quality_msg:
+                     self.system.state.hint_text[self.frame_num] = "請正視鏡頭"
+                 else:
+                     self.system.state.hint_text[self.frame_num] = "調整位置"
+                     
                  self.hint_clear_time = now + 1.0
-                 continue
-
-            # 若其他品質嚴重異常 (Score=0)，直接跳過 (例如五官錯位)
-            if quality_score <= 0.01:
                  continue
 
             # 檢查是否在辨識冷卻時間內

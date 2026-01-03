@@ -260,13 +260,18 @@ class CameraSystem:
 
                 current_class = self.system.state.same_class[self.frame_num]
                 hint_msg = self.system.state.hint_text[self.frame_num]
+                
+                # 計算文字 Y 座標，若太靠上則顯示在框下方
+                text_y = y1 - 55
+                if text_y < 10:
+                    text_y = y2 + 10
 
                 if hint_msg:
-                    now_frame = put_chinese_text(now_frame, hint_msg, (x1, y1-55), font_path, font_size, (255, 85, 0)) # Orange for hint
+                    now_frame = put_chinese_text(now_frame, hint_msg, (x1, text_y), font_path, font_size, (255, 85, 0)) # Orange for hint
 
                 elif current_class == "__VISITOR__":
 
-                    now_frame = put_chinese_text(now_frame, "訪客", (x1, y1-55), font_path, font_size, (0, 0, 255)) # Blue for visitor
+                    now_frame = put_chinese_text(now_frame, "訪客", (x1, text_y), font_path, font_size, (0, 0, 255)) # Blue for visitor
                     
                     # Capture visitor face from high-resolution frame
                     try:
@@ -294,11 +299,11 @@ class CameraSystem:
 
                     staff_name = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
 
-                    now_frame = put_chinese_text(now_frame, staff_name, (x1, y1-55), font_path, font_size, (205, 0, 0)) # Red for staff
+                    now_frame = put_chinese_text(now_frame, staff_name, (x1, text_y), font_path, font_size, (205, 0, 0)) # Red for staff
 
                 else:
 
-                    now_frame = put_chinese_text(now_frame, "辨識中", (x1, y1-55), font_path, font_size, (0, 0, 0)) # Black for identifying
+                    now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0)) # Black for identifying
 
 
 
