@@ -335,7 +335,7 @@ class CameraSystem:
 
                         
 
-                        self.save_img(self.system.state.frame[self.frame_num], "face", success_staff_name)
+                        self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name)
 
 
 
@@ -525,7 +525,7 @@ class CameraSystem:
 
         dict_={"face":0, "clothes":1}
 
-        img = cv2.resize(img, (800, 600))
+        # img = cv2.resize(img, (800, 600)) # Removed to save original resolution
 
         datetime_dt = datetime.datetime.today()
 
