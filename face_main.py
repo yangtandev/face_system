@@ -693,7 +693,7 @@ class FaceRecognitionSystem:
 
 
 
-        self.mtcnn = mtcnn.MTCNN(image_size=160, min_face_size=95, keep_all=True, select_largest=True, thresholds=[0.5, 0.6, 0.6])
+        self.mtcnn = mtcnn.MTCNN(image_size=160, min_face_size=160, keep_all=True, select_largest=True, thresholds=[0.5, 0.6, 0.6])
 
         self.resnet = inception_resnet_v1.InceptionResnetV1(pretrained='vggface2').eval()
 

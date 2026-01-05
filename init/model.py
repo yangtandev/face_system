@@ -389,8 +389,9 @@ class Comparison:
         v_ratio = h_lower / h_upper
         
         # 3.1 抬頭檢查 (優先排除，避免透視導致嘴寬誤判)
-        if v_ratio > 1.4:
-             return 0.0, f"抬頭 (垂直比例 {v_ratio:.2f} > 門檻 1.40)"
+        # 放寬門檻: 從 1.4 放寬至 1.6，適應不同臉型
+        if v_ratio > 1.6:
+             return 0.0, f"抬頭 (垂直比例 {v_ratio:.2f} > 門檻 1.60)"
 
         # 3.2 低頭檢查 (涵蓋所有 V-Ratio 偏低情況)
         if v_ratio < 0.70:
@@ -406,9 +407,10 @@ class Comparison:
         face_w = max(10, box[2] - box[0])
         min_dist_ratio = min(dist_l_eye, dist_r_eye) / face_w
         
-        if min_dist_ratio < 0.20:
+        # 放寬門檻: 從 0.20 降至 0.15，減少對輕微側臉的誤判
+        if min_dist_ratio < 0.15:
             eye_side = "左眼" if dist_l_eye < dist_r_eye else "右眼"
-            return 0.0, f"未正視鏡頭/極端側臉 ({eye_side}鼻距比 {min_dist_ratio:.2f} < 門檻 0.20)"
+            return 0.0, f"未正視鏡頭/極端側臉 ({eye_side}鼻距比 {min_dist_ratio:.2f} < 門檻 0.15)"
 
         # 5.2 左右對稱性檢查
         if dist_l_eye > 0 and dist_r_eye > 0:
