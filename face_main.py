@@ -693,7 +693,7 @@ class FaceRecognitionSystem:
 
 
 
-        self.mtcnn = mtcnn.MTCNN(image_size=160, min_face_size=95, keep_all=True, select_largest=True)
+        self.mtcnn = mtcnn.MTCNN(image_size=160, min_face_size=95, keep_all=True, select_largest=True, thresholds=[0.5, 0.6, 0.6])
 
         self.resnet = inception_resnet_v1.InceptionResnetV1(pretrained='vggface2').eval()
 
@@ -908,14 +908,33 @@ class FaceRecognitionSystem:
 
 
 
-            new_basenames = local_pics_basenames - local_descriptors_basenames
+            # new_basenames = local_pics_basenames - local_descriptors_basenames (舊邏輯：只看檔案是否存在)
+            
+            # 新邏輯：檢查是否存在 以及 是否需要更新 (jpg比npy新)
+            new_files = []
+            
+            for basename in local_pics_basenames:
+                jpg_filename = pic_map[basename]
+                jpg_path = os.path.join(pic_bak_path, jpg_filename)
+                
+                npy_filename = f"{basename}.npy"
+                npy_path = os.path.join(descriptors_path, npy_filename)
+                
+                is_new = False
+                if basename not in local_descriptors_basenames:
+                    is_new = True
+                else:
+                    # Check modification time
+                    if os.path.getmtime(jpg_path) > os.path.getmtime(npy_path):
+                        print(f"偵測到圖片更新: {jpg_filename} (JPG time > NPY time)")
+                        is_new = True
+                
+                if is_new:
+                    new_files.append(jpg_filename)
 
             deleted_basenames = local_descriptors_basenames - local_pics_basenames
 
-
-
-            new_files = [pic_map[name] for name in new_basenames]
-
+            # new_files 已經在上面生成了
             deleted_files = [f"{name}.npy" for name in deleted_basenames]
 
 
