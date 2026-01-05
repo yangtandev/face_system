@@ -106,14 +106,23 @@ class Detector:
                     box = None
                     points = None
 
-                    # 套用遮罩處理取得 ROI 区域
-                    mask_frame, X_offset = self.apply_mask(new_frame)
-                    self.mask_frame = mask_frame.copy()
+                    # 1. 偵測來源直接使用原生解析度影像 (GlobalState.frame 現已儲存原生影像)
+                    detect_source = new_frame
+                    h_source, w_source = detect_source.shape[:2]
 
-                    # **優化**: 僅嘗試偵測臉部一次，移除備案
+                    # 2. 計算 ROI (用於過濾與衣著遮罩)
+                    close_N = 6
+                    if CONFIG[CAMERA[self.frame_num]]["close"]:
+                        close_N = 8
+                    roi_x1 = w_source // close_N
+                    roi_x2 = (close_N - 1) * w_source // close_N
+
+                    # 3. 執行偵測 (使用全畫面偵測以確保大臉能被捕捉)
                     detect_start_time = time.monotonic()
-                    boxes, _, landmarks = self.system.mtcnn.detect(
-                        mask_frame, landmarks=True)
+                    
+                    # Full Frame Detection
+                    boxes, _, landmarks = self.system.mtcnn.detect(detect_source, landmarks=True)
+                    
                     detect_duration = time.monotonic() - detect_start_time
                     
                     # Add structured performance logging
@@ -121,21 +130,33 @@ class Detector:
                         "type": "detection",
                         "duration_sec": detect_duration,
                         "camera_name": CAM_NAME_MAP.get(self.frame_num, f"Cam {self.frame_num}"),
-                        "timestamp": datetime.now(self.TIMEZONE).isoformat()
+                        "timestamp": datetime.now(self.TIMEZONE).isoformat(),
+                        "resolution": f"{w_source}x{h_source}",
+                        "strategy": "FullFrame_Native"
                     }
                     PERF_LOGGER.info(json.dumps(perf_data))
 
                     if boxes is not None:
                         self.last_face_time = time.time()
                         x1, y1, x2, y2 = map(int, boxes[0])
-                        x1, x2 = x1 + X_offset, x2 + X_offset
-                        box = [x1, y1, x2, y2]
-                        points = landmarks[0]
+                        points = landmarks[0].copy()
+                        
+                        # ROI 過濾 (檢查中心點是否在 ROI 內)
+                        center_x = (x1 + x2) / 2
+                        if center_x < roi_x1 or center_x > roi_x2:
+                            # 雖偵測到人臉但不在關注區域內 -> 忽略
+                            box = None
+                        else:
+                            # 人臉有效 (無需縮放，座標即為原生座標)
+                            box = [x1, y1, x2, y2]
 
-                        # 若為主要畫面（frame_num=0）且開啟衣著檢測，則執行衣著辨識
-                        if CONFIG["Clothes_show"] and self.frame_num == 0 and \
-                           (not self.system.state.clothes[0] or not self.system.state.clothes[2]):
-                            self.clothes_detector(X_offset)
+                            # 若為主要畫面（frame_num=0）且開啟衣著檢測，則執行衣著辨識
+                            if CONFIG["Clothes_show"] and self.frame_num == 0 and \
+                               (not self.system.state.clothes[0] or not self.system.state.clothes[2]):
+                                # 準備 mask_frame 給衣著偵測 (裁切 ROI)
+                                self.mask_frame = detect_source[:, roi_x1:roi_x2].copy()
+                                # 衣著偵測使用的是 Mask 內的相對座標，故傳入 ROI 起點作為 Offset
+                                self.clothes_detector(roi_x1)
 
                     else:
                         # 若超過 1 秒沒偵測到臉，則檢查是否重置衣著狀態
@@ -353,7 +374,7 @@ class Comparison:
                  return 0.0, f"特徵點被切除/遮擋 (點{i}座標 {p} 超出邊界)"
 
         # ---------------------------------------------------------
-        # 3. 垂直比例檢查 (Pitch) - 優先級高
+        # 3. 垂直比例檢查 (Pitch)
         # ---------------------------------------------------------
         eye_mid_y = (left_eye[1] + right_eye[1]) / 2
         mouth_mid_y = (left_mouth[1] + right_mouth[1]) / 2
@@ -376,38 +397,7 @@ class Comparison:
              return 0.0, f"低頭 (垂直比例 {v_ratio:.2f} < 門檻 0.70)"
 
         # ---------------------------------------------------------
-        # 4. 嘴巴遮擋檢查 (Mouth Occlusion)
-        # ---------------------------------------------------------
-        # 只有當垂直比例正常 (0.7 ~ 1.4) 時，才檢查嘴巴細節
-        
-        # 4.1 鼻嘴絕對距離檢查
-        eye_dist = abs(right_eye[0] - left_eye[0])
-        if h_lower < eye_dist * 0.55:
-             return 0.0, f"嘴巴被遮擋/過近 (鼻嘴距 {h_lower:.1f} < 眼距*0.55)"
-
-        # 4.2 嘴巴寬度合理性檢查
-        mouth_width = abs(right_mouth[0] - left_mouth[0])
-        if mouth_width < eye_dist * 0.75:
-             return 0.0, f"嘴巴被遮擋/過小 (嘴寬 {mouth_width:.1f} < 眼距*0.75)"
-
-        # ---------------------------------------------------------
-        # 4. 嘴巴遮擋檢查 (Mouth Occlusion)
-        # ---------------------------------------------------------
-        # 只有當垂直比例正常 (0.7 ~ 1.4) 時，才檢查嘴巴細節
-        # 避免因抬頭/低頭的透視變形而誤判
-        
-        # 4.1 鼻嘴絕對距離檢查
-        eye_dist = abs(right_eye[0] - left_eye[0])
-        if h_lower < eye_dist * 0.55:
-             return 0.0, f"嘴巴被遮擋/過近 (鼻嘴距 {h_lower:.1f} < 眼距*0.55)"
-
-        # 4.2 嘴巴寬度合理性檢查
-        mouth_width = abs(right_mouth[0] - left_mouth[0])
-        if mouth_width < eye_dist * 0.75:
-             return 0.0, f"嘴巴被遮擋/過小 (嘴寬 {mouth_width:.1f} < 眼距*0.75)"
-
-        # ---------------------------------------------------------
-        # 5. 側臉/未正視檢查 (Yaw & Gaze)
+        # 4. 側臉/未正視檢查 (Yaw & Gaze)
         # ---------------------------------------------------------
         dist_l_eye = abs(nose[0] - left_eye[0])
         dist_r_eye = abs(right_eye[0] - nose[0])
@@ -509,10 +499,8 @@ class Comparison:
                     # 限流: 同一鏡頭 3 秒內只記錄一次，避免洗版
                     if now - self.last_potential_miss_log_time > 3:
                         
-                        # 嘗試截取當前畫面 (使用 High Res 如果有)
-                        snapshot = self.system.state.frame_mtcnn_high_res[self.frame_num]
-                        if snapshot is None:
-                            snapshot = self.system.state.frame_mtcnn[self.frame_num]
+                        # 使用當前原生畫面截圖
+                        snapshot = self.system.state.frame_mtcnn[self.frame_num]
                             
                         saved_path = "無影像"
                         if snapshot is not None:
@@ -544,8 +532,6 @@ class Comparison:
                      self.system.state.hint_text[self.frame_num] = "請站到中間"
                  elif "特徵點被切除/遮擋" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "臉部被遮擋/切到"
-                 elif "嘴巴被遮擋" in quality_msg:
-                     self.system.state.hint_text[self.frame_num] = "嘴巴被遮擋"
                  elif "低頭" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "請抬頭"
                  elif "抬頭" in quality_msg:
@@ -566,35 +552,11 @@ class Comparison:
             try:
                 comparison_start_time = time.monotonic()
                 
-                # Determine which frame to use (High Res or Low Res)
+                # 使用原生解析度影像進行特徵提取
                 frame_to_use = self.system.state.frame_mtcnn[self.frame_num]
                 box_to_use = list(_box)
                 points_to_use = _points.copy()
                 
-                high_res_snapshot = self.system.state.frame_mtcnn_high_res[self.frame_num]
-                
-                if high_res_snapshot is not None and high_res_snapshot.size > 0:
-                    h_high, w_high, _ = high_res_snapshot.shape
-                    h_low, w_low, _ = frame_to_use.shape
-                    
-                    # Only scale if high res is actually larger
-                    if h_high > h_low: 
-                        scale_x = w_low / w_high
-                        scale_y = h_low / h_high
-                        
-                        # Scale box
-                        box_to_use = [
-                            int(_box[0] / scale_x),
-                            int(_box[1] / scale_y),
-                            int(_box[2] / scale_x),
-                            int(_box[3] / scale_y)
-                        ]
-                        
-                        # Scale points (numpy array)
-                        points_to_use = _points / [scale_x, scale_y]
-                        
-                        frame_to_use = high_res_snapshot
-
                 # Convert BGR frame to PIL Image
                 frame_image = Image.fromarray(cv2.cvtColor(
                     frame_to_use, cv2.COLOR_BGR2RGB))

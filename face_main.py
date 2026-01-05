@@ -229,18 +229,12 @@ class CameraSystem:
 
             
 
-            # Resize the frame immediately to a consistent processing size
+            # Use original frame directly (No resizing to 800x600)
 
-            resized_frame = cv2.resize(original_frame, (800, 600))
-
-            
-
-            # Store resized frame for detection and display, and high-res frame for recognition
-
-            self.system.state.frame[self.frame_num] = resized_frame
+            self.system.state.frame[self.frame_num] = original_frame
             self.system.state.frame_high_res[self.frame_num] = original_frame
 
-            now_frame = resized_frame.copy()
+            now_frame = original_frame.copy()
 
             font_size = 60
 
@@ -273,22 +267,13 @@ class CameraSystem:
 
                     now_frame = put_chinese_text(now_frame, "訪客", (x1, text_y), font_path, font_size, (0, 0, 255)) # Blue for visitor
                     
-                    # Capture visitor face from high-resolution frame
+                    # Capture visitor face from high-resolution frame (coordinates are already native)
                     try:
                         h_orig, w_orig, _ = original_frame.shape
-                        h_small, w_small, _ = resized_frame.shape
-                        scale_x = w_small / w_orig
-                        scale_y = h_small / h_orig
-                        
-                        # Scale coordinates back to original resolution
-                        orig_x1 = int(x1 / scale_x)
-                        orig_x2 = int(x2 / scale_x)
-                        orig_y1 = int(y1 / scale_y)
-                        orig_y2 = int(y2 / scale_y)
                         
                         # Ensure coordinates are within bounds
-                        fy1, fy2 = max(0, orig_y1), min(h_orig, orig_y2)
-                        fx1, fx2 = max(0, orig_x1), min(w_orig, orig_x2)
+                        fy1, fy2 = max(0, y1), min(h_orig, y2)
+                        fx1, fx2 = max(0, x1), min(w_orig, x2)
                         
                         if fy2 > fy1 and fx2 > fx1:
                             self.last_visitor_face_img = original_frame[fy1:fy2, fx1:fx2].copy()
