@@ -389,13 +389,14 @@ class Comparison:
         v_ratio = h_lower / h_upper
         
         # 3.1 抬頭檢查 (優先排除，避免透視導致嘴寬誤判)
-        # 放寬門檻: 從 1.4 放寬至 1.6，適應不同臉型
-        if v_ratio > 1.6:
-             return 0.0, f"抬頭 (垂直比例 {v_ratio:.2f} > 門檻 1.60)"
+        # 放寬門檻: 從 1.6 調升至 2.1，適應極端臉型或廣角鏡頭畸變
+        if v_ratio > 2.1:
+             return 0.0, f"抬頭 (垂直比例 {v_ratio:.2f} > 門檻 2.10)"
 
         # 3.2 低頭檢查 (涵蓋所有 V-Ratio 偏低情況)
-        if v_ratio < 0.70:
-             return 0.0, f"低頭 (垂直比例 {v_ratio:.2f} < 門檻 0.70)"
+        # 放寬門檻: 從 0.70 降至 0.60
+        if v_ratio < 0.60:
+             return 0.0, f"低頭 (垂直比例 {v_ratio:.2f} < 門檻 0.60)"
 
         # ---------------------------------------------------------
         # 4. 側臉/未正視檢查 (Yaw & Gaze)
@@ -403,20 +404,21 @@ class Comparison:
         dist_l_eye = abs(nose[0] - left_eye[0])
         dist_r_eye = abs(right_eye[0] - nose[0])
         
-        # 5.1 絕對距離檢查 (眼鼻距)
+        # 4.1 絕對距離檢查 (眼鼻距)
         face_w = max(10, box[2] - box[0])
         min_dist_ratio = min(dist_l_eye, dist_r_eye) / face_w
         
-        # 放寬門檻: 從 0.20 降至 0.15，減少對輕微側臉的誤判
-        if min_dist_ratio < 0.15:
+        # 放寬門檻: 從 0.15 降至 0.12，進一步減少誤報
+        if min_dist_ratio < 0.12:
             eye_side = "左眼" if dist_l_eye < dist_r_eye else "右眼"
-            return 0.0, f"未正視鏡頭/極端側臉 ({eye_side}鼻距比 {min_dist_ratio:.2f} < 門檻 0.15)"
+            return 0.0, f"未正視鏡頭/極端側臉 ({eye_side}鼻距比 {min_dist_ratio:.2f} < 門檻 0.12)"
 
-        # 5.2 左右對稱性檢查
+        # 4.2 左右對稱性檢查
         if dist_l_eye > 0 and dist_r_eye > 0:
             ratio_yaw = min(dist_l_eye, dist_r_eye) / max(dist_l_eye, dist_r_eye)
-            if ratio_yaw < 0.65:
-                return 0.0, f"側臉 (左右對稱比 {ratio_yaw:.2f} < 門檻 0.65)"
+            # 放寬門檻: 從 0.65 降至 0.55
+            if ratio_yaw < 0.55:
+                return 0.0, f"側臉 (左右對稱比 {ratio_yaw:.2f} < 門檻 0.55)"
 
         # 5.3 歪頭檢查 (Roll)
         dy = right_eye[1] - left_eye[1]
