@@ -185,6 +185,38 @@ def log_metrics(employee, camera_num, confidence=None):
 
 import threading
 
+def diagnose_network():
+    """
+    診斷網路連線狀況，用於上傳失敗時釐清原因。
+    測試目標: 
+    1. 外部網路 (Google DNS 8.8.8.8)
+    2. 專案伺服器 API
+    """
+    results = []
+    
+    # 1. Ping Google DNS (8.8.8.8) - 測試外網連通性
+    # -c 1: 發送一次
+    # -W 2: 等待2秒
+    response = os.system("ping -c 1 -W 2 8.8.8.8 > /dev/null 2>&1")
+    if response == 0:
+        results.append("外部網路(8.8.8.8): 連通")
+    else:
+        results.append("外部網路(8.8.8.8): 無法連線")
+        
+    # 2. 測試伺服器連線 (使用 requests)
+    server_url = CONFIG.get("Server", {}).get("API_url", "")
+    if server_url:
+        try:
+            # 只測試連線，不在此乎回傳內容，設定短 timeout
+            requests.get(server_url, timeout=3)
+            results.append(f"伺服器({server_url}): 連通")
+        except Exception as e:
+            results.append(f"伺服器({server_url}): 無法連線 ({e})")
+    else:
+        results.append("伺服器URL未設定")
+        
+    return ", ".join(results)
+
 def async_api_call(func, args=(), callback=None, max_retries=20, retry_delay=0.5, system=None, staff_id=None, action=None):
     """
     非同步執行 API 呼叫，並在成功後更新系統狀態。
@@ -230,6 +262,10 @@ def async_api_call(func, args=(), callback=None, max_retries=20, retry_delay=0.5
                 time.sleep(retry_delay)
 
         LOGGER.error(f"[{func.__name__}] 最多重試 {max_retries} 次仍未收到成功回應。")
+        
+        # 上傳失敗後執行網路診斷
+        network_status = diagnose_network()
+        LOGGER.error(f"[{func.__name__}] 上傳失敗網路診斷: {network_status}")
 
     threading.Thread(target=task).start()
 

@@ -173,6 +173,64 @@ def parse_potential_misses(target_date: date):
         pass
     return count
 
+def parse_network_issues(target_date: date):
+    """
+    Parses faceLog to find network diagnosis logs and aggregates them by 5-minute intervals.
+    Returns a sorted list of intervals with failure details.
+    """
+    log_dir = os.path.join(os.path.dirname(__file__), "log")
+    log_file_path = os.path.join(log_dir, f"faceLog.{target_date.strftime('%Y-%m-%d')}.log")
+    
+    if target_date == date.today() and not os.path.exists(log_file_path):
+        log_file_path = os.path.join(log_dir, "faceLog")
+
+    if not os.path.exists(log_file_path):
+        return {}
+
+    # Structure: { "HH:MM - HH:MM": {"count": 0, "external_fail": 0, "server_fail": 0} }
+    network_stats = defaultdict(lambda: {"count": 0, "external_fail": 0, "server_fail": 0})
+    
+    # Regex to capture timestamp and diagnosis message
+    # Log format: [YYYY-MM-DD HH:MM:SS,mmm] ... 上傳失敗網路診斷: ...
+    log_pattern = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3})\].*?上傳失敗網路診斷:\s*(.*)")
+    
+    try:
+        with open(log_file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                match = log_pattern.search(line)
+                if match:
+                    ts_str = match.group(1)
+                    diagnosis_msg = match.group(2)
+                    
+                    try:
+                        # Parse timestamp
+                        dt = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S,%f")
+                        
+                        # Calculate 5-minute bucket
+                        minute_bucket = (dt.minute // 5) * 5
+                        start_time = dt.replace(minute=minute_bucket, second=0, microsecond=0)
+                        end_time = start_time + timedelta(minutes=5)
+                        interval_key = f"{start_time.strftime('%H:%M')} ~ {end_time.strftime('%H:%M')}"
+                        
+                        # Update stats
+                        stats = network_stats[interval_key]
+                        stats["count"] += 1
+                        
+                        if "外部網路(8.8.8.8): 無法連線" in diagnosis_msg:
+                            stats["external_fail"] += 1
+                        if "伺服器" in diagnosis_msg and "無法連線" in diagnosis_msg:
+                             # Check if it's specifically server failure (not just implied by external fail)
+                             # Usually if external fails, server fails too, but we track count anyway
+                             stats["server_fail"] += 1
+                             
+                    except ValueError:
+                        continue
+                        
+    except Exception as e:
+        print(f"Error parsing network logs: {e}")
+        
+    return dict(sorted(network_stats.items()))
+
 
 def calculate_statistics(log_events, staff_id_to_name, valid_staff_ids):
     """
@@ -278,7 +336,7 @@ def calculate_performance_statistics(perf_events):
 
     return stats
 
-def write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, potential_miss_count, report_path, min_face_settings):
+def write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, potential_miss_count, network_stats, report_path, min_face_settings):
     """Formats the report and writes (overwrites) it to the specified text file."""
     report_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
@@ -310,6 +368,40 @@ def write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, 
             f"\n真實誤判率 (False Positive Rate): {false_positive_rate:.2f}%",
             "\n* 真實誤判率 = (誤判為陌生人) / 總事件數",
         ])
+
+    # --- 新增: 網路連線穩定度分析 ---
+    report_lines.append("\n" + "-"*80)
+    report_lines.append("--- 網路連線異常分析 (Network Stability Analysis) ---")
+    
+    if network_stats:
+        report_lines.append(f"\n偵測到 {sum(s['count'] for s in network_stats.values())} 次上傳失敗事件 (已達重試上限)。")
+        report_lines.append("統計區間 (5分鐘) | 失敗次數 | 異常原因分析")
+        report_lines.append("-" * 60)
+        
+        for interval, stats in network_stats.items():
+            count = stats['count']
+            ext_fail = stats['external_fail']
+            srv_fail = stats['server_fail']
+            
+            reasons = []
+            if ext_fail > 0:
+                reasons.append(f"外網斷線({ext_fail})")
+            
+            # 假設外網斷線通常也會導致伺服器連線失敗 (srv_fail >= ext_fail)
+            # 我們只顯示"額外"的伺服器異常 (即外網通但伺服器不通)
+            pure_srv_fail = max(0, srv_fail - ext_fail)
+            if pure_srv_fail > 0:
+                reasons.append(f"伺服器異常({pure_srv_fail})")
+                 
+            reason_str = ", ".join(reasons) if reasons else "不明原因"
+            report_lines.append(f"{interval:<17} | {count:<8} | {reason_str}")
+            
+        report_lines.append("-" * 60)
+        report_lines.append("* '外網斷線' 表示無法 Ping 到 8.8.8.8。")
+        report_lines.append("* '伺服器異常' 表示外網可通但 API 無法連線。")
+    else:
+        report_lines.append("\n本日無上傳失敗紀錄 (網路狀況良好)。")
+
 
     # --- 新增: 潛在失敗與寬度分佈分析 ---
     report_lines.append("\n" + "-"*80)
@@ -573,6 +665,7 @@ def main():
     # New: Parse width stats and potential misses
     width_stats = parse_width_stats(target_date)
     potential_miss_count = parse_potential_misses(target_date)
+    network_stats = parse_network_issues(target_date)
     
     # Extract min_face settings for reporting
     min_face_settings = {'in': 'N/A', 'out': 'N/A'}
@@ -582,7 +675,7 @@ def main():
             min_face_settings['out'] = config.get("outCamera", {}).get("min_face", "N/A")
         except: pass
 
-    if not recognition_events and not performance_events and not width_stats and potential_miss_count == 0:
+    if not recognition_events and not performance_events and not width_stats and potential_miss_count == 0 and not network_stats:
         print("No log events of any type found for today. Nothing to report.")
         return
         
@@ -594,7 +687,7 @@ def main():
     
     # 1. Write (overwrite) text report for the current run
     text_report_path = os.path.join(report_dir, f"report-{target_date.strftime('%Y-%m-%d')}.txt")
-    write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, potential_miss_count, text_report_path, min_face_settings)
+    write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, potential_miss_count, network_stats, text_report_path, min_face_settings)
 
     # 2. Overwrite the JSON data file with the latest full-day stats (optional: could add perf_stats here too)
     json_data_path = os.path.join(report_dir, f"data-{target_date.strftime('%Y-%m-%d')}.json")
