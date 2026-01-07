@@ -92,9 +92,7 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
         )
         # 語音播報：簽到成功為最高優先權，強制中斷目前語音 (如: 請靠近鏡頭) 並立即播放
         system.speaker.stop()
-        system.speaker.txt = f"{staff_name}{CONFIG['say']['in']}"
-        system.speaker.filename = staff_name + "_in"
-        system.speaker.play = True
+        system.speaker.say(f"{staff_name}{CONFIG['say']['in']}", staff_name + "_in")
 
     # 執行簽離
     elif is_check_out_action:
@@ -109,9 +107,7 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
         )
         # 語音播報：簽離成功為最高優先權，強制中斷目前語音
         system.speaker.stop()
-        system.speaker.txt = f"{staff_name}{CONFIG['say']['out']}"
-        system.speaker.filename = staff_name + "_out"
-        system.speaker.play = True
+        system.speaker.say(f"{staff_name}{CONFIG['say']['out']}", staff_name + "_out")
 
     if CONFIG.get("excel_api_enabled", False) and "demosite" in CONFIG["Server"]["API_url"]:
         threading.Timer(1, check_in_out_excel, (staff_name,)).start()

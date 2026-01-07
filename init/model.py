@@ -521,9 +521,7 @@ class Comparison:
                         # --- 新增: 語音提示 (每3秒最多一次，且不打斷現有播放) ---
                         if now - self.last_hint_speak_time > 3.0:
                             if not self.system.speaker.is_busy():
-                                self.system.speaker.txt = "請靠近鏡頭"
-                                self.system.speaker.filename = "hint_closer"
-                                self.system.speaker.play = True
+                                self.system.speaker.say("請靠近鏡頭", "hint_closer")
                                 self.last_hint_speak_time = now
                 
                 # 原有的 Log (人臉太小被忽略)，現在可以只針對非潛在失敗的更小人臉 (路人) 輸出，或者保留作為 Debug
