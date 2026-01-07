@@ -518,11 +518,10 @@ class Comparison:
                         self.system.state.hint_text[self.frame_num] = "請靠近鏡頭"
                         self.hint_clear_time = now + 2.0
 
-                        # --- 新增: 語音提示 (每3秒最多一次，且不打斷現有播放) ---
-                        if now - self.last_hint_speak_time > 3.0:
-                            if not self.system.speaker.is_busy():
-                                self.system.speaker.say("請靠近鏡頭", "hint_closer")
-                                self.last_hint_speak_time = now
+                        # --- 新增: 語音提示 (若有簽到語音正在播或排隊則自動放棄) ---
+                        # Priority=2 (Normal)，若忙碌會自動丟棄，無需手動計時 CD 或簽到冷卻
+                        self.system.speaker.say("請靠近鏡頭", "hint_closer", priority=2)
+                        self.last_hint_speak_time = now
                 
                 # 原有的 Log (人臉太小被忽略)，現在可以只針對非潛在失敗的更小人臉 (路人) 輸出，或者保留作為 Debug
                 # 為了避免 Log 爆炸，這裡我們只保留上述的「潛在失敗」Log，對於純路人(更小)的就不 Log 了，以免干擾視聽。

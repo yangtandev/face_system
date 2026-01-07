@@ -18,8 +18,12 @@ class Say_:
         建構子，初始化語音播放控制項與背景執行緒。
         """
         self.queue = queue.Queue()
-        self.generation = 0 # 版本號，用於標記指令是否有效
-        self.gen_lock = threading.Lock() # 保護版本號的鎖
+        self.generation = 0 
+        self.gen_lock = threading.Lock()
+        
+        # 用於追蹤當前正在播放的語音優先級
+        self.current_priority = 0 # 0=Idle, 1=High, 2=Normal
+        self.priority_lock = threading.Lock()
 
         self.path = os.path.join(os.path.dirname(__file__), "../voice/")
         self.stop_threads = False
@@ -33,34 +37,60 @@ class Say_:
         th.daemon = True
         th.start()
 
-    def say(self, text, filename):
+    def say(self, text, filename, priority=2):
         """
         發送語音播報請求 (Thread-Safe)。
-        此方法會將指令放入佇列，保證不丟失。
+        priority: 1=High (簽到/簽離，必播，可插播Normal), 2=Normal (提示，忙碌即丟棄)
         """
-        with self.gen_lock:
-            # 取得當前有效的版本號
-            current_gen = self.generation
-        
-        # 將請求放入佇列 (版本號, 文字, 檔名)
-        self.queue.put((current_gen, text, filename))
+        with self.priority_lock:
+            is_busy = self.current_priority != 0
+            current_p = self.current_priority
 
-    def stop(self):
-        """
-        強制停止目前的音訊播放，並作廢佇列中所有未執行的指令 (插播用)。
-        """
-        with self.gen_lock:
-            self.generation += 1 # 提升版本號，使舊指令失效
-        
-        # 清空佇列 (雖然提升版本號已足夠讓舊指令失效，但清空可減少無效迴圈)
-        with self.queue.mutex:
-            self.queue.queue.clear()
+        # 邏輯 1: Normal 語音 (提示類)
+        if priority == 2:
+            # 如果系統正忙 (不論是 High 或 Normal)，直接丟棄，不排隊
+            if is_busy:
+                LOGGER.debug(f"語音忙碌，丟棄提示語音: {text}")
+                return
+            # 如果閒置，放入佇列
+            self._enqueue(text, filename, priority)
 
+        # 邏輯 2: High 語音 (簽到類)
+        elif priority == 1:
+            if current_p == 2:
+                # 正在播 Normal -> 強制打斷 (Preempt)，然後自己播
+                LOGGER.info(f"強制中斷提示語音，插播重要訊息: {text}")
+                self._stop_current()
+                self._enqueue(text, filename, priority)
+            else:
+                # 正在播 High 或 閒置 -> 進 Queue 排隊 (High 互不打斷，依序播放)
+                # 限制 Queue 長度，避免堆積過多
+                if self.queue.qsize() >= 2:
+                    try:
+                        self.queue.get_nowait() # 丟棄最舊的
+                        LOGGER.warning("語音佇列過滿，丟棄舊指令")
+                    except:
+                        pass
+                self._enqueue(text, filename, priority)
+
+    def _enqueue(self, text, filename, priority):
+        with self.gen_lock:
+            gen = self.generation
+        self.queue.put((gen, text, filename, priority))
+
+    def _stop_current(self):
+        """內部方法：強制停止目前播放 (提升版本號)"""
+        with self.gen_lock:
+            self.generation += 1
+        
         if self.mixer_initialized:
             try:
                 mixer.music.stop()
-            except Exception as e:
-                LOGGER.error(f"強制停止播放失敗: {e}")
+            except:
+                pass
+
+    # 移除公開的 stop() 方法，因為邏輯已整合進 say()
+    # def stop(self): ...
 
     def speak(self):
         """
@@ -78,32 +108,37 @@ class Say_:
         # --- 主循環 ---
         while not self.stop_threads:
             try:
-                # 1. 從佇列取出指令 (Blocking with timeout)
-                # 設定 timeout 是為了讓執行緒有機會檢查 stop_threads
-                gen, text, filename_base = self.queue.get(timeout=0.1)
+                # 1. 從佇列取出指令
+                gen, text, filename_base, priority = self.queue.get(timeout=0.1)
                 
                 # 2. 檢查版本號 (過期指令直接丟棄)
                 with self.gen_lock:
                     if gen != self.generation:
-                        LOGGER.info(f"忽略過期語音指令: {text} (Gen {gen} != {self.generation})")
+                        LOGGER.debug(f"忽略過期語音: {text}")
                         continue
 
-                LOGGER.info(f"處理語音請求: '{text}'")
+                # 設定當前優先級狀態
+                with self.priority_lock:
+                    self.current_priority = priority
+
+                LOGGER.info(f"播放語音 (P{priority}): '{text}'")
                 filename = filename_base + ".mp3"
                 full_path = os.path.join(self.path, filename)
                 
                 try:
-                    # 3. 音訊子系統重置 (針對 ALSA 錯誤的對策)
-                    # 頻繁的 init/quit 雖然重，但能有效解決 "Unknown PCM default"
-                    try:
-                        mixer.music.stop()
-                        mixer.quit()
-                    except:
-                        pass
-                    
-                    # 嘗試重新初始化 mixer
-                    mixer.init()
-                    self.mixer_initialized = True
+                    # 3. 音訊子系統檢查與重置 (Lazy Re-init)
+                    # 只有在未初始化或先前發生錯誤時才執行 init
+                    if not self.mixer_initialized:
+                        try:
+                            mixer.quit()
+                            mixer.init()
+                            self.mixer_initialized = True
+                            LOGGER.info("音訊子系統已(重新)初始化。")
+                        except Exception as e:
+                            LOGGER.error(f"音訊初始化失敗: {e}")
+                            # 稍後重試，跳過本次播放
+                            time.sleep(1)
+                            continue
 
                     # 4. 準備語音檔
                     if not os.path.isfile(full_path):
@@ -124,13 +159,9 @@ class Say_:
                     mixer.music.set_volume(1.0)
                     mixer.music.play(1)
                     
-                    # 等待播放完成或被中斷 (避免 mixer.quit 殺太快)
-                    # 我們不使用 while busy loop 等待，因為這會卡住插播
-                    # 這裡只負責 "觸發播放"，實際聲音由 SDL thread 處理
-                    # 但因為我們下一輪迴圈會 mixer.quit()，所以必須確保聲音播出去
-                    # 妥協方案：讓 mixer 活著直到 busy 為止，或被 stop
+                    # 等待播放完成或被中斷
                     start_wait = time.time()
-                    while mixer.music.get_busy() and (time.time() - start_wait < 10): # 最多等10秒
+                    while mixer.music.get_busy() and (time.time() - start_wait < 10): 
                         # 檢查是否被插播 (stop 呼叫)
                         with self.gen_lock:
                             if gen != self.generation:
@@ -140,7 +171,12 @@ class Say_:
                     
                 except Exception as e:
                     LOGGER.error(f"語音播報執行失敗 (ALSA/Pygame Error): {e}", exc_info=True)
-                    self.mixer_initialized = False # 標記失敗，下次迴圈重試
+                    self.mixer_initialized = False 
+                
+                finally:
+                    # 播放結束 (或失敗)，重置優先級狀態為 Idle
+                    with self.priority_lock:
+                        self.current_priority = 0
 
             except queue.Empty:
                 continue
