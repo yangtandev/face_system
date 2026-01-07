@@ -17,3 +17,5 @@ numba==0.60.0
 scikit-learn==1.5.1
 tqdm
 faiss-cpu==1.8.0
+paho-mqtt
+paho-mqtt

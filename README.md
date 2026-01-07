@@ -99,10 +99,22 @@ ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
 
 iii. **複製公鑰至遠端伺服器**：
 您需要將您的**公鑰** (`id_rsa.pub`) 的內容附加到遠端伺服器的 `~/.ssh/authorized_keys` 檔案中。最簡單的方法是使用 `ssh-copy-id` 命令：
-`bash
     ssh-copy-id -i ~/.ssh/id_rsa.pub <username>@<server_ip>
-    `
-請將 `<username>` 和 `<server_ip>` 替換成您在 `setting/bulid_config.py` 中設定的伺服器使用者名稱與 IP。
+    ```
+    請將 `<username>` 和 `<server_ip>` 替換成您在 `setting/bulid_config.py` 中設定的伺服器使用者名稱與 IP。
+
+### 4. 設定與安裝 MQTT Broker (Mosquitto)
+
+本系統利用 MQTT 協定來接收來自伺服器的即時更新通知（如人員變更）。因此，您需要在本地機器上安裝並啟動 Mosquitto MQTT Broker。
+
+執行以下指令一次性完成安裝、啟用與啟動：
+
+```bash
+sudo apt-get update && sudo apt-get install -y mosquitto mosquitto-clients && sudo systemctl enable mosquitto && sudo systemctl start mosquitto && sudo systemctl status mosquitto --no-pager
+```
+
+**驗證安裝：**
+安裝完成後，您可以使用 `systemctl status mosquitto` 檢查服務狀態，應顯示為 `active (running)`。
 
 ## 執行應用程式
 

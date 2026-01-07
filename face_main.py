@@ -1,5 +1,6 @@
 from pathlib import Path
 import time, threading, queue, json, os, subprocess
+import paho.mqtt.client as mqtt
 import sys
 import termios
 
@@ -833,11 +834,9 @@ class FaceRecognitionSystem:
 
 
 
-        # 2. 在背景啟動資料更新流程
-
-        print("在背景啟動首次資料同步...")
-
-        threading.Thread(target=self.update_data_and_model, daemon=True).start()
+        # 2. 在背景啟動資料更新流程 (改由 MQTT 觸發)
+        print("啟動 MQTT 客戶端以進行即時資料同步...")
+        self.setup_mqtt_client()
 
 
 
@@ -859,6 +858,54 @@ class FaceRecognitionSystem:
                 sys.exit(ret)
             except UnboundLocalError:
                 sys.exit(0)
+
+    # ---> 開始新的 MQTT 程式碼 <---
+    def setup_mqtt_client(self):
+        """設定並啟動 MQTT client"""
+        # 優先從 MQTT 區塊讀取，若無則回退使用 Server IP，再無則使用 localhost
+        server_ip = CONFIG.get("Server", {}).get("ip", "localhost")
+        mqtt_conf = CONFIG.get("MQTT", {})
+
+        self.mqtt_broker_host = mqtt_conf.get("broker_ip", server_ip)
+        self.mqtt_port = mqtt_conf.get("port", 1883)
+        self.mqtt_topic = mqtt_conf.get("topic", "pvms/faces/updated")
+
+        LOGGER.info(f"MQTT 設定: Broker={self.mqtt_broker_host}, Port={self.mqtt_port}, Topic={self.mqtt_topic}")
+
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        client.on_connect = self.on_mqtt_connect
+        client.on_message = self.on_mqtt_message
+
+        try:
+            client.connect(self.mqtt_broker_host, self.mqtt_port, 60)
+            client.loop_start() # 在背景執行緒中運行
+            print(f"MQTT Client 啟動中，連線至 {self.mqtt_broker_host}...")
+        except Exception as e:
+            print(f"無法連線至 MQTT Broker: {e}")
+
+    def on_mqtt_connect(self, client, userdata, flags, rc, properties=None):
+        """當連線成功時，訂閱主題並觸發第一次同步"""
+        if rc == 0:
+            print(f"成功連線至 MQTT Broker，訂閱主題: {self.mqtt_topic}")
+            client.subscribe(self.mqtt_topic)
+            # 執行一次初始同步，確保資料是最新狀態
+            self.update_data_and_model(initial_run=True)
+        else:
+            print(f"MQTT 連線失敗，返回碼: {rc}")
+
+    def on_mqtt_message(self, client, userdata, msg):
+        """收到 MQTT 訊息時，觸發資料同步"""
+        try:
+            payload = msg.payload.decode()
+            print(f"收到來自 {msg.topic} 的訊息: {payload}")
+
+            # 不論是 update 或 delete，都重新同步一次模型
+            # 您的 update_data_and_model 應該能處理資料的增減
+            self.update_data_and_model(initial_run=False)
+
+        except Exception as e:
+            print(f"處理 MQTT 訊息時發生錯誤: {e}")
+    # ---> 結束新的 MQTT 程式碼 <---
 
     def update_data_and_model(self, initial_run=True):
 
@@ -994,17 +1041,7 @@ class FaceRecognitionSystem:
 
             if not initial_run:
 
-                print(f"===== 背景資料更新流程結束，將在 300 秒後再次執行 ====")
-
-
-
-            # 設定下一次定時器
-
-            timer = threading.Timer(300, self.update_data_and_model, args=[False])
-
-            timer.daemon = True
-
-            timer.start()
+                print(f"===== 背景資料更新流程結束 (等待 MQTT 通知) ====")
 
 
     def _sync_files_with_server(self):
