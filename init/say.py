@@ -92,6 +92,19 @@ class Say_:
                 return False
         return False
 
+    def stop(self):
+        """
+        強制停止目前的音訊播放。
+        """
+        if self.mixer_initialized:
+            try:
+                mixer.music.stop()
+                # 注意：這裡不呼叫 mixer.quit()，因為 speak 執行緒還需要繼續運作
+                # 且 speak 迴圈內會在下一次播放前自動處理 re-init
+            except Exception as e:
+                LOGGER.error(f"強制停止播放失敗: {e}")
+        self.play = False
+
     def terminate(self):
         """
         終止語音播放的背景執行緒，並防止播放。

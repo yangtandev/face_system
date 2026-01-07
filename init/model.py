@@ -305,6 +305,7 @@ class Comparison:
         self.potential_miss_ratio = 0.8      # 潛在失敗判定門檻 (min_face * ratio)
         self.last_potential_miss_log_time = 0 # 上次記錄潛在失敗的時間 (限流用)
         self.hint_clear_time = 0             # 提示文字清除時間
+        self.last_hint_speak_time = 0        # 上次播報提示語音的時間
         # ---------------------------------
 
         self.TIMEZONE = pytz.timezone('Asia/Taipei')
@@ -516,6 +517,14 @@ class Comparison:
                         # 設定 UI 提示
                         self.system.state.hint_text[self.frame_num] = "請靠近鏡頭"
                         self.hint_clear_time = now + 2.0
+
+                        # --- 新增: 語音提示 (每3秒最多一次，且不打斷現有播放) ---
+                        if now - self.last_hint_speak_time > 3.0:
+                            if not self.system.speaker.is_busy():
+                                self.system.speaker.txt = "請靠近鏡頭"
+                                self.system.speaker.filename = "hint_closer"
+                                self.system.speaker.play = True
+                                self.last_hint_speak_time = now
                 
                 # 原有的 Log (人臉太小被忽略)，現在可以只針對非潛在失敗的更小人臉 (路人) 輸出，或者保留作為 Debug
                 # 為了避免 Log 爆炸，這裡我們只保留上述的「潛在失敗」Log，對於純路人(更小)的就不 Log 了，以免干擾視聽。
