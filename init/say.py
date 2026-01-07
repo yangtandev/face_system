@@ -81,6 +81,17 @@ class Say_:
             
             time.sleep(0.01)
 
+    def is_busy(self):
+        """
+        檢查目前是否正在播放音訊。
+        """
+        if self.mixer_initialized:
+            try:
+                return mixer.music.get_busy()
+            except:
+                return False
+        return False
+
     def terminate(self):
         """
         終止語音播放的背景執行緒，並防止播放。

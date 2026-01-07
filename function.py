@@ -61,66 +61,69 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
 
     now = time.time()
 
-    if (now - system.state.check_time[staff_id][1]) >= 10:
-        # 簽到/簽離邏輯判斷
-        is_check_in_action = False
-        is_check_out_action = False
+    # 移除原本的 10 秒冷卻檢查，改為直接執行
+    # if (now - system.state.check_time[staff_id][1]) >= 10:
+    
+    # 簽到/簽離邏輯判斷
+    is_check_in_action = False
+    is_check_out_action = False
 
-        if n:  # 單鏡頭模式：根據狀態自動判斷
-            if system.state.check_time[staff_id][0]:
-                is_check_in_action = True
-            else:
-                is_check_out_action = True
-        else:  # 雙鏡頭模式：根據攝影機編號判斷
-            if camera_num == 0:
-                is_check_in_action = True
-            elif camera_num == 1:
-                is_check_out_action = True
+    if n:  # 單鏡頭模式：根據狀態自動判斷
+        if system.state.check_time[staff_id][0]:
+            is_check_in_action = True
+        else:
+            is_check_out_action = True
+    else:  # 雙鏡頭模式：根據攝影機編號判斷
+        if camera_num == 0:
+            is_check_in_action = True
+        elif camera_num == 1:
+            is_check_out_action = True
 
-        # 執行簽到
-        if is_check_in_action:
-            log_metrics(staff_name, 0, confidence) # Log as check-in with confidence
-            async_api_call(
-                func=API.face_recognition_in,
-                args=(staff_id,),
-                callback=log_api_result,
-                system=system,
-                staff_id=staff_id,
-                action='in'
-            )
-            # 語音播報冷卻
-            if now - system.state.last_speak_time.get(staff_id, 0) >= 5:
-                system.speaker.txt = f"{staff_name}{CONFIG['say']['in']}"
-                system.speaker.filename = staff_name + "_in"
-                system.speaker.play = True
-                system.state.last_speak_time[staff_id] = now
+    # 執行簽到
+    if is_check_in_action:
+        log_metrics(staff_name, 0, confidence) # Log as check-in with confidence
+        async_api_call(
+            func=API.face_recognition_in,
+            args=(staff_id,),
+            callback=log_api_result,
+            system=system,
+            staff_id=staff_id,
+            action='in'
+        )
+        # 語音播報：只有當目前沒有在講話時才觸發 (避免堆積，且確保人還在才播)
+        if not system.speaker.is_busy():
+            system.speaker.txt = f"{staff_name}{CONFIG['say']['in']}"
+            system.speaker.filename = staff_name + "_in"
+            system.speaker.play = True
+            # system.state.last_speak_time[staff_id] = now # 不再需要紀錄時間
 
-        # 執行簽離
-        elif is_check_out_action:
-            log_metrics(staff_name, 1, confidence) # Log as check-out with confidence
-            async_api_call(
-                func=API.face_recognition_out,
-                args=(staff_id,),
-                callback=log_api_result,
-                system=system,
-                staff_id=staff_id,
-                action='out'
-            )
-            # 語音播報冷卻
-            if now - system.state.last_speak_time.get(staff_id, 0) >= 5:
-                system.speaker.txt = f"{staff_name}{CONFIG['say']['out']}"
-                system.speaker.filename = staff_name + "_out"
-                system.speaker.play = True
-                system.state.last_speak_time[staff_id] = now
+    # 執行簽離
+    elif is_check_out_action:
+        log_metrics(staff_name, 1, confidence) # Log as check-out with confidence
+        async_api_call(
+            func=API.face_recognition_out,
+            args=(staff_id,),
+            callback=log_api_result,
+            system=system,
+            staff_id=staff_id,
+            action='out'
+        )
+        # 語音播報：只有當目前沒有在講話時才觸發
+        if not system.speaker.is_busy():
+            system.speaker.txt = f"{staff_name}{CONFIG['say']['out']}"
+            system.speaker.filename = staff_name + "_out"
+            system.speaker.play = True
+            # system.state.last_speak_time[staff_id] = now
 
-        if CONFIG.get("excel_api_enabled", False) and "demosite" in CONFIG["Server"]["API_url"]:
-            threading.Timer(1, check_in_out_excel, (staff_name,)).start()
+    if CONFIG.get("excel_api_enabled", False) and "demosite" in CONFIG["Server"]["API_url"]:
+        threading.Timer(1, check_in_out_excel, (staff_name,)).start()
 
-        # 開門控制
-        if CONFIG["door"] != "0":
-            threading.Timer(0, open_door).start()
+    # 開門控制
+    if CONFIG["door"] != "0":
+        threading.Timer(0, open_door).start()
 
-    elif (now - system.state.check_time[staff_id][1]) >= 2:
+    # 原本的離開判斷保留，雖在主流程未被使用，但保持結構完整
+    if (now - system.state.check_time[staff_id][1]) >= 2:
         leave = 1
 
     return leave
