@@ -539,16 +539,22 @@ class Comparison:
                  # 根據原因給出明確的 UI 提示 (Actionable Hint)
                  if "未置中" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "請站到中間"
+                     self.system.speaker.say("請站到中間", "hint_center", priority=2)
                  elif "特徵點被切除/遮擋" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "臉部被遮擋/切到"
+                     self.system.speaker.say("臉部被遮擋或切到", "hint_occlusion", priority=2)
                  elif "低頭" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "請抬頭"
+                     self.system.speaker.say("請抬頭", "hint_look_up", priority=2)
                  elif "抬頭" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "請低頭"
+                     self.system.speaker.say("請低頭", "hint_look_down", priority=2)
                  elif "未正視" in quality_msg or "側臉" in quality_msg or "歪頭" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "請正視鏡頭"
+                     self.system.speaker.say("請正視鏡頭", "hint_look_straight", priority=2)
                  else:
                      self.system.state.hint_text[self.frame_num] = "調整位置"
+                     self.system.speaker.say("請調整位置", "hint_adjust", priority=2)
                      
                  self.hint_clear_time = now + 1.0
                  continue
