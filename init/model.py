@@ -506,31 +506,65 @@ class Comparison:
 
             if face_width < min_face_threshold:
                 # --- 新增: 潛在辨識失敗偵測 (Near Miss Detection) ---
-                potential_threshold = min_face_threshold * self.potential_miss_ratio
+                # [2026-01-08 夜間模式優化]
+                # 動態調整比率：夜間(18:00-06:00)設為 0.9 以過濾路燈；日間維持 0.8
+                current_hour = datetime.now(self.TIMEZONE).hour
+                is_night_mode = (current_hour >= 18 or current_hour < 6)
                 
-                # 如果寬度落在 [min_face * 0.8, min_face) 區間，視為有意圖但失敗
+                # 若為夜間模式且需要更嚴格的過濾，使用 0.9
+                current_potential_ratio = 0.9 if is_night_mode else self.potential_miss_ratio
+                
+                potential_threshold = min_face_threshold * current_potential_ratio
+                
+                # 如果寬度落在 [min_face * ratio, min_face) 區間，視為有意圖但失敗
                 if face_width >= potential_threshold:
                     # 限流: 同一鏡頭 3 秒內只記錄一次，避免洗版
                     if now - self.last_potential_miss_log_time > 3:
                         
-                        # 使用當前原生畫面截圖
-                        snapshot = self.system.state.frame_mtcnn[self.frame_num]
-                            
-                        saved_path = "無影像"
-                        if snapshot is not None:
-                            saved_path = self._save_potential_miss_image(snapshot, face_width, min_face_threshold, camera_name)
-                            
-                        LOGGER.info(f"[{camera_name}][潛在失敗] 偵測到人臉但過小 (寬度: {face_width}, 門檻: {min_face_threshold}) - 已存檔: {saved_path}")
-                        self.last_potential_miss_log_time = now
-                        
-                        # 設定 UI 提示
-                        self.system.state.hint_text[self.frame_num] = "請靠近鏡頭"
-                        self.hint_clear_time = now + 2.0
+                        # [夜間模式特徵檢查] 
+                        # 若在夜間，即使尺寸符合，也要先確認「像不像人」
+                        # 避免路燈光暈 (Feature Cosine Similarity 極低) 觸發提示
+                        is_likely_face = True
+                        if is_night_mode:
+                            try:
+                                # 嘗試提取特徵並快速比對
+                                frame_to_use = self.system.state.frame_mtcnn[self.frame_num]
+                                box_to_use = list(_box)
+                                points_to_use = _points.copy()
+                                frame_image = Image.fromarray(cv2.cvtColor(frame_to_use, cv2.COLOR_BGR2RGB))
+                                img_cropped = crop_face_without_forehead(frame_image, box_to_use, points_to_use)
+                                face_embedding_list = self.system.resnet(img_cropped.unsqueeze(0))
+                                
+                                if face_embedding_list is not None and len(face_embedding_list) > 0:
+                                    vec = face_embedding_list[0].detach().numpy()
+                                    if self.system.state.ann_index and self.system.state.ann_index.index.ntotal > 0:
+                                        dists, _ = self.system.state.ann_index.search(vec, k=1)
+                                        # 如果跟任何人都不像 (例如 < 0.4)，認定為雜訊
+                                        if dists[0] < 0.4:
+                                            is_likely_face = False
+                                            LOGGER.info(f"[{camera_name}][夜間過濾] 忽略疑似路燈雜訊 (寬度: {face_width}, 相似度: {dists[0]:.2f})")
+                            except Exception as e:
+                                pass # 出錯則保守判定為真臉，避免漏報
 
-                        # --- 新增: 語音提示 (若有簽到語音正在播或排隊則自動放棄) ---
-                        # Priority=2 (Normal)，若忙碌會自動丟棄，無需手動計時 CD 或簽到冷卻
-                        self.system.speaker.say("請靠近鏡頭", "hint_closer", priority=2)
-                        self.last_hint_speak_time = now
+                        if is_likely_face:
+                            # 使用當前原生畫面截圖
+                            snapshot = self.system.state.frame_mtcnn[self.frame_num]
+                                
+                            saved_path = "無影像"
+                            if snapshot is not None:
+                                saved_path = self._save_potential_miss_image(snapshot, face_width, min_face_threshold, camera_name)
+                                
+                            LOGGER.info(f"[{camera_name}][潛在失敗] 偵測到人臉但過小 (寬度: {face_width}, 門檻: {min_face_threshold}) - 已存檔: {saved_path}")
+                            self.last_potential_miss_log_time = now
+                            
+                            # 設定 UI 提示
+                            self.system.state.hint_text[self.frame_num] = "請靠近鏡頭"
+                            self.hint_clear_time = now + 2.0
+
+                            # --- 新增: 語音提示 (若有簽到語音正在播或排隊則自動放棄) ---
+                            # Priority=2 (Normal)，若忙碌會自動丟棄，無需手動計時 CD 或簽到冷卻
+                            self.system.speaker.say("請靠近鏡頭", "hint_closer", priority=2)
+                            self.last_hint_speak_time = now
                 
                 # 原有的 Log (人臉太小被忽略)，現在可以只針對非潛在失敗的更小人臉 (路人) 輸出，或者保留作為 Debug
                 # 為了避免 Log 爆炸，這裡我們只保留上述的「潛在失敗」Log，對於純路人(更小)的就不 Log 了，以免干擾視聽。
