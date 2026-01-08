@@ -297,7 +297,6 @@ class Comparison:
         self.DISPLAY_STATE_HOLD_SECONDS = 3  # 辨識成功後，名稱顯示的持續時間
         self.CONFIDENCE_THRESHOLD = 0.7      # 可靠辨識的信賴度門檻 (員工)
         self.VISITOR_CONF_THRESHOLD = 0.5    # 訪客辨識的信賴度門檻 (低於此值為訪客)
-        self.RECOGNITION_COOLDOWN = 5        # 同一個攝影機在辨識成功後的冷卻時間(秒)
 
         # --- 新增: 潛在辨識失敗分析與統計 ---
         self.width_stats = defaultdict(int)  # 統計人臉寬度分佈 (區間:次數)
@@ -553,10 +552,6 @@ class Comparison:
                      
                  self.hint_clear_time = now + 1.0
                  continue
-
-            # 檢查是否在辨識冷卻時間內
-            if now - self.last_recognition_time < self.RECOGNITION_COOLDOWN:
-                continue
 
             # 提取人臉特徵向量
             try:

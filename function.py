@@ -61,8 +61,11 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
 
     now = time.time()
 
-    # 移除原本的 10 秒冷卻檢查，改為直接執行
-    # if (now - system.state.check_time[staff_id][1]) >= 10:
+    # [2026-01-08] 移除寫死的時間冷卻，改為依賴語音狀態
+    # 如果正在播放重要語音 (Priority 1: 簽到/簽離)，則等待其結束 (序列化處理)
+    # 如果是提示語音 (Priority 2) 或閒置 (0)，則允許進入 (簽到可打斷提示)
+    if system.speaker.current_priority == 1:
+        return leave
     
     # 簽到/簽離邏輯判斷
     is_check_in_action = False
