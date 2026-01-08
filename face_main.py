@@ -321,7 +321,9 @@ class CameraSystem:
 
                         
 
-                        self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name)
+                        # Get Z-Score from state
+                        z_score = self.system.state.same_zscore[self.frame_num]
+                        self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score)
 
 
 
@@ -507,7 +509,7 @@ class CameraSystem:
 
 
 
-    def save_img(self, img, path, staffname=""):
+    def save_img(self, img, path, staffname="", conf=0.0, z_score=0.0):
 
         dict_={"face":0, "clothes":1}
 
@@ -522,8 +524,16 @@ class CameraSystem:
         os.makedirs(f"{main_path}/img_log/{path}/{date_str}", exist_ok=True)
 
         if time.time()-self.save_img_time[dict_[path]] > 5 or (self.save_name_last != staffname and staffname != ""):
+            
+            # Format filename with Confidence (C) and Z-Score (Z)
+            # Conf: 0.9812 -> 98
+            # Z-Score: 1.876 -> 1.88
+            conf_val = int(conf * 100)
+            z_val = f"{z_score:.2f}"
+            
+            filename = f"{time_str}_{staffname}_C{conf_val}_Z{z_val}.jpg" if staffname != "" else f"{time_str}.jpg"
 
-            cv2.imwrite(f"{main_path}/img_log/{path}/{date_str}/{time_str}_{staffname}.jpg", img)
+            cv2.imwrite(f"{main_path}/img_log/{path}/{date_str}/{filename}", img)
 
             self.save_img_time[dict_[path]] = time.time()
 
@@ -589,6 +599,8 @@ class GlobalState:
 
     same_people: List[float] = None
 
+    same_zscore: List[float] = None # 儲存辨識成功時的 Z-Score
+
     same_class: List[str] = None
 
     frame: List[Any] = None
@@ -649,14 +661,17 @@ class FaceRecognitionSystem:
         初始化全域狀態、模型與參數設定。
 
         """
+        self.n_camera = 2 # Default to 2 cameras
 
         self.state = GlobalState()
 
-        self.state.max_box = [None, None]
+        self.state.max_box = [None] * self.n_camera
 
-        self.state.same_people = [0.0, 0.0]
+        self.state.same_people = [0.0] * self.n_camera
 
-        self.state.same_class = ["None", "None"]
+        self.state.same_zscore = [0.0] * self.n_camera
+
+        self.state.same_class = ["None"] * self.n_camera
 
         self.state.frame = [None, None]
 

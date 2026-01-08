@@ -724,6 +724,7 @@ class Comparison:
 
                 # 觸發成功事件 (例如：開門)
                 self.system.state.same_people[self.frame_num] = confidence
+                self.system.state.same_zscore[self.frame_num] = z_score # Sync Z-Score to GlobalState
                 # 更新UI顯示的人員名稱
                 self._update_display_state(person_id)
                 # 更新最後辨識成功的時間
