@@ -39,7 +39,7 @@ with open(os.path.join(os.path.dirname(__file__), "../config.json"), "r", encodi
     CONFIG = json.load(json_file)
 CAMERA = {0: "inCamera", 1: "outCamera"}
 CAM_NAME_MAP = {0: "入口", 1: "出口"}
-POTENTIAL_MISS_RATIO = 0.7
+POTENTIAL_MISS_RATIO = 0.8
 
 test_img = cv2.imread(os.path.join(
     os.path.dirname(__file__), "../other/test_img.jpg"))
