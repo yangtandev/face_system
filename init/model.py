@@ -301,7 +301,7 @@ class Comparison:
         # --- 新增: 潛在辨識失敗分析與統計 ---
         self.width_stats = defaultdict(int)  # 統計人臉寬度分佈 (區間:次數)
         self.last_stats_log_time = 0         # 上次輸出統計表的時間
-        self.potential_miss_ratio = 0.8      # 潛在失敗判定門檻 (min_face * ratio)
+        self.potential_miss_ratio = 0.7      # 潛在失敗判定門檻 (min_face * ratio)
         self.last_potential_miss_log_time = 0 # 上次記錄潛在失敗的時間 (限流用)
         self.hint_clear_time = 0             # 提示文字清除時間
         self.last_hint_speak_time = 0        # 上次播報提示語音的時間

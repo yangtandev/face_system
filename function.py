@@ -61,10 +61,12 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
 
     now = time.time()
 
-    # [2026-01-08] 移除寫死的時間冷卻，改為依賴語音狀態
-    # 如果正在播放重要語音 (Priority 1: 簽到/簽離)，則等待其結束 (序列化處理)
-    # 如果是提示語音 (Priority 2) 或閒置 (0)，則允許進入 (簽到可打斷提示)
-    if system.speaker.current_priority == 1:
+    # [2026-01-08 修正] 移除全域語音鎖，恢復針對個人的短防抖 (Debounce)
+    # 解決 "A正在播音時，B被擋住導致有圖無聲/沒刷入" 的問題
+    # 設定 2.5 秒個人防抖：
+    # 1. 確保同一人在 "請進入/請離開" 語音期間不被重複觸發
+    # 2. 確保不同人之間可以隨時插播與排隊，不再互相干擾
+    if (now - system.state.check_time[staff_id][1]) < 2.5:
         return leave
     
     # 簽到/簽離邏輯判斷

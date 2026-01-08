@@ -24,9 +24,9 @@ default_config = {
         "location_ID": 1
     },
     "say": {
-        "in": "\u7c3d\u5230",
-        "out": "\u7c3d\u96e2",
-        "clothes": "\u8acb\u6b63\u78ba\u8457\u88dd"
+        "in": "請進入",
+        "out": "請離開",
+        "clothes": "請正確著裝"
     },
     "inCamera": {
         "close": False,
