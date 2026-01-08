@@ -66,8 +66,8 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
     # 設定 2.5 秒個人防抖：
     # 1. 確保同一人在 "請進入/請離開" 語音期間不被重複觸發
     # 2. 確保不同人之間可以隨時插播與排隊，不再互相干擾
-    if (now - system.state.check_time[staff_id][1]) < 2.5:
-        return leave
+    # if (now - system.state.check_time[staff_id][1]) < 2.5:
+    #     return leave
     
     # 簽到/簽離邏輯判斷
     is_check_in_action = False
