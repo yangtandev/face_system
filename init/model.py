@@ -39,6 +39,7 @@ with open(os.path.join(os.path.dirname(__file__), "../config.json"), "r", encodi
     CONFIG = json.load(json_file)
 CAMERA = {0: "inCamera", 1: "outCamera"}
 CAM_NAME_MAP = {0: "入口", 1: "出口"}
+POTENTIAL_MISS_RATIO = 0.7
 
 test_img = cv2.imread(os.path.join(
     os.path.dirname(__file__), "../other/test_img.jpg"))
@@ -147,10 +148,19 @@ class Detector:
                             # 雖偵測到人臉但不在關注區域內 -> 忽略
                             box = None
                         else:
-                            # 人臉有效 (無需縮放，座標即為原生座標)
-                            box = [x1, y1, x2, y2]
+                            # [2026-01-08 修正] 距離過濾 (Distance Filter)
+                            # 若人臉寬度小於 min_face 的 70%，視為過遠，不顯示框也不辨識
+                            # 避免使用者誤以為系統正在辨識卻失敗
+                            face_width = x2 - x1
+                            min_face_val = self.system.state.min_face[self.frame_num]
+                            
+                            if face_width < (min_face_val * POTENTIAL_MISS_RATIO):
+                                box = None
+                            else:
+                                # 人臉有效 (無需縮放，座標即為原生座標)
+                                box = [x1, y1, x2, y2]
 
-                            # 若為主要畫面（frame_num=0）且開啟衣著檢測，則執行衣著辨識
+                                # 若為主要畫面（frame_num=0）且開啟衣著檢測，則執行衣著辨識
                             if CONFIG["Clothes_show"] and self.frame_num == 0 and \
                                (not self.system.state.clothes[0] or not self.system.state.clothes[2]):
                                 # 準備 mask_frame 給衣著偵測 (裁切 ROI)
@@ -301,7 +311,7 @@ class Comparison:
         # --- 新增: 潛在辨識失敗分析與統計 ---
         self.width_stats = defaultdict(int)  # 統計人臉寬度分佈 (區間:次數)
         self.last_stats_log_time = 0         # 上次輸出統計表的時間
-        self.potential_miss_ratio = 0.7      # 潛在失敗判定門檻 (min_face * ratio)
+        self.potential_miss_ratio = POTENTIAL_MISS_RATIO # 潛在失敗判定門檻 (min_face * ratio)
         self.last_potential_miss_log_time = 0 # 上次記錄潛在失敗的時間 (限流用)
         self.hint_clear_time = 0             # 提示文字清除時間
         self.last_hint_speak_time = 0        # 上次播報提示語音的時間
