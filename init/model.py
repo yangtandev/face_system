@@ -582,8 +582,8 @@ class Comparison:
                      self.system.state.hint_text[self.frame_num] = "請站到中間"
                      self.system.speaker.say("請站到中間", "hint_center", priority=2)
                  elif "特徵點被切除/遮擋" in quality_msg:
-                     self.system.state.hint_text[self.frame_num] = "臉部被遮擋/切到"
-                     self.system.speaker.say("臉部被遮擋或切到", "hint_occlusion", priority=2)
+                     self.system.state.hint_text[self.frame_num] = "請對準鏡頭"
+                     self.system.speaker.say("請對準鏡頭", "hint_occlusion", priority=2)
                  elif "低頭" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "請抬頭"
                      self.system.speaker.say("請抬頭", "hint_look_up", priority=2)
