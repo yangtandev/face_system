@@ -329,8 +329,8 @@ class Comparison:
         儲存潛在辨識失敗的截圖 (寬度介於意圖區間的人臉)。
         """
         try:
-            today_str = datetime.now(self.TIMEZONE).strftime('%Y_%m_%d')
-            time_str = datetime.now(self.TIMEZONE).strftime('%H;%M;%S')
+            today_str = datetime.now().strftime('%Y_%m_%d')
+            time_str = datetime.now().strftime('%H;%M;%S')
             
             # 決定位置標記
             cam_tag = "Out" if "Out" in camera_name or "出口" in camera_name else "In"
@@ -724,9 +724,9 @@ class Comparison:
                 LOGGER.info(log_message)
                 person_id = predicted_id
 
-                # 鎖定辨識成功當下的影像快照 (轉回 BGR 給 cv2 存檔)
+                # 鎖定辨識成功當下的影像快照 (直接使用 BGR，無需轉換)
                 try:
-                    self.system.state.success_frame[self.frame_num] = cv2.cvtColor(frame_to_use, cv2.COLOR_RGB2BGR)
+                    self.system.state.success_frame[self.frame_num] = frame_to_use.copy()
                 except Exception as e:
                     LOGGER.error(f"儲存成功快照失敗: {e}")
 
