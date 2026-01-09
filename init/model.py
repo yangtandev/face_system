@@ -304,6 +304,8 @@ class Comparison:
         self.display_state = {'person_id': 'None', 'last_update': 0}
         self.last_recognition_time = 0
 
+        self.last_api_trigger_time = {} # 記錄每個人員上次觸發API/語音的時間，用於防止短時間重複播報
+
         self.DISPLAY_STATE_HOLD_SECONDS = 3  # 辨識成功後，名稱顯示的持續時間
         self.CONFIDENCE_THRESHOLD = 0.7      # 可靠辨識的信賴度門檻 (員工)
         self.VISITOR_CONF_THRESHOLD = 0.5    # 訪客辨識的信賴度門檻 (低於此值為訪客)
@@ -721,11 +723,35 @@ class Comparison:
             if is_reliable:
                 LOGGER.info(log_message)
                 person_id = predicted_id
+                
+                # [2026-01-09] 針對個人的語音/API冷卻機制 (播完後2秒)
+                # 使用 speaker 的狀態來判斷是否正在播或剛播完
+                speaker = self.system.speaker
+                is_cooldown = False
+                cooldown_reason = ""
+                
+                with speaker.status_lock:
+                    last_start = speaker.last_start_time.get(person_id, 0)
+                    last_end = speaker.last_end_time.get(person_id, 0)
+                
+                # 判斷 1: 是否正在播放 (Start > End)
+                if last_start > last_end:
+                    is_cooldown = True
+                    cooldown_reason = "正在播放中"
+                # 判斷 2: 是否剛播完 (Now - End < 2.0)
+                elif now - last_end < 2.0:
+                    is_cooldown = True
+                    cooldown_reason = f"剛播完 (剩餘 {2.0 - (now - last_end):.1f}s)"
+                
+                if not is_cooldown:
+                    self.system.state.same_people[self.frame_num] = confidence
+                    self.system.state.same_zscore[self.frame_num] = z_score
+                    # 注意：這裡不更新 last_api_trigger_time，因為那是舊邏輯
+                    # 新邏輯的時間更新會在 speaker.say 被呼叫時由 speaker 內部處理
+                else:
+                    LOGGER.debug(f"[{camera_name}] 人員 {staff_name} 冷卻中 ({cooldown_reason})，跳過語音觸發。")
 
-                # 觸發成功事件 (例如：開門)
-                self.system.state.same_people[self.frame_num] = confidence
-                self.system.state.same_zscore[self.frame_num] = z_score # Sync Z-Score to GlobalState
-                # 更新UI顯示的人員名稱
+                # 更新UI顯示的人員名稱 (不受冷卻影響，確保持續顯示)
                 self._update_display_state(person_id)
                 # 更新最後辨識成功的時間
                 self.last_recognition_time = now
