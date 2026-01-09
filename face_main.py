@@ -321,9 +321,16 @@ class CameraSystem:
 
                         
 
-                        # Get Z-Score from state
+                        # Get Z-Score and matched frame from state
                         z_score = self.system.state.same_zscore[self.frame_num]
-                        self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score)
+                        
+                        # 使用辨識成功當下的那張快照 (防止存到下一幀的側臉)
+                        saved_img = self.system.state.success_frame[self.frame_num]
+                        if saved_img is not None:
+                            self.save_img(saved_img, "face", success_staff_name, confidence, z_score)
+                        else:
+                            # Fallback (雖不應發生，但保險起見)
+                            self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score)
 
 
 
@@ -611,6 +618,8 @@ class GlobalState:
     
     frame_mtcnn_high_res: List[Any] = None # 儲存與偵測同步的高解析度影像快照
 
+    success_frame: List[Any] = None # 儲存辨識成功當下的影像快照 (BGR)
+
     clothes: List[bool] = None
 
     check_time: Dict[str, List[Any]] = None
@@ -680,6 +689,8 @@ class FaceRecognitionSystem:
         self.state.frame_high_res = [None, None]
         
         self.state.frame_mtcnn_high_res = [None, None]
+
+        self.state.success_frame = [None, None]
 
         self.state.clothes = [False, False, False]
 

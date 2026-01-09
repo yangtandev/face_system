@@ -40,6 +40,7 @@ with open(os.path.join(os.path.dirname(__file__), "../config.json"), "r", encodi
 CAMERA = {0: "inCamera", 1: "outCamera"}
 CAM_NAME_MAP = {0: "入口", 1: "出口"}
 POTENTIAL_MISS_RATIO = 0.8
+Z_SCORE_THRESHOLD = 1.5 
 
 test_img = cv2.imread(os.path.join(
     os.path.dirname(__file__), "../other/test_img.jpg"))
@@ -462,7 +463,6 @@ class Comparison:
         """
         last_warmup_time = 0
         dummy_input = tensor_test_img
-        Z_SCORE_THRESHOLD = 1.5 # Z-Score 門檻，最高分需顯著高於平均值 (2.5 通常代表 99% 信心水準)
 
         while not self.stop_threads:
             # 動態調整頻率
@@ -723,7 +723,14 @@ class Comparison:
             if is_reliable:
                 LOGGER.info(log_message)
                 person_id = predicted_id
-                
+
+                # 鎖定辨識成功當下的影像快照 (轉回 BGR 給 cv2 存檔)
+                try:
+                    self.system.state.success_frame[self.frame_num] = cv2.cvtColor(frame_to_use, cv2.COLOR_RGB2BGR)
+                except Exception as e:
+                    LOGGER.error(f"儲存成功快照失敗: {e}")
+
+                # 觸發成功事件 (例如：開門)
                 # [2026-01-09] 針對個人的語音/API冷卻機制 (播完後2秒)
                 # 使用 speaker 的狀態來判斷是否正在播或剛播完
                 speaker = self.system.speaker
