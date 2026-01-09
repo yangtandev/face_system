@@ -462,7 +462,7 @@ class Comparison:
         """
         last_warmup_time = 0
         dummy_input = tensor_test_img
-        Z_SCORE_THRESHOLD = 1.2 # Z-Score 門檻，最高分需顯著高於平均值 (2.5 通常代表 99% 信心水準)
+        Z_SCORE_THRESHOLD = 1.5 # Z-Score 門檻，最高分需顯著高於平均值 (2.5 通常代表 99% 信心水準)
 
         while not self.stop_threads:
             # 動態調整頻率
