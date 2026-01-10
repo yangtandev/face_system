@@ -539,6 +539,11 @@ class Comparison:
                         continue
 
             if face_width < min_face_threshold:
+                # [2026-01-10] 修正：距離不夠時，立刻清除原本的人員顯示，防止誤導
+                # 不管是不是 "Potential Miss"，只要進到這個「過小」的分支，就不應顯示之前的人員名字
+                if self.display_state['person_id'] != 'None':
+                    self._update_display_state('None')
+
                 # --- 新增: 潛在辨識失敗偵測 (Near Miss Detection) ---
                 # 動態調整比率：夜間(18:00-06:00)設為 0.9 以過濾路燈；日間維持 0.8
                 current_potential_ratio = 0.9 if is_night_mode else self.potential_miss_ratio
@@ -610,6 +615,55 @@ class Comparison:
                     frame_to_use = self.system.state.frame_mtcnn[self.frame_num]
                     box_to_use = list(_box)
                     points_to_use = _points.copy()
+                    
+                    # [2026-01-10] 大臉動態 Padding (Virtual Zoom-out)
+                    # 解決貼臉照 (Width > 600) 因畸變與滿版導致的特徵偏移問題
+                    if face_width > 600:
+                        try:
+                            h, w, _ = frame_to_use.shape
+                            
+                            # 目標：讓臉寬佔畫面約 50%
+                            target_size = int(face_width * 2) 
+                            
+                            # 計算需要補的邊框 (Padding)
+                            # 我們將原始影像貼在 target_size 的正中間
+                            pad_top = (target_size - h) // 2
+                            pad_bottom = target_size - h - pad_top
+                            pad_left = (target_size - w) // 2
+                            pad_right = target_size - w - pad_left
+                            
+                            # 防止負數 (如果畫面本身比 target_size 還大...雖然不太可能)
+                            pad_top = max(0, pad_top)
+                            pad_bottom = max(0, pad_bottom)
+                            pad_left = max(0, pad_left)
+                            pad_right = max(0, pad_right)
+                            
+                            # 執行 Padding (使用黑色填充，cv2.BORDER_CONSTANT)
+                            frame_padded = cv2.copyMakeBorder(
+                                frame_to_use, 
+                                pad_top, pad_bottom, pad_left, pad_right, 
+                                cv2.BORDER_CONSTANT, 
+                                value=[0, 0, 0]
+                            )
+                            
+                            # 校正座標：因為原圖平移了，Box 和 Points 也要跟著移
+                            box_to_use[0] += pad_left
+                            box_to_use[1] += pad_top
+                            box_to_use[2] += pad_left
+                            box_to_use[3] += pad_top
+                            
+                            for p in points_to_use:
+                                p[0] += pad_left
+                                p[1] += pad_top
+                                
+                            # 使用處理過的新圖進行後續裁切
+                            frame_to_use = frame_padded
+                            
+                            # LOGGER.debug(f"[{camera_name}] 觸發大臉 Padding: 原始W={face_width}, 新畫布={target_size}x{target_size}")
+                            
+                        except Exception as e:
+                            LOGGER.error(f"大臉 Padding 處理失敗: {e}")
+                            # 失敗則回退使用原圖，不中斷流程
                     
                     frame_image = Image.fromarray(cv2.cvtColor(frame_to_use, cv2.COLOR_BGR2RGB))
                     img_cropped = crop_face_without_forehead(frame_image, box_to_use, points_to_use)
@@ -743,8 +797,13 @@ class Comparison:
                 
                 # 判斷 1: 是否正在播放 (Start > End)
                 if last_start > last_end:
-                    is_cooldown = True
-                    cooldown_reason = "正在播放中"
+                    # [安全機制] 若播放狀態持續超過 10 秒，視為異常(卡死)，強制解除冷卻
+                    if now - last_start > 10.0:
+                         is_cooldown = False
+                         LOGGER.warning(f"[{camera_name}] 偵測到語音狀態卡死 (>10s)，強制解除人員 {staff_name} 的冷卻鎖。")
+                    else:
+                        is_cooldown = True
+                        cooldown_reason = "正在播放中"
                 # 判斷 2: 是否剛播完 (Now - End < 2.0)
                 elif now - last_end < 2.0:
                     is_cooldown = True

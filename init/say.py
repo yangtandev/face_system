@@ -66,14 +66,8 @@ class Say_:
 
         with self.priority_lock:
             # 判斷是否忙碌：正在播 High 或 Normal，或者 Queue 裡還有東西
-            # 注意：queue.qsize() 是近似值，但在單一生產者環境下夠用
             is_busy = (self.current_priority != 0) or (not self.queue.empty())
             current_p = self.current_priority
-
-        # 記錄開始時間 (視為"正在處理")
-        if token:
-            with self.status_lock:
-                self.last_start_time[token] = time.time()
 
         # 邏輯 1: Normal 語音 (提示類 - 如：請靠近、請抬頭)
         if priority == 2:
@@ -104,6 +98,12 @@ class Say_:
                 self._enqueue(text, filename, priority, preempt=False, token=token)
 
     def _enqueue(self, text, filename, priority, preempt=False, token=None):
+        # [2026-01-10 關鍵修正] 只有在真正入隊時才記錄開始時間
+        # 防止「指令被丟棄但 ID 卻被鎖死在正在播放狀態」的 Bug
+        if token:
+            with self.status_lock:
+                self.last_start_time[token] = time.time()
+                
         with self.gen_lock:
             gen = self.generation
         self.queue.put((gen, text, filename, priority, preempt, token))
