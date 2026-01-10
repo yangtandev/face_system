@@ -65,7 +65,9 @@ class Say_:
         self.last_queued_item = (text, now)
 
         with self.priority_lock:
-            is_busy = self.current_priority != 0
+            # 判斷是否忙碌：正在播 High 或 Normal，或者 Queue 裡還有東西
+            # 注意：queue.qsize() 是近似值，但在單一生產者環境下夠用
+            is_busy = (self.current_priority != 0) or (not self.queue.empty())
             current_p = self.current_priority
 
         # 記錄開始時間 (視為"正在處理")
@@ -73,36 +75,32 @@ class Say_:
             with self.status_lock:
                 self.last_start_time[token] = time.time()
 
-        # 邏輯 1: Normal 語音 (提示類)
+        # 邏輯 1: Normal 語音 (提示類 - 如：請靠近、請抬頭)
         if priority == 2:
-            # 如果系統正忙 (不論是 High 或 Normal)，直接丟棄，不排隊
+            # 嚴格獨佔：只要系統有任何聲音在播 (High 或 Normal) 或在排隊，提示音直接閉嘴
             if is_busy:
-                LOGGER.debug(f"語音忙碌，丟棄提示語音: {text}")
+                # LOGGER.debug(f"語音忙碌，丟棄提示語音: {text}")
                 return
-            # 如果閒置，放入佇列
+            # 只有完全閒置時才允許播放
             self._enqueue(text, filename, priority, preempt=False, token=token)
 
-        # 邏輯 2: High 語音 (簽到類)
+        # 邏輯 2: High 語音 (簽到/簽離類)
         elif priority == 1:
-            if current_p == 2:
-                # 正在播 Normal，原本應強制打斷。但為了防止頻繁跳針(震盪)，需檢查間隔
-                if (time.time() - self.last_preempt_time) > 1.5:
-                    LOGGER.info(f"強制中斷提示語音，插播重要訊息: {text}")
-                    self._bump_generation()
-                    self._enqueue(text, filename, priority, preempt=True, token=token)
-                    self.last_preempt_time = time.time()
-                else:
-                    LOGGER.info(f"插播過於頻繁，將訊息轉為排隊: {text}")
-                    self._enqueue(text, filename, priority, preempt=False, token=token)
+            if current_p == 1:
+                # 正在播 High：新來的 High 直接丟棄，不排隊！
+                # 確保語音頻道絕對乾淨，不會有一堆人名在排隊
+                LOGGER.info(f"語音頻道忙碌(High)，丟棄新的重要訊息: {text}")
+                return
+            
+            elif current_p == 2:
+                # 正在播 Normal：殺無赦！直接插播。
+                # 提示音不重要，簽到音最重要
+                LOGGER.info(f"中斷提示語音，插播重要訊息: {text}")
+                self._bump_generation() # 提升版本號，讓背景執行緒知道舊指令已無效
+                self._enqueue(text, filename, priority, preempt=True, token=token)
+            
             else:
-                # 正在播 High 或 閒置 -> 進 Queue 排隊 (High 互不打斷，依序播放)
-                # 限制 Queue 長度，避免堆積過多
-                if self.queue.qsize() >= 2:
-                    try:
-                        self.queue.get_nowait() # 丟棄最舊的
-                        LOGGER.warning("語音佇列過滿，丟棄舊指令")
-                    except:
-                        pass
+                # 閒置或正在排隊 (但 current_p 可能還沒變 1)
                 self._enqueue(text, filename, priority, preempt=False, token=token)
 
     def _enqueue(self, text, filename, priority, preempt=False, token=None):
@@ -124,13 +122,20 @@ class Say_:
         """
         # --- 在背景執行緒中執行一次性初始化 ---
         try:
-            # 嘗試初始化，若失敗不立即退出，留待迴圈內重試
-            # [2026-01-09] 加大 Buffer Size 至 16384 以解決結尾跳幀(回音)問題
-            mixer.init(buffer=16384)
+            # [2026-01-10] 修正：降低 Buffer Size 至 4096 以避免 underrun 與延遲
+            mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=4096)
+            try:
+                mixer.init()
+            except Exception:
+                LOGGER.warning("無法初始化音訊設備，切換至 Dummy Driver (無聲模式)...")
+                os.environ['SDL_AUDIODRIVER'] = 'dummy' # 使用虛擬音效卡
+                mixer.init(buffer=4096)
+
             self.mixer_initialized = True
             LOGGER.info("音訊設備在背景執行緒中初始化成功。")
         except Exception as e:
-            LOGGER.error(f"初次初始化音訊設備失敗 (將嘗試重試): {e}")
+            LOGGER.error(f"音訊設備初始化完全失敗，語音功能將停用: {e}")
+            self.mixer_initialized = False
 
         # --- 主循環 ---
         while not self.stop_threads:
@@ -144,10 +149,12 @@ class Say_:
                     LOGGER.info("執行插播：停止當前播放...")
                     if self.mixer_initialized:
                         try:
-                            mixer.music.stop()
-                            self.force_reinit = True # 標記重置
+                            if mixer.music.get_busy():
+                                mixer.music.stop()
+                                time.sleep(0.1)
                         except Exception as e:
                             LOGGER.error(f"插播停止失敗: {e}")
+                            self.mixer_initialized = False
 
                 # 2. 檢查版本號 (過期指令直接丟棄)
                 # 注意：如果是插播指令本身，它的 gen 應該等於 current generation (因為 _bump_generation 先做)
@@ -169,20 +176,17 @@ class Say_:
                 full_path = os.path.join(self.path, filename)
                 
                 try:
-                    # 3. 音訊子系統檢查與重置 (Lazy Re-init)
-                    # 只有在未初始化、發生錯誤或被強制要求時才執行 init
-                    if not self.mixer_initialized or self.force_reinit:
+                    # 3. 音訊子系統檢查
+                    # 僅在尚未初始化(或上次失敗)時嘗試
+                    if not self.mixer_initialized:
                         try:
-                            if self.mixer_initialized:
-                                mixer.quit()
-                            # [2026-01-09] 加大 Buffer Size 防止跳幀
-                            mixer.init(buffer=16384)
+                            # 嘗試重新初始化
+                            mixer.init()
                             self.mixer_initialized = True
-                            self.force_reinit = False # 重置成功，清除旗標
-                            LOGGER.info("音訊子系統已(重新)初始化。")
+                            LOGGER.info("音訊子系統重新初始化成功。")
                         except Exception as e:
                             LOGGER.error(f"音訊初始化失敗: {e}")
-                            # 稍後重試，跳過本次播放
+                            # 稍後重試
                             time.sleep(1)
                             continue
 
@@ -216,11 +220,23 @@ class Say_:
                     
                     # 等待播放完成或被中斷
                     start_wait = time.time()
-                    while mixer.music.get_busy() and (time.time() - start_wait < 10): 
+                    while True:
+                        try:
+                            if not mixer.music.get_busy():
+                                break
+                        except:
+                            break
+                        
+                        if time.time() - start_wait > 10:
+                            break
+
                         # 檢查是否被插播 (stop 呼叫)
                         with self.gen_lock:
                             if gen != self.generation:
-                                mixer.music.stop()
+                                try:
+                                    mixer.music.stop()
+                                except:
+                                    pass
                                 break
                         time.sleep(0.1)
                     

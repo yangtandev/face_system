@@ -1609,6 +1609,11 @@ class FaceRecognitionSystem:
         在 Qt 事件迴圈中安全地執行關閉程序。
         """
         print("\nShutting down... Closing all windows.")
+        
+        # 明確終止語音模組，確保資源釋放
+        if hasattr(self, 'speaker'):
+            self.speaker.terminate()
+            
         # Closing all windows will trigger their respective closeEvents,
         # which are connected to the `terminate` method of each CameraSystem.
         QApplication.closeAllWindows()
