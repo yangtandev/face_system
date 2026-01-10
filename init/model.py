@@ -575,6 +575,18 @@ class Comparison:
                 
                 continue
 
+            # [2026-01-10] 修正：臉部過大時，因廣角畸變嚴重導致辨識失效
+            # 改為引導使用者後退，且此檢查優先於任何品質評估或特徵提取
+            if face_width >= CONFIG["max_face"]:
+                # LOGGER.info(f"[{camera_name}] 人臉過大 ({face_width}px >= {CONFIG['max_face']}px)，提示使用者後退。")
+                self.system.state.hint_text[self.frame_num] = "請稍微後退"
+                self.system.speaker.say("請稍微後退", "hint_move_back", priority=2)
+                self.hint_clear_time = time.time() + 1.5
+                
+                if self.display_state['person_id'] != 'None':
+                    self._update_display_state('None')
+                continue
+
             # 檢查人臉品質
             # 傳入 box, points 與畫面寬高
             quality_score, quality_msg = self.check_face_quality(_box, _points, frame_w, frame_h)
@@ -615,55 +627,6 @@ class Comparison:
                     frame_to_use = self.system.state.frame_mtcnn[self.frame_num]
                     box_to_use = list(_box)
                     points_to_use = _points.copy()
-                    
-                    # [2026-01-10] 大臉動態 Padding (Virtual Zoom-out)
-                    # 解決貼臉照 (Width > 600) 因畸變與滿版導致的特徵偏移問題
-                    if face_width > 600:
-                        try:
-                            h, w, _ = frame_to_use.shape
-                            
-                            # 目標：讓臉寬佔畫面約 50%
-                            target_size = int(face_width * 2) 
-                            
-                            # 計算需要補的邊框 (Padding)
-                            # 我們將原始影像貼在 target_size 的正中間
-                            pad_top = (target_size - h) // 2
-                            pad_bottom = target_size - h - pad_top
-                            pad_left = (target_size - w) // 2
-                            pad_right = target_size - w - pad_left
-                            
-                            # 防止負數 (如果畫面本身比 target_size 還大...雖然不太可能)
-                            pad_top = max(0, pad_top)
-                            pad_bottom = max(0, pad_bottom)
-                            pad_left = max(0, pad_left)
-                            pad_right = max(0, pad_right)
-                            
-                            # 執行 Padding (使用黑色填充，cv2.BORDER_CONSTANT)
-                            frame_padded = cv2.copyMakeBorder(
-                                frame_to_use, 
-                                pad_top, pad_bottom, pad_left, pad_right, 
-                                cv2.BORDER_CONSTANT, 
-                                value=[0, 0, 0]
-                            )
-                            
-                            # 校正座標：因為原圖平移了，Box 和 Points 也要跟著移
-                            box_to_use[0] += pad_left
-                            box_to_use[1] += pad_top
-                            box_to_use[2] += pad_left
-                            box_to_use[3] += pad_top
-                            
-                            for p in points_to_use:
-                                p[0] += pad_left
-                                p[1] += pad_top
-                                
-                            # 使用處理過的新圖進行後續裁切
-                            frame_to_use = frame_padded
-                            
-                            # LOGGER.debug(f"[{camera_name}] 觸發大臉 Padding: 原始W={face_width}, 新畫布={target_size}x{target_size}")
-                            
-                        except Exception as e:
-                            LOGGER.error(f"大臉 Padding 處理失敗: {e}")
-                            # 失敗則回退使用原圖，不中斷流程
                     
                     frame_image = Image.fromarray(cv2.cvtColor(frame_to_use, cv2.COLOR_BGR2RGB))
                     img_cropped = crop_face_without_forehead(frame_image, box_to_use, points_to_use)
@@ -767,7 +730,7 @@ class Comparison:
             # 更新日誌
             log_message = (
                 f"{log_time} [辨識事件][{camera_name}] 偵測到 {staff_name} (ID: {predicted_id}), "
-                f"信賴度: {confidence:.2%}{quality_info}, Z-Score: {z_score:.2f} [評級: {rating_str}]"
+                f"信賴度: {confidence:.2%}{quality_info}, Z-Score: {z_score:.2f}, Width: {face_width} px [評級: {rating_str}]"
             )
             
             # 策略：只要是被品質扣分導致失敗的（原本分數夠高，但扣完變低），或者成功但有被扣分的，都強制 Log 出來方便除錯
@@ -812,6 +775,7 @@ class Comparison:
                 if not is_cooldown:
                     self.system.state.same_people[self.frame_num] = confidence
                     self.system.state.same_zscore[self.frame_num] = z_score
+                    self.system.state.same_width[self.frame_num] = face_width # 記錄臉寬
                     # 注意：這裡不更新 last_api_trigger_time，因為那是舊邏輯
                     # 新邏輯的時間更新會在 speaker.say 被呼叫時由 speaker 內部處理
                 else:

@@ -291,7 +291,9 @@ class CameraSystem:
 
                     now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0)) # Black for identifying
 
-
+                # [DEBUG] 在人臉框右下角顯示當前臉寬像素值
+                face_w_debug = x2 - x1
+                cv2.putText(now_frame, f"W: {face_w_debug}", (x2 - 120, y2 + 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
 
                 # 觸發簽到/簽離 (API 呼叫)
 
@@ -321,16 +323,17 @@ class CameraSystem:
 
                         
 
-                        # Get Z-Score and matched frame from state
+                        # Get Z-Score, Width and matched frame from state
                         z_score = self.system.state.same_zscore[self.frame_num]
+                        width = self.system.state.same_width[self.frame_num]
                         
                         # 使用辨識成功當下的那張快照 (防止存到下一幀的側臉)
                         saved_img = self.system.state.success_frame[self.frame_num]
                         if saved_img is not None:
-                            self.save_img(saved_img, "face", success_staff_name, confidence, z_score)
+                            self.save_img(saved_img, "face", success_staff_name, confidence, z_score, width)
                         else:
                             # Fallback (雖不應發生，但保險起見)
-                            self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score)
+                            self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score, width)
 
 
 
@@ -516,7 +519,7 @@ class CameraSystem:
 
 
 
-    def save_img(self, img, path, staffname="", conf=0.0, z_score=0.0):
+    def save_img(self, img, path, staffname="", conf=0.0, z_score=0.0, width=0):
 
         dict_={"face":0, "clothes":1}
 
@@ -532,13 +535,13 @@ class CameraSystem:
 
         if time.time()-self.save_img_time[dict_[path]] > 5 or (self.save_name_last != staffname and staffname != ""):
             
-            # Format filename with Confidence (C) and Z-Score (Z)
+            # Format filename with Confidence (C), Z-Score (Z), and Width (W)
             # Conf: 0.9812 -> 98
             # Z-Score: 1.876 -> 1.88
             conf_val = int(conf * 100)
             z_val = f"{z_score:.2f}"
             
-            filename = f"{time_str}_{staffname}_C{conf_val}_Z{z_val}.jpg" if staffname != "" else f"{time_str}.jpg"
+            filename = f"{time_str}_{staffname}_C{conf_val}_Z{z_val}_W{width}.jpg" if staffname != "" else f"{time_str}.jpg"
 
             cv2.imwrite(f"{main_path}/img_log/{path}/{date_str}/{filename}", img)
 
@@ -607,6 +610,8 @@ class GlobalState:
     same_people: List[float] = None
 
     same_zscore: List[float] = None # 儲存辨識成功時的 Z-Score
+    
+    same_width: List[int] = None # [2026-01-10] 儲存辨識成功時的臉寬 (Width)
 
     same_class: List[str] = None
 
@@ -679,6 +684,8 @@ class FaceRecognitionSystem:
         self.state.same_people = [0.0] * self.n_camera
 
         self.state.same_zscore = [0.0] * self.n_camera
+        
+        self.state.same_width = [0] * self.n_camera
 
         self.state.same_class = ["None"] * self.n_camera
 

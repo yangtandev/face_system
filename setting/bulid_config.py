@@ -40,6 +40,7 @@ default_config = {
     "Clothes_detection": False,
     "Clothes_show": False,
     "min_face": 95,
+    "max_face": 700,
     "test_mod": False,
     "auto_open": False,
     "full_screen": False,

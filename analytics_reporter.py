@@ -63,8 +63,9 @@ def parse_recognition_log(target_date: date):
     log_pattern = re.compile(
         r".*?\[辨識事件\].*?ID: (.*?)\).*?"
         r"信賴度: (.*?)%.*?"
-        r"Z-Score: (.*?)\s"
-        r"\[評級: (.*?)(\s.*?)?\]"
+        r"Z-Score: (.*?),"
+        r".*?Width: (.*?) px"
+        r".*?\[評級: (.*?)(\s.*?)?\]"
     )
     parsed_events = []
     try:
@@ -73,11 +74,12 @@ def parse_recognition_log(target_date: date):
                 match = log_pattern.search(line)
                 if match:
                     try:
-                        staff_id, confidence, z_score, rating = match.groups()[:4]
+                        staff_id, confidence, z_score, width, rating = match.groups()[:5]
                         parsed_events.append({
                             "staff_id": staff_id.strip(),
                             "confidence": float(confidence.strip()),
                             "z_score": float(z_score.strip()),
+                            "width": int(width.strip()),
                             "rating": rating.strip().split(" ")[0]
                         })
                     except (ValueError, IndexError):
@@ -238,6 +240,8 @@ def calculate_statistics(log_events, staff_id_to_name, valid_staff_ids):
     """
     print("Calculating statistics...")
     overall_stats = defaultdict(int)
+    overall_stats['raw_reliable_events'] = [] # Store raw events for later analysis (e.g. width stats)
+    
     per_person_stats = defaultdict(lambda: {
         'name': '',
         'reliable_recognitions': [],
@@ -259,7 +263,9 @@ def calculate_statistics(log_events, staff_id_to_name, valid_staff_ids):
                 overall_stats['true_positive_count'] += 1
             else:
                 overall_stats['false_positive_count'] += 1
+            
             per_person_stats[staff_id]['reliable_recognitions'].append(event)
+            overall_stats['raw_reliable_events'].append(event) # Add to raw list
         elif rating == "模糊":
             overall_stats['ambiguous_count'] += 1
             per_person_stats[staff_id]['ambiguous_count'] += 1
@@ -410,6 +416,7 @@ def write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, 
     # 顯示當前設定
     in_min = min_face_settings.get('in', 'N/A')
     out_min = min_face_settings.get('out', 'N/A')
+    max_face = min_face_settings.get('max', 'N/A')
     
     report_lines.append(f"\n目前設定 (Current Settings):")
     
@@ -426,13 +433,15 @@ def write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, 
         out_intent_min = int(out_min * 0.8)
         out_intent_str = f"{out_intent_min} ~ {out_min} px"
     report_lines.append(f"  - 出口 (Out/Cam1): min_face = {out_min} px | 意圖區間 (Intent Zone) ≈ {out_intent_str}")
+    
+    report_lines.append(f"  - 全域上限 (Max Face): {max_face} px (超過此值將提示後退)")
 
     report_lines.append(f"\n[潛在失敗偵測] (Near Misses): {potential_miss_count} 次")
     report_lines.append(f"  * 定義：人臉寬度介於該鏡頭 'min_face' 的 80%~100% 之間。")
     report_lines.append("  * 建議：若此數值過高，請考慮降低對應鏡頭的 'min_face' 設定。")
 
     if width_stats:
-        report_lines.append(f"\n[人臉寬度分佈統計] (按出入口區分):")
+        report_lines.append(f"\n[偵測人臉寬度分佈] (含失敗/路人/所有偵測):")
         
         def sort_key(k):
             try:
@@ -456,10 +465,32 @@ def write_text_report(overall_stats, per_person_stats, perf_stats, width_stats, 
                 marker = " [有效]"
                 if bin_start < cam_threshold:
                     marker = " [低於目前門檻]"
+                elif isinstance(max_face, int) and bin_start >= max_face:
+                    marker = " [高於目前門檻]"
                     
                 report_lines.append(f"    - {bin_range} px: {count} 次{marker}")
     else:
-        report_lines.append("\n[人臉寬度分佈統計]: 無數據 (尚未累積滿一小時或無人經過)")
+        report_lines.append("\n[偵測人臉寬度分佈]: 無數據 (尚未累積滿一小時或無人經過)")
+        
+    # --- 新增: 成功辨識的臉寬分佈 (Reliable Width Stats) ---
+    # 統計所有 rating="可靠" 的事件其 width 分佈 (每 50px 一區間)
+    reliable_widths = [e['width'] for e in overall_stats.get('raw_reliable_events', []) if 'width' in e]
+    
+    if reliable_widths:
+        width_bins = defaultdict(int)
+        for w in reliable_widths:
+            bin_start = (w // 50) * 50
+            bin_key = f"{bin_start}-{bin_start+49}"
+            width_bins[bin_key] += 1
+            
+        report_lines.append(f"\n[成功辨識臉寬分佈] (Successful Recognition Widths):")
+        report_lines.append(f"  * 統計僅包含 '可靠' 評級的事件。")
+        
+        sorted_bins = sorted(width_bins.items(), key=lambda x: int(x[0].split('-')[0]))
+        for bin_range, count in sorted_bins:
+            report_lines.append(f"    - {bin_range} px: {count} 次")
+    else:
+        report_lines.append(f"\n[成功辨識臉寬分佈]: 無可靠辨識數據。")
     # ------------------------------------
 
     report_lines.append("\n" + "-"*80)
@@ -667,12 +698,13 @@ def main():
     potential_miss_count = parse_potential_misses(target_date)
     network_stats = parse_network_issues(target_date)
     
-    # Extract min_face settings for reporting
-    min_face_settings = {'in': 'N/A', 'out': 'N/A'}
+    # Extract min_face/max_face settings for reporting
+    min_face_settings = {'in': 'N/A', 'out': 'N/A', 'max': 'N/A'}
     if config:
         try:
             min_face_settings['in'] = config.get("inCamera", {}).get("min_face", "N/A")
             min_face_settings['out'] = config.get("outCamera", {}).get("min_face", "N/A")
+            min_face_settings['max'] = config.get("max_face", "N/A")
         except: pass
 
     if not recognition_events and not performance_events and not width_stats and potential_miss_count == 0 and not network_stats:
