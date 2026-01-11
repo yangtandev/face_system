@@ -39,9 +39,13 @@ default_config = {
     "door": "0",
     "Clothes_detection": False,
     "Clothes_show": False,
-    "min_face": 95,
-    "max_face": 700,
-    "test_mod": False,
+    "min_face":140,
+    "max_face":700,
+    "pitch_threshold": {
+        "up": 25,
+        "down": -10
+    },
+    "test_mod":False,
     "auto_open": False,
     "full_screen": False,
     "excel_api_enabled": False

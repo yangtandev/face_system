@@ -3,12 +3,23 @@ import mediapipe as mp
 import mediapipe.python.solutions as mp_solutions
 import numpy as np
 from collections import deque
+import json
+import os
 
 class MediaPipeHandler:
     """
     MediaPipe Face Mesh 封裝器，提供人臉偵測、關鍵點定位、以及視線 (Gaze) 檢查功能。
     """
     def __init__(self, static_image_mode=True, max_num_faces=1, min_detection_confidence=0.4):
+        # 載入設定檔以取得動態 Pitch 門檻
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), "../config.json")
+            with open(config_path, "r", encoding="utf-8") as f:
+                self.config = json.load(f)
+        except Exception as e:
+            print(f"Warning: Failed to load config.json in MediaPipeHandler: {e}")
+            self.config = {}
+
         self.mp_face_mesh = mp_solutions.face_mesh
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             static_image_mode=static_image_mode,
@@ -113,7 +124,7 @@ class MediaPipeHandler:
 
     def check_gaze(self, index=0):
         if not hasattr(self, 'last_results') or not self.last_results.multi_face_landmarks:
-            return True, "No Data"
+            return True, "No Data", (0, 0, 0)
         landmarks = self.last_results.multi_face_landmarks[index]
         w, h = self.last_w, self.last_h
         
@@ -122,22 +133,35 @@ class MediaPipeHandler:
         avg_h, l_h, r_h, avg_v, l_v, r_v = self._calculate_gaze_ratio(landmarks, w, h)
         self.gaze_history.append((avg_h, l_h, r_h, avg_v, l_v, r_v))
         s_avg_h, s_l_h, s_r_h, s_avg_v, s_l_v, s_r_v = np.mean(self.gaze_history, axis=0)
+        
+        pose_tuple = (pitch, yaw, roll)
+
+        # 取得動態 Pitch 門檻 (預設: 抬頭25, 低頭-10)
+        pitch_up_limit = self.config.get("pitch_threshold", {}).get("up", 25)
+        pitch_down_limit = self.config.get("pitch_threshold", {}).get("down", -10)
+
+        # 1. 眼睛異常檢查 (閉眼/特徵崩潰) - 優先攔截
+        # 正常張眼時 Avg V 約為 0.2~0.8。若 > 3.0 代表上下眼皮重疊導致數值爆炸。
+        if s_avg_v > 3.0:
+            return False, "眼睛閉合", pose_tuple
 
         # 2. 垂直判定 (Chin Policy) - 優先順序最高，攔截微小偏移
         # [抬頭攔截]
-        if s_avg_v > 4.50 or pitch > 15:
-            return False, "抬頭"
+        if pitch > pitch_up_limit:
+            return False, "抬頭", pose_tuple
             
-        # [低頭攔截] - 包含 2.34 (004樣本) 與 -17.2 (Pitch)
-        if s_avg_v > 2.20 or s_avg_v < 0.50 or pitch < -15:
-            return False, "低頭"
+        # [低頭攔截]
+        if pitch < pitch_down_limit:
+            return False, "低頭", pose_tuple
 
         # 3. 側臉與歪頭判定 (Yaw/Roll)
         if abs(yaw) > 25 or abs(roll) > 20:
-            return False, "未正視鏡頭"
+            return False, "未正視鏡頭", pose_tuple
 
         # 4. 眼睛視線判定 (斜視 - 瞬時攔截)
-        if abs(l_h - r_h) > 0.08 or not (0.35 < s_avg_h < 0.55):
-            return False, "斜視"
+        # [V2] 修正: Diff 使用瞬時值 (abs(l_h - r_h)) 避免平滑化掩蓋斜視
+        # [V4] 修正: Avg 放寬至 0.30 ~ 0.70，Diff 放寬至 0.12
+        if abs(l_h - r_h) > 0.12 or not (0.30 < s_avg_h < 0.70):
+            return False, "斜視", pose_tuple
         
-        return True, "Pass"
+        return True, "Pass", pose_tuple

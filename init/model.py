@@ -119,13 +119,27 @@ class Detector:
                                 box = None
                             else:
                                 box = [x1, y1, x2, y2]
-                                # 存入系統以便 Comparison 呼叫 check_gaze
+                                # [2026-01-11 Fix] 強制同步計算 Gaze，避免 Comparison 線程讀到舊的 State
+                                # 在此時計算，mp_handler.last_results 必然對應當前這幀 new_frame
+                                g_pass, g_msg, g_pose = self.mp_handler.check_gaze(0)
+                                self.system.state.gaze_status[self.frame_num] = (g_pass, g_msg)
+                                self.system.state.head_pose[self.frame_num] = g_pose
+                                
+                                # 存入系統以便 Comparison 呼叫 (雖然現在 Comparison 改讀 status 了)
                                 self.system.mp_detectors[self.frame_num] = self.mp_handler
+                    else:
+                        self.system.state.gaze_status[self.frame_num] = None
+                        self.system.state.head_pose[self.frame_num] = None
 
                     self.system.state.max_box[self.frame_num] = box
                     self.system.state.max_points[self.frame_num] = points
                     self.system.state.frame_mtcnn[self.frame_num] = new_frame
                     self.system.state.frame_mtcnn_high_res[self.frame_num] = new_high_res
+                    
+                    # [2026-01-11 Fix] 原子打包寫入，解決 Race Condition
+                    g_status = self.system.state.gaze_status[self.frame_num]
+                    self.system.state.frame_data[self.frame_num] = (new_frame, g_status, box, points)
+                    
                     last_box = box
                     last_points = points
                     last_time = time.time()
@@ -234,7 +248,7 @@ class Comparison:
 
         self.last_api_trigger_time = {} # 記錄每個人員上次觸發API/語音的時間，用於防止短時間重複播報
 
-        self.DISPLAY_STATE_HOLD_SECONDS = 3  # 辨識成功後，名稱顯示的持續時間
+        self.DISPLAY_STATE_HOLD_SECONDS = 2  # 辨識成功後，名稱顯示的持續時間
         self.CONFIDENCE_THRESHOLD = 0.7      # 可靠辨識的信賴度門檻 (員工)
         self.VISITOR_CONF_THRESHOLD = 0.5    # 訪客辨識的信賴度門檻 (低於此值為訪客)
 
@@ -278,7 +292,7 @@ class Comparison:
             LOGGER.error(f"儲存潛在失敗截圖時發生錯誤: {e}")
             return None
 
-    def check_face_quality(self, box, points, frame_w, frame_h):
+    def check_face_quality(self, box, points, frame_w, frame_h, gaze_status):
         """
         評估人臉品質並計算懲罰係數。
         
@@ -309,15 +323,16 @@ class Comparison:
         # ---------------------------------------------------------
         # 3. 3D 姿態與視線檢查 (Gaze & Pose Check) - 核心邏輯
         # ---------------------------------------------------------
-        # [2026-01-11] 全面移交給 MediaPipeHandler (PnP + Gaze)
+        # [2026-01-11 Fix] 直接使用傳入的同步狀態，解決影像與判定錯位問題
         face_w = max(10, box[2] - box[0])
         if face_w > 100:
-            mp_handler = self.system.mp_detectors.get(self.frame_num)
-            if mp_handler:
-                is_looking, gaze_msg = mp_handler.check_gaze(0)
+            if gaze_status:
+                is_looking, gaze_msg = gaze_status
                 if not is_looking:
-                    # 直接回傳具體的錯誤訊息 (例如: "Head: 歪頭", "Eye V: Down")
                     return 0.0, f"{gaze_msg}"
+            else:
+                # [2026-01-11 Fix] 若無 Gaze 狀態 (可能因 Race Condition 被清空)，嚴格禁止放行
+                return 0.0, "Gaze Status Missing"
 
         # ---------------------------------------------------------
         # 4. 臉部區域清晰度檢查 (ROI Blur Detection)
@@ -374,14 +389,22 @@ class Comparison:
                now - self.display_state['last_update'] > self.DISPLAY_STATE_HOLD_SECONDS:
                 self._update_display_state('None')
 
-            # Check if we have a detected face
-            _box = self.system.state.max_box[self.frame_num]
-            _points = self.system.state.max_points[self.frame_num]
-            if _box is None or _points is None or self.system.state.frame_mtcnn[self.frame_num] is None:
+            # [2026-01-11 Fix] 原子讀取打包數據
+            # 確保 影像(frame), 狀態(gaze), 位置(box) 來自同一時間點 (Snapshot)
+            data_package = self.system.state.frame_data[self.frame_num]
+            if data_package is None:
+                continue
+                
+            _frame, _gaze_status, _box, _points = data_package
+            
+            # 使用解包出來的 frame，而不是去讀可能已經被覆蓋的 system.state.frame_mtcnn
+            self.system.state.frame_mtcnn[self.frame_num] = _frame # 為了相容其他可能讀取這欄位的地方(如UI?)
+            
+            if _box is None or _points is None or _frame is None:
                 continue
             
             # 取得畫面尺寸 (用於置中與邊界檢查)
-            frame_curr = self.system.state.frame_mtcnn[self.frame_num]
+            frame_curr = _frame
             frame_h, frame_w, _ = frame_curr.shape
             
             camera_name = CAM_NAME_MAP.get(self.frame_num, f"Cam {self.frame_num}")
@@ -404,15 +427,13 @@ class Comparison:
 
             # [2026-01-08 夜間模式全域過濾]
             # 若為夜間 (18:00-06:00)，在進行任何品質或大小檢查前，先驗證「像不像人」
-            # 這能有效阻擋尺寸忽大忽小的路燈光暈，避免誤觸 "請靠近" 或 "請抬頭"
             current_hour = datetime.now(self.TIMEZONE).hour
             is_night_mode = (current_hour >= 18 or current_hour < 6)
             
             # 提取特徵向量 (為了夜間檢查或後續辨識)
-            # 為了避免重複提取，這裡先統一做一次
             current_face_vec = None
             try:
-                frame_to_use = self.system.state.frame_mtcnn[self.frame_num]
+                frame_to_use = _frame
                 box_to_use = list(_box)
                 points_to_use = _points.copy()
                 frame_image = Image.fromarray(cv2.cvtColor(frame_to_use, cv2.COLOR_BGR2RGB))
@@ -430,69 +451,56 @@ class Comparison:
                 if self.system.state.ann_index and self.system.state.ann_index.index.ntotal > 0:
                     dists, _ = self.system.state.ann_index.search(current_face_vec, k=1)
                     if dists[0] < 0.4:
-                        # 相似度太低，認定為雜訊 (路燈)，完全忽略
-                        # LOGGER.debug(f"[{camera_name}][夜間全域過濾] 忽略雜訊 (寬度: {face_width}, 相似度: {dists[0]:.2f})")
                         continue
 
+            # [2026-01-11] 判斷是否處於 "辨識成功後的顯示保持期"
+            is_staff_displaying = (
+                self.display_state['person_id'] != 'None' and 
+                self.display_state['person_id'] != '__VISITOR__' and
+                (now - self.display_state['last_update'] < self.DISPLAY_STATE_HOLD_SECONDS)
+            )
+
             if face_width < min_face_threshold:
-                # [2026-01-10] 修正：距離不夠時，立刻清除原本的人員顯示，防止誤導
-                # 不管是不是 "Potential Miss"，只要進到這個「過小」的分支，就不應顯示之前的人員名字
-                if self.display_state['person_id'] != 'None':
+                if self.display_state['person_id'] != 'None' and not is_staff_displaying:
                     self._update_display_state('None')
 
-                # --- 新增: 潛在辨識失敗偵測 (Near Miss Detection) ---
-                # 動態調整比率：夜間(18:00-06:00)設為 0.9 以過濾路燈；日間維持 0.8
-                current_potential_ratio = 0.9 if is_night_mode else self.potential_miss_ratio
-                potential_threshold = min_face_threshold * current_potential_ratio
+                potential_threshold = min_face_threshold * self.potential_miss_ratio
                 
-                # 如果寬度落在 [min_face * ratio, min_face) 區間，視為有意圖但失敗
                 if face_width >= potential_threshold:
-                    # 限流: 同一鏡頭 3 秒內只記錄一次，避免洗版
                     if now - self.last_potential_miss_log_time > 3:
-                        
-                        # 使用當前原生畫面截圖
-                        snapshot = self.system.state.frame_mtcnn[self.frame_num]
-                            
+                        snapshot = _frame
                         saved_path = "無影像"
                         if snapshot is not None:
                             saved_path = self._save_potential_miss_image(snapshot, face_width, min_face_threshold, camera_name)
                             
-                        LOGGER.info(f"[{camera_name}][潛在失敗] 偵測到人臉但過小 (寬度: {face_width}, 門檻: {min_face_threshold}) - 已存檔: {saved_path}")
+                        LOGGER.info(f"[{camera_name}][潛在失敗] 偵測到人臉但過小 (寬度: {face_width}) - 已存檔: {saved_path}")
                         self.last_potential_miss_log_time = now
                         
-                        # 設定 UI 提示
-                        self.system.state.hint_text[self.frame_num] = "請靠近鏡頭"
-                        self.hint_clear_time = now + 2.0
-
-                        # --- 新增: 語音提示 (若有簽到語音正在播或排隊則自動放棄) ---
-                        # Priority=2 (Normal)，若忙碌會自動丟棄，無需手動計時 CD 或簽到冷卻
-                        self.system.speaker.say("請靠近鏡頭", "hint_closer", priority=2)
-                        self.last_hint_speak_time = now
+                        if not is_staff_displaying:
+                            self.system.state.hint_text[self.frame_num] = "請靠近鏡頭"
+                            self.hint_clear_time = now + 2.0
+                            self.system.speaker.say("請靠近鏡頭", "hint_closer", priority=2)
                 
                 continue
 
-            # [2026-01-10] 修正：臉部過大時，因廣角畸變嚴重導致辨識失效
-            # 改為引導使用者後退，且此檢查優先於任何品質評估或特徵提取
             if face_width >= CONFIG["max_face"]:
-                # LOGGER.info(f"[{camera_name}] 人臉過大 ({face_width}px >= {CONFIG['max_face']}px)，提示使用者後退。")
-                self.system.state.hint_text[self.frame_num] = "請稍微後退"
-                self.system.speaker.say("請稍微後退", "hint_move_back", priority=2)
-                self.hint_clear_time = time.time() + 1.5
-                
-                if self.display_state['person_id'] != 'None':
-                    self._update_display_state('None')
+                if not is_staff_displaying:
+                    self.system.state.hint_text[self.frame_num] = "請稍微後退"
+                    self.system.speaker.say("請稍微後退", "hint_move_back", priority=2)
+                    self.hint_clear_time = time.time() + 1.5
+                    if self.display_state['person_id'] != 'None':
+                        self._update_display_state('None')
                 continue
 
-            # 檢查人臉品質
-            # 傳入 box, points 與畫面寬高
-            quality_score, quality_msg = self.check_face_quality(_box, _points, frame_w, frame_h)
+            # 檢查人臉品質 (同步版)
+            quality_score, quality_msg = self.check_face_quality(_box, _points, frame_w, frame_h, _gaze_status)
             
-            # 若品質不達標 (Score=0)，記錄原因並跳過
             if quality_score == 0.0:
-                 # 這裡強制 Log 過濾原因
+                 if is_staff_displaying:
+                     continue # 免死金牌
+
                  LOGGER.info(f"[{camera_name}][品質過濾] {quality_msg}")
                  
-                 # 根據原因給出明確的 UI 提示 (Actionable Hint)
                  if "低頭" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "請抬頭"
                      self.system.speaker.say("請抬頭", "hint_look_up", priority=2)
@@ -512,100 +520,60 @@ class Comparison:
                  self.hint_clear_time = now + 1.0
                  continue
 
-            # 提取人臉特徵向量 (若前面尚未提取成功)
             if current_face_vec is None:
                 try:
                     comparison_start_time = time.monotonic()
-                    
-                    frame_to_use = self.system.state.frame_mtcnn[self.frame_num]
+                    frame_to_use = _frame
                     box_to_use = list(_box)
                     points_to_use = _points.copy()
-                    
                     frame_image = Image.fromarray(cv2.cvtColor(frame_to_use, cv2.COLOR_BGR2RGB))
                     img_cropped = crop_face_without_forehead(frame_image, box_to_use, points_to_use)
                     face_embedding_list = self.system.resnet(img_cropped.unsqueeze(0))
-
                     if face_embedding_list is None or len(face_embedding_list) == 0:
-                        LOGGER.warning(f"[{camera_name}] 特徵提取回傳空值 (ResNet Output is None)")
                         continue
                     current_face_vec = face_embedding_list[0].detach().numpy()
                 except Exception as e:
                     LOGGER.error(f"[ERROR][{camera_name}] 臉部特徵提取失敗: {e}")
                     continue
             else:
-                 comparison_start_time = time.monotonic() # 若已提取，只需重設計時
+                 comparison_start_time = time.monotonic()
 
-            # 進行預測與信賴度計算 (Z-Score 離群值分析)
             try:
-                # 檢查 AnnIndex 是否準備就緒
                 if self.system.state.ann_index is None or self.system.state.ann_index.index is None or self.system.state.ann_index.index.ntotal == 0:
-                    LOGGER.warning(f"[{camera_name}] Faiss 索引未準備就緒或為空，跳過比對。")
                     predicted_id = "None"
                     confidence = 0.0
                     z_score = 0.0
-                    top_k_similarities = np.array([])
-                    comparison_duration = time.monotonic() - comparison_start_time
-                    num_people_in_index = 0
                 else:
-                    # 使用 Faiss 進行搜尋 (k=5 獲取前5個最相似結果)
-                    # Faiss returns Inner Product (cosine similarity for normalized vectors)
                     distances, faiss_person_ids = self.system.state.ann_index.search(current_face_vec, k=min(5, self.system.state.ann_index.index.ntotal))
-
                     if faiss_person_ids is None or len(faiss_person_ids) == 0:
-                        predicted_id = "None"
-                        confidence = 0.0
-                        z_score = 0.0
-                        top_k_similarities = np.array([])
+                        predicted_id = "None"; confidence = 0.0; z_score = 0.0
                     else:
-                        # Store all top-k similarities for Z-score calculation
                         top_k_similarities = np.array(distances)
-                        
                         best_match_id = faiss_person_ids[0]
                         predicted_id = best_match_id
-                        max_similarity = distances[0] # The highest cosine similarity
-                        raw_confidence = max_similarity
-                        
-                        # 套用品質懲罰
+                        raw_confidence = distances[0]
                         confidence = raw_confidence * quality_score
-
-                        # Z-Score 離群值分析 (使用 top-k 結果)
                         z_score = 0.0
-                        if len(top_k_similarities) > 1: # 至少需要兩個結果來計算標準差
+                        if len(top_k_similarities) > 1:
                             mean_score = np.mean(top_k_similarities)
                             std_dev_score = np.std(top_k_similarities)
-
                             if std_dev_score > 0:
-                                z_score = (raw_confidence - mean_score) / std_dev_score # Z-Score 用原始分數算較準
-                            else: # 所有分數都相同，若分數高且達門檻，視為通過
+                                z_score = (raw_confidence - mean_score) / std_dev_score
+                            else:
                                 z_score = Z_SCORE_THRESHOLD if confidence >= self.CONFIDENCE_THRESHOLD else 0
-                        else: # 只有一個結果時，無法計算 Z-score，預設為通過（若信賴度達標）
+                        else:
                             z_score = Z_SCORE_THRESHOLD if confidence >= self.CONFIDENCE_THRESHOLD else 0
-                    
-                    comparison_duration = time.monotonic() - comparison_start_time
-                    num_people_in_index = self.system.state.ann_index.index.ntotal if self.system.state.ann_index.index else 0
-                
-                # Add structured performance logging
-                perf_data = {
-                    "type": "comparison",
-                    "duration_sec": comparison_duration,
-                    "person_id": predicted_id,
-                    "num_compared": num_people_in_index,
-                    "camera_name": camera_name,
-                    "timestamp": datetime.now(self.TIMEZONE).isoformat()
-                }
-                PERF_LOGGER.info(json.dumps(perf_data))
-
             except Exception as e:
-                LOGGER.error(f"[ERROR][{camera_name}] 預測或信賴度計算失敗: {e}")
+                LOGGER.error(f"[ERROR][{camera_name}] 預測失敗: {e}")
                 continue
 
             # 標記每一次辨識事件（無論成功與否）
             log_time = datetime.now(
                 self.TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')
-            staff_name = self.system.state.features_dict.get(
-                "id_name", {}).get(predicted_id, "未知")
+
+            staff_name = self.system.state.features_dict.get("id_name", {}).get(predicted_id, "未知")
             
-            # 新增：決定辨識品質評級
+            # [2026-01-11 Fix] 補回遺漏的 Log 訊息定義
             is_reliable = confidence >= self.CONFIDENCE_THRESHOLD and z_score >= Z_SCORE_THRESHOLD
             is_visitor = confidence < self.VISITOR_CONF_THRESHOLD
             
@@ -615,82 +583,50 @@ class Comparison:
             elif is_visitor:
                 rating_str = "訪客 (Visitor)"
             
-            # 格式化品質資訊 (若有懲罰才顯示細節)
             quality_info = ""
             if quality_score < 1.0:
                 quality_info = f" (原:{raw_confidence:.2%}, 品質:{quality_score:.2f} {quality_msg})"
 
-            # 更新日誌
             log_message = (
                 f"{log_time} [辨識事件][{camera_name}] 偵測到 {staff_name} (ID: {predicted_id}), "
                 f"信賴度: {confidence:.2%}{quality_info}, Z-Score: {z_score:.2f}, Width: {face_width} px [評級: {rating_str}]"
             )
             
-            # 策略：只要是被品質扣分導致失敗的（原本分數夠高，但扣完變低），或者成功但有被扣分的，都強制 Log 出來方便除錯
-            is_penalized_failure = (raw_confidence >= self.CONFIDENCE_THRESHOLD) and (confidence < self.CONFIDENCE_THRESHOLD)
-            
-            # 根據評級決定是否為有效辨識
             if is_reliable:
-                LOGGER.info(log_message)
                 person_id = predicted_id
-
-                # 鎖定辨識成功當下的影像快照 (直接使用 BGR，無需轉換)
+                self.system.state.hint_text[self.frame_num] = "" # 畫面優先
                 try:
-                    self.system.state.success_frame[self.frame_num] = frame_to_use.copy()
-                except Exception as e:
-                    LOGGER.error(f"儲存成功快照失敗: {e}")
+                    self.system.state.success_frame[self.frame_num] = _frame.copy()
+                except:
+                    pass
 
-                # 觸發成功事件 (例如：開門)
-                # [2026-01-09] 針對個人的語音/API冷卻機制 (播完後2秒)
-                # 使用 speaker 的狀態來判斷是否正在播或剛播完
                 speaker = self.system.speaker
                 is_cooldown = False
-                cooldown_reason = ""
-                
                 with speaker.status_lock:
                     last_start = speaker.last_start_time.get(person_id, 0)
                     last_end = speaker.last_end_time.get(person_id, 0)
                 
-                # 判斷 1: 是否正在播放 (Start > End)
-                if last_start > last_end:
-                    # [安全機制] 若播放狀態持續超過 10 秒，視為異常(卡死)，強制解除冷卻
-                    if now - last_start > 10.0:
-                         is_cooldown = False
-                         LOGGER.warning(f"[{camera_name}] 偵測到語音狀態卡死 (>10s)，強制解除人員 {staff_name} 的冷卻鎖。")
-                    else:
-                        is_cooldown = True
-                        cooldown_reason = "正在播放中"
-                # 判斷 2: 是否剛播完 (Now - End < 2.0)
+                if last_start > last_end and now - last_start < 10.0:
+                    is_cooldown = True
                 elif now - last_end < 2.0:
                     is_cooldown = True
-                    cooldown_reason = f"剛播完 (剩餘 {2.0 - (now - last_end):.1f}s)"
                 
                 if not is_cooldown:
                     self.system.state.same_people[self.frame_num] = confidence
                     self.system.state.same_zscore[self.frame_num] = z_score
-                    self.system.state.same_width[self.frame_num] = face_width # 記錄臉寬
-                    # 注意：這裡不更新 last_api_trigger_time，因為那是舊邏輯
-                    # 新邏輯的時間更新會在 speaker.say 被呼叫時由 speaker 內部處理
-                else:
-                    LOGGER.debug(f"[{camera_name}] 人員 {staff_name} 冷卻中 ({cooldown_reason})，跳過語音觸發。")
+                    self.system.state.same_width[self.frame_num] = face_width
 
-                # 更新UI顯示的人員名稱 (不受冷卻影響，確保持續顯示)
                 self._update_display_state(person_id)
-                # 更新最後辨識成功的時間
                 self.last_recognition_time = now
-            elif is_penalized_failure:
-                 # 這是關鍵：原本可以過，但因為側臉被擋下來的案例 -> 強制 Log
-                 LOGGER.info(f"[側臉攔截] {log_message}")
             elif is_visitor:
                  LOGGER.info(log_message)
                  # 標記為訪客，但不觸發打卡
                  self.system.state.same_people[self.frame_num] = 0.0
                  self._update_display_state("__VISITOR__")
-            else: # Ambiguous Case (非扣分導致的普通模糊)
-                 # LOGGER.info(log_message) # 可選：是否要全開 Log
-                 pass
+            else:
+                 # Ambiguous Case: 信賴度不足 (0.5~0.7)，記錄 Log 以供除錯
+                 LOGGER.info(log_message)
 
-            # 模型暖機
             if time.time() - last_warmup_time > 10 and self.frame_num == 0:
                 try:
                     _ = self.system.resnet(dummy_input)
