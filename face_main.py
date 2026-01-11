@@ -3,6 +3,10 @@ import time, threading, queue, json, os, subprocess
 import paho.mqtt.client as mqtt
 import sys
 import termios
+import warnings
+
+# Suppress Protobuf deprecation warnings from MediaPipe
+warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
 
 from models import mtcnn, inception_resnet_v1
 from PIL import Image, ImageDraw, ImageFont

@@ -116,6 +116,19 @@ sudo apt-get update && sudo apt-get install -y mosquitto mosquitto-clients && su
 **驗證安裝：**
 安裝完成後，您可以使用 `systemctl status mosquitto` 檢查服務狀態，應顯示為 `active (running)`。
 
+### 5. 安裝系統音訊播放器 (mpg123)
+
+本系統利用系統級播放器 `mpg123` 來提供流暢且低延遲的語音播報。這能確保在 MediaPipe 高負載運算時，語音依然清晰且不影響 UI 效能。
+
+執行以下指令安裝：
+
+```bash
+sudo apt-get update && sudo apt-get install -y mpg123
+```
+
+**驗證安裝：**
+安裝完成後，您可以執行 `mpg123 --version` 確認是否安裝成功。
+
 ## 執行應用程式
 
 完成所有設定後，您可以使用以下命令來啟動主程式：
