@@ -295,10 +295,6 @@ class CameraSystem:
 
                     now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0)) # Black for identifying
 
-                # [DEBUG] 在人臉框右下角顯示當前臉寬像素值
-                face_w_debug = x2 - x1
-                cv2.putText(now_frame, f"W: {face_w_debug}", (x2 - 120, y2 + 40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
-
                 # 觸發簽到/簽離 (API 呼叫)
 
                 if self.system.state.same_people[self.frame_num] > 0:
