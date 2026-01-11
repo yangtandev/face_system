@@ -14,7 +14,7 @@ import pytz
 import json
 from PIL import Image
 from function import crop_face_without_forehead
-
+from init.mediapipe_handler import MediaPipeHandler # 新增
 
 @nb.jit
 def cosine_similarity(vec1, vec2):
@@ -56,30 +56,20 @@ class Detector:
 
     def __init__(self, frame_num, system):
         """
-        初始化 Detector 實例並啟動背景執行緒。
-
-        Parameters:
-        frame_num (int): 攝影機編號(0=進入, 1=離開)
-        system (object): 全域系統狀態物件，包含 .state, .mtcnn, .model_clothes
+        使用 MediaPipe 替代 MTCNN。
         """
         self.system = system
         self.frame_num = frame_num
         self.TIMEZONE = pytz.timezone('Asia/Taipei')
         self.stop_threads = False
-        self.last_face_time = 0       # 最後一次偵測到人臉的時間
-        self.last_no_face_log_time = 0 # 用於控制 "未偵測到人臉" Log 的輸出頻率
-        self.clothe_time = [0, 0, 0]  # 各項穿著檢測的最後更新時間
+        self.last_face_time = 0
+        self.last_no_face_log_time = 0
+        self.clothe_time = [0, 0, 0]
+        # 初始化 MediaPipe 處理器
+        self.mp_handler = MediaPipeHandler()
         threading.Thread(target=self.face_detector, daemon=True).start()
 
     def face_detector(self):
-        """
-        背景執行的臉部與衣著偵測流程：
-        - 透過 DETECTION_INTERVAL 控制偵測頻率，降低 CPU 負載。
-        - 移除第二次偵測，確保處理時間穩定。
-        - 若啟用衣著辨識且為主畫面，則觸發衣著辨識。
-        - 若超過一定時間未偵測到人臉，則清除衣著標記。
-        - 每 10 秒進行模型暖機以減少推論延遲。
-        """
         last_box = None
         last_points = None
         last_time = 0
@@ -89,95 +79,49 @@ class Detector:
 
         while not self.stop_threads:
             now = time.time()
-            # 如果有新的畫面可以處理
             if self.system.state.frame[self.frame_num] is not None:
-                
                 if now - last_detection_time > DETECTION_INTERVAL:
-                    last_detection_time = now # 重置計時器
+                    last_detection_time = now
                     
                     self.system.state.max_box[self.frame_num] = last_box
                     self.system.state.max_points[self.frame_num] = last_points
                     new_frame = self.system.state.frame[self.frame_num].copy()
                     
-                    # Capture high-res frame snapshot
                     new_high_res = None
                     if self.system.state.frame_high_res is not None and self.system.state.frame_high_res[self.frame_num] is not None:
                          new_high_res = self.system.state.frame_high_res[self.frame_num].copy()
 
-                    # 預設為無臉框
                     box = None
                     points = None
 
-                    # 1. 偵測來源直接使用原生解析度影像 (GlobalState.frame 現已儲存原生影像)
-                    detect_source = new_frame
-                    h_source, w_source = detect_source.shape[:2]
-
-                    # 2. 計算 ROI (用於過濾與衣著遮罩)
-                    close_N = 6
-                    if CONFIG[CAMERA[self.frame_num]]["close"]:
-                        close_N = 8
-                    roi_x1 = w_source // close_N
-                    roi_x2 = (close_N - 1) * w_source // close_N
-
-                    # 3. 執行偵測 (使用全畫面偵測以確保大臉能被捕捉)
-                    detect_start_time = time.monotonic()
-                    
-                    # Full Frame Detection
-                    boxes, _, landmarks = self.system.mtcnn.detect(detect_source, landmarks=True)
-                    
-                    detect_duration = time.monotonic() - detect_start_time
-                    
-                    # Add structured performance logging
-                    perf_data = {
-                        "type": "detection",
-                        "duration_sec": detect_duration,
-                        "camera_name": CAM_NAME_MAP.get(self.frame_num, f"Cam {self.frame_num}"),
-                        "timestamp": datetime.now(self.TIMEZONE).isoformat(),
-                        "resolution": f"{w_source}x{h_source}",
-                        "strategy": "FullFrame_Native"
-                    }
-                    PERF_LOGGER.info(json.dumps(perf_data))
+                    # 1. 使用 MediaPipe 偵測
+                    rgb_frame = cv2.cvtColor(new_frame, cv2.COLOR_BGR2RGB)
+                    boxes, _, landmarks = self.mp_handler.detect(rgb_frame)
 
                     if boxes is not None:
                         self.last_face_time = time.time()
                         x1, y1, x2, y2 = map(int, boxes[0])
                         points = landmarks[0].copy()
                         
-                        # ROI 過濾 (檢查中心點是否在 ROI 內)
+                        # ROI 過濾與距離過濾
+                        w_source = new_frame.shape[1]
+                        close_N = 8 if CONFIG[CAMERA[self.frame_num]]["close"] else 6
+                        roi_x1 = w_source // close_N
+                        roi_x2 = (close_N - 1) * w_source // close_N
                         center_x = (x1 + x2) / 2
+                        
                         if center_x < roi_x1 or center_x > roi_x2:
-                            # 雖偵測到人臉但不在關注區域內 -> 忽略
                             box = None
                         else:
-                            # [2026-01-08 修正] 距離過濾 (Distance Filter)
-                            # 若人臉寬度小於 min_face 的 70%，視為過遠，不顯示框也不辨識
-                            # 避免使用者誤以為系統正在辨識卻失敗
                             face_width = x2 - x1
                             min_face_val = self.system.state.min_face[self.frame_num]
-                            
                             if face_width < (min_face_val * POTENTIAL_MISS_RATIO):
                                 box = None
                             else:
-                                # 人臉有效 (無需縮放，座標即為原生座標)
                                 box = [x1, y1, x2, y2]
+                                # 存入系統以便 Comparison 呼叫 check_gaze
+                                self.system.mp_detectors[self.frame_num] = self.mp_handler
 
-                                # 若為主要畫面（frame_num=0）且開啟衣著檢測，則執行衣著辨識
-                            if CONFIG["Clothes_show"] and self.frame_num == 0 and \
-                               (not self.system.state.clothes[0] or not self.system.state.clothes[2]):
-                                # 準備 mask_frame 給衣著偵測 (裁切 ROI)
-                                self.mask_frame = detect_source[:, roi_x1:roi_x2].copy()
-                                # 衣著偵測使用的是 Mask 內的相對座標，故傳入 ROI 起點作為 Offset
-                                self.clothes_detector(roi_x1)
-
-                    else:
-                        # 若超過 1 秒沒偵測到臉，則檢查是否重置衣著狀態
-                        if time.time() - self.last_face_time > 1 and \
-                                CONFIG["Clothes_show"] and self.frame_num == 0:
-                            for i in range(3):
-                                if time.time() - self.clothe_time[i] > 3:
-                                    self.system.state.clothes[i] = False
-
-                    # 更新 MTCNN 結果與最新臉框
                     self.system.state.max_box[self.frame_num] = box
                     self.system.state.max_points[self.frame_num] = points
                     self.system.state.frame_mtcnn[self.frame_num] = new_frame
@@ -186,23 +130,6 @@ class Detector:
                     last_points = points
                     last_time = time.time()
 
-            # 每 10 秒暖機一次 MTCNN 模型，避免延遲推論
-            elif time.time() - last_time > 10 and self.frame_num == 0:
-                try:
-                    if CONFIG["Clothes_show"]:
-                        _ = self.system.model_clothes(
-                            source=dummy_input.unsqueeze(0),
-                            iou=0.45,
-                            conf=0.2,
-                            verbose=False
-                        )[0]
-                    __, _, _ = self.system.mtcnn.detect(
-                        dummy_input, landmarks=True)
-                    last_time = time.time()
-                except:
-                    pass
-
-            # **優化**: 使用 0.01 秒休眠，避免忙碌等待並讓出 CPU
             time.sleep(0.01)
 
     def clothes_detector(self, X_offset):
@@ -357,17 +284,10 @@ class Comparison:
         
         Returns:
         quality_score (float): 1.0 代表完美，0.0 代表未達標
-        msg (str): 詳細的評估訊息 (包含數值與門檻)
+        msg (str): 詳細的評估訊息
         """
-        # MTCNN points: [left_eye, right_eye, nose, left_mouth, right_mouth]
-        left_eye = points[0]
-        right_eye = points[1]
-        nose = points[2]
-        left_mouth = points[3]
-        right_mouth = points[4]
-
         # ---------------------------------------------------------
-        # 1. 畫面置中檢查 (Center Alignment)
+        # 1. 畫面置中檢查 (Center Alignment) - UI 需求
         # ---------------------------------------------------------
         face_center_x = (box[0] + box[2]) / 2
         frame_center_x = frame_w / 2
@@ -378,7 +298,7 @@ class Comparison:
             return 0.0, f"未置中 (偏離 {offset:.1f}px > 容許 {limit_offset:.1f}px)"
 
         # ---------------------------------------------------------
-        # 2. 特徵點完整性檢查 (Visibility)
+        # 2. 特徵點完整性檢查 (Visibility) - 完整性需求
         # ---------------------------------------------------------
         margin = 5
         for i, p in enumerate(points):
@@ -387,63 +307,20 @@ class Comparison:
                  return 0.0, f"特徵點被切除/遮擋 (點{i}座標 {p} 超出邊界)"
 
         # ---------------------------------------------------------
-        # 3. 垂直比例檢查 (Pitch)
+        # 3. 3D 姿態與視線檢查 (Gaze & Pose Check) - 核心邏輯
         # ---------------------------------------------------------
-        eye_mid_y = (left_eye[1] + right_eye[1]) / 2
-        mouth_mid_y = (left_mouth[1] + right_mouth[1]) / 2
-        nose_y = nose[1]
-        
-        h_upper = nose_y - eye_mid_y # 鼻眼距
-        h_lower = mouth_mid_y - nose_y # 鼻嘴距
-        
-        if h_upper <= 0 or h_lower <= 0:
-             return 0.0, "特徵點垂直錯位 (無法計算比例)"
-
-        v_ratio = h_lower / h_upper
-        
-        # 3.1 抬頭檢查 (優先排除，避免透視導致嘴寬誤判)
-        # 放寬門檻: 從 1.6 調升至 2.1，適應極端臉型或廣角鏡頭畸變
-        if v_ratio > 2.1:
-             return 0.0, f"抬頭 (垂直比例 {v_ratio:.2f} > 門檻 2.10)"
-
-        # 3.2 低頭檢查 (涵蓋所有 V-Ratio 偏低情況)
-        # 放寬門檻: 從 0.70 降至 0.60
-        if v_ratio < 0.60:
-             return 0.0, f"低頭 (垂直比例 {v_ratio:.2f} < 門檻 0.60)"
-
-        # ---------------------------------------------------------
-        # 4. 側臉/未正視檢查 (Yaw & Gaze)
-        # ---------------------------------------------------------
-        dist_l_eye = abs(nose[0] - left_eye[0])
-        dist_r_eye = abs(right_eye[0] - nose[0])
-        
-        # 4.1 絕對距離檢查 (眼鼻距)
+        # [2026-01-11] 全面移交給 MediaPipeHandler (PnP + Gaze)
         face_w = max(10, box[2] - box[0])
-        min_dist_ratio = min(dist_l_eye, dist_r_eye) / face_w
-        
-        # 放寬門檻: 從 0.15 降至 0.12，進一步減少誤報
-        if min_dist_ratio < 0.12:
-            eye_side = "左眼" if dist_l_eye < dist_r_eye else "右眼"
-            return 0.0, f"未正視鏡頭/極端側臉 ({eye_side}鼻距比 {min_dist_ratio:.2f} < 門檻 0.12)"
+        if face_w > 100:
+            mp_handler = self.system.mp_detectors.get(self.frame_num)
+            if mp_handler:
+                is_looking, gaze_msg = mp_handler.check_gaze(0)
+                if not is_looking:
+                    # 直接回傳具體的錯誤訊息 (例如: "Head: 歪頭", "Eye V: Down")
+                    return 0.0, f"{gaze_msg}"
 
-        # 4.2 左右對稱性檢查
-        if dist_l_eye > 0 and dist_r_eye > 0:
-            ratio_yaw = min(dist_l_eye, dist_r_eye) / max(dist_l_eye, dist_r_eye)
-            # 放寬門檻: 從 0.65 降至 0.55
-            if ratio_yaw < 0.55:
-                return 0.0, f"側臉 (左右對稱比 {ratio_yaw:.2f} < 門檻 0.55)"
-
-        # 5.3 歪頭檢查 (Roll)
-        dy = right_eye[1] - left_eye[1]
-        dx = right_eye[0] - left_eye[0]
-        angle = abs(np.degrees(np.arctan2(dy, dx)))
-        
-        if angle > 15:
-             return 0.0, f"歪頭 (角度 {angle:.1f} > 門檻 15.0)"
-
-        # DEBUG: 輸出通過檢查的詳細數值，方便調校
-        # LOGGER.debug(f"品質檢查通過: V-Ratio={v_ratio:.2f}, NM-Dist={h_lower:.1f}(Ref:{eye_dist*0.5:.1f}), Yaw-Ratio={ratio_yaw:.2f}")
-        return 1.0, f"Pass (V:{v_ratio:.2f}, NM:{h_lower:.1f})"
+        # 通過所有檢查
+        return 1.0, "Pass"
 
     def _update_display_state(self, person_id):
         """更新當前顯示的人員ID和時間"""
@@ -609,12 +486,14 @@ class Comparison:
                  elif "抬頭" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "請低頭"
                      self.system.speaker.say("請低頭", "hint_look_down", priority=2)
-                 elif "未正視" in quality_msg or "側臉" in quality_msg or "歪頭" in quality_msg:
+                 elif "斜視" in quality_msg or "未正視" in quality_msg or "側臉" in quality_msg or "歪頭" in quality_msg:
+                     # 所有的眼神、轉頭、歪頭問題，統一播報「請正視鏡頭」
                      self.system.state.hint_text[self.frame_num] = "請正視鏡頭"
                      self.system.speaker.say("請正視鏡頭", "hint_look_straight", priority=2)
                  else:
-                     self.system.state.hint_text[self.frame_num] = "調整位置"
-                     self.system.speaker.say("請調整位置", "hint_adjust", priority=2)
+                     # 最後的保險提示，也改為較直觀的「請正視鏡頭」
+                     self.system.state.hint_text[self.frame_num] = "請正視鏡頭"
+                     self.system.speaker.say("請正視鏡頭", "hint_look_straight", priority=2)
                      
                  self.hint_clear_time = now + 1.0
                  continue

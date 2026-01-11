@@ -19,7 +19,7 @@ from init.say import Say_
 #import function as fun
 import datetime
 from init.camera import VideoCapture
-from init.model import Detector, Comparison
+from init.model import Detector, Comparison # MediaPipe 版
 from function import *
 
 from PyQt5.QtCore import QLibraryInfo, QTimer, QSocketNotifier
@@ -725,10 +725,12 @@ class FaceRecognitionSystem:
         
         self.state.hint_text = ["", ""]
 
+        # [2026-01-10] MediaPipe 處理器快取
+        self.mp_detectors = {} 
 
-
-        self.mtcnn = mtcnn.MTCNN(image_size=160, min_face_size=160, keep_all=True, select_largest=True, thresholds=[0.5, 0.6, 0.6])
-
+        # self.mtcnn = mtcnn.MTCNN(...) # 這裡可以移除或註解掉，因為 model_mp 不再使用它
+        # 但為了不破壞結構，先留著，反正 model_mp 內部會自己建 mp_handler
+        
         self.resnet = inception_resnet_v1.InceptionResnetV1(pretrained='vggface2').eval()
 
 
@@ -772,27 +774,30 @@ class FaceRecognitionSystem:
     def _auto_tune_performance(self):
         """
         啟動時執行效能基準測試，根據 CPU 能力自動決定偵測與辨識的 FPS。
+        [MediaPipe 版]
         """
-        LOGGER.info("正在執行硬體效能自動調校 (Auto-Tuning)...")
-        print("正在執行硬體效能自動調校...")
+        LOGGER.info("正在執行硬體效能自動調校 (Auto-Tuning) - MediaPipe Mode...")
+        print("正在執行硬體效能自動調校 (MediaPipe)...")
         
-        # 1. 準備測試數據 (模擬真實運作情境)
-        # 偵測用: 800x600 (因為主程式會先 resize 才丟進去)
+        # 1. 準備測試數據
         dummy_det_img = np.random.randint(0, 255, (600, 800, 3), dtype=np.uint8)
-        # 辨識用: 160x160 (ResNet 的標準輸入尺寸)
         dummy_rec_tensor = torch.randn(1, 3, 160, 160)
+        
+        # 建立臨時的 MediaPipe Handler 進行測試
+        from init.mediapipe_handler import MediaPipeHandler
+        temp_mp = MediaPipeHandler()
 
         # 2. 模型暖機
         try:
-            self.mtcnn.detect(dummy_det_img)
+            temp_mp.detect(dummy_det_img)
             self.resnet(dummy_rec_tensor)
         except Exception:
             pass
 
-        # 3. 測試偵測速度 (MTCNN @ 800x600)
+        # 3. 測試偵測速度 (MediaPipe @ 800x600)
         t0 = time.time()
         for _ in range(5):
-            self.mtcnn.detect(dummy_det_img)
+            temp_mp.detect(dummy_det_img)
         avg_det_time = (time.time() - t0) / 5
 
         # 4. 測試辨識速度 (ResNet @ 160x160)
@@ -801,14 +806,13 @@ class FaceRecognitionSystem:
             self.resnet(dummy_rec_tensor)
         avg_rec_time = (time.time() - t0) / 5
 
-        # 5. 計算建議間隔 (加入安全係數以保留 CPU 給 UI)
-        # 偵測係數 3.0: 考慮雙鏡頭 + UI 開銷 + 系統抖動
-        det_interval_raw = avg_det_time * 3.0
-        # 辨識係數 1.5: 辨識較快，且非每幀觸發，係數可稍低
+        # 5. 計算建議間隔
+        # MediaPipe 通常比 MTCNN 快，但為了保留餘裕，係數設為 2.0
+        det_interval_raw = avg_det_time * 2.0
         rec_interval_raw = avg_rec_time * 1.5
 
-        # 6. 設定上下限 (Max 15 FPS, Min 2 FPS)
-        self.state.detection_interval = max(0.066, min(0.5, det_interval_raw))
+        # 6. 設定上下限 (上限限制在 15 FPS 以節省資源，下限 2 FPS)
+        self.state.detection_interval = max(0.066, min(0.5, det_interval_raw)) # Max 15 FPS
         self.state.comparison_interval = max(0.066, min(0.5, rec_interval_raw))
 
         # 7. 輸出詳細日誌
@@ -816,9 +820,9 @@ class FaceRecognitionSystem:
         rec_fps = 1 / self.state.comparison_interval
         
         log_msg = (
-            f"\n===== 效能調校結果 (Auto-Tuning) =====\n"
-            f"CPU 單次偵測耗時 (800x600): {avg_det_time*1000:.2f} ms\n"
-            f"CPU 單次辨識耗時 (160x160): {avg_rec_time*1000:.2f} ms\n"
+            f"\n===== 效能調校結果 (MediaPipe Auto-Tuning) =====\n"
+            f"CPU 單次偵測耗時 (MediaPipe): {avg_det_time*1000:.2f} ms\n"
+            f"CPU 單次辨識耗時 (ResNet): {avg_rec_time*1000:.2f} ms\n"
             f"--------------------------------------\n"
             f"設定偵測頻率: {det_fps:.1f} FPS (間隔 {self.state.detection_interval:.3f}s)\n"
             f"設定辨識頻率: {rec_fps:.1f} FPS (間隔 {self.state.comparison_interval:.3f}s)\n"
@@ -1552,8 +1556,14 @@ class FaceRecognitionSystem:
 
 
         for i in range(len(self.cameras)-(2-n)):
-
-            self.cameras[i].win.show()
+            if CONFIG.get("full_screen", False):
+                self.cameras[i].win.showFullScreen()
+            else:
+                self.cameras[i].win.showNormal()
+            
+            self.cameras[i].win.activateWindow()
+            self.cameras[i].win.raise_()
+            print(f"Window {i} shown.")
 
 
     def update_inout_log(self):
