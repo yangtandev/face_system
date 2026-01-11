@@ -438,7 +438,7 @@ class FaceRecognitionSystem:
                     self.state.check_time[sid] = [True, 0]
                     t = threading.Timer(5, clear_leave_employee, (self, sid, )); t.daemon = True; t.start()
         except Exception: pass
-        threading.Timer(300, self.update_inout_log).start()
+        t = threading.Timer(300, self.update_inout_log); t.daemon = True; t.start()
 
     def _safe_shutdown(self):
         if hasattr(self, 'speaker'): self.speaker.terminate()
