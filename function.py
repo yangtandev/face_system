@@ -297,6 +297,11 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     Returns:
         torch.Tensor: A tensor of the cropped, resized, and standardized face image.
     """
+    # Get crop parameters from config (or use defaults)
+    crop_cfg = CONFIG.get("crop_params", {})
+    forehead_ratio = crop_cfg.get("forehead_ratio", 0.25)
+    chin_ratio = crop_cfg.get("chin_ratio", 0.4)
+
     # 1. Calculate Top Crop (Forehead removal)
     eye_y_center = (points[0][1] + points[1][1]) / 2
     x1, y1, x2, y2 = box
@@ -305,7 +310,7 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     eye_to_top_dist = eye_y_center - y1
 
     # Define the new top: slightly above the eyes
-    new_y1 = eye_y_center - (eye_to_top_dist * 0.4)
+    new_y1 = eye_y_center - (eye_to_top_dist * forehead_ratio)
     new_y1 = max(0, new_y1)
 
     # 2. Calculate Bottom Crop (Chin removal)
@@ -317,9 +322,9 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     nose_to_mouth = mouth_y_center - nose_y
     
     # Set new bottom: Slightly below the mouth
-    # Keeping about 0.6x of nose-to-mouth distance below the mouth center.
+    # Keeping about Xx of nose-to-mouth distance below the mouth center.
     # This usually keeps the lips but removes the chin tip/strap area.
-    new_y2 = mouth_y_center + (nose_to_mouth * 0.6)
+    new_y2 = mouth_y_center + (nose_to_mouth * chin_ratio)
     
     # Ensure new_y2 doesn't exceed original box or image height (implied by crop)
     # But usually new_y2 < y2, so we take the tighter crop

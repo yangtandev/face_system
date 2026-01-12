@@ -30,20 +30,24 @@ default_config = {
     },
     "inCamera": {
         "close": False,
-        "min_face": 95
+        "min_face": 450
     },
     "outCamera": {
         "close": False,
-        "min_face": 95
+        "min_face": 450
     },
     "door": "0",
     "Clothes_detection": False,
     "Clothes_show": False,
-    "min_face":140,
+    "min_face":450,
     "max_face":700,
     "pitch_threshold": {
-        "up": 25,
+        "up": 10,
         "down": -10
+    },
+    "crop_params": {
+        "forehead_ratio": 0.25,
+        "chin_ratio": 0.4
     },
     "test_mod":False,
     "auto_open": False,
