@@ -46,7 +46,7 @@ default_config = {
         "down": -10
     },
     "crop_params": {
-        "forehead_ratio": 0.25,
+        "forehead_ratio": 0.4,
         "chin_ratio": 0.4
     },
     "test_mod":False,
