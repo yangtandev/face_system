@@ -1,5 +1,6 @@
 from pathlib import Path
 import time, threading, queue, json, os, subprocess
+from concurrent.futures import ThreadPoolExecutor # [2026-01-13 Perf]
 import paho.mqtt.client as mqtt
 import sys, termios, warnings, signal
 warnings.filterwarnings("ignore", category=UserWarning, module="google.protobuf")
@@ -208,15 +209,22 @@ class CameraSystem:
         return 'color: rgb(0, 85, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "辨識中"
 
     def save_img(self, img, path, staffname="", conf=0.0, z_score=0.0, width=0):
-        dict_={"face":0, "clothes":1}
-        dt = datetime.datetime.today()
-        d_str, t_str = dt.strftime("%Y_%m_%d"), dt.strftime("%H;%M;%S")
-        os.makedirs(f"{main_path}/img_log/{path}/{d_str}", exist_ok=True)
-        if time.time()-self.save_img_time[dict_[path]] > 5 or (self.save_name_last != staffname and staffname != ""):
-            fname = f"{t_str}_{staffname}_C{int(conf*100)}_Z{z_score:.2f}_W{width}.jpg" if staffname else f"{t_str}.jpg"
-            cv2.imwrite(f"{main_path}/img_log/{path}/{d_str}/{fname}", img)
-            self.save_img_time[dict_[path]] = time.time()
-            if staffname: self.save_name_last = staffname
+        # [2026-01-13 Perf] Offload disk I/O to background thread
+        self.system.io_pool.submit(self._save_img_task, img.copy(), path, staffname, conf, z_score, width)
+
+    def _save_img_task(self, img, path, staffname, conf, z_score, width):
+        try:
+            dict_={"face":0, "clothes":1}
+            dt = datetime.datetime.today()
+            d_str, t_str = dt.strftime("%Y_%m_%d"), dt.strftime("%H;%M;%S")
+            os.makedirs(f"{main_path}/img_log/{path}/{d_str}", exist_ok=True)
+            if time.time()-self.save_img_time[dict_[path]] > 5 or (self.save_name_last != staffname and staffname != ""):
+                fname = f"{t_str}_{staffname}_C{int(conf*100)}_Z{z_score:.2f}_W{width}.jpg" if staffname else f"{t_str}.jpg"
+                cv2.imwrite(f"{main_path}/img_log/{path}/{d_str}/{fname}", img)
+                self.save_img_time[dict_[path]] = time.time()
+                if staffname: self.save_name_last = staffname
+        except Exception as e:
+            LOGGER.error(f"Async save_img failed: {e}")
 
     def terminate(self, event):
         print(f"Terminating CameraSystem for window {self.frame_num}...")
@@ -293,6 +301,11 @@ class FaceRecognitionSystem:
         self.local_media_path = os.path.join(os.path.dirname(__file__), "media")
         for d in ["descriptors", "pic_bak", "profile_pictures"]: os.makedirs(os.path.join(self.local_media_path, d), exist_ok=True)
         self.update_lock = threading.Lock()
+        
+        # [2026-01-13 Perf] Thread pool for non-blocking I/O (e.g., image saving)
+        # Prevents main loop from stalling during disk writes.
+        self.io_pool = ThreadPoolExecutor(max_workers=2)
+        
         self._auto_tune_performance()
 
     def _auto_tune_performance(self):
@@ -467,6 +480,8 @@ class FaceRecognitionSystem:
 
     def _safe_shutdown(self):
         if hasattr(self, 'speaker'): self.speaker.terminate()
+        # [2026-01-13 Perf] Shutdown IO pool
+        if hasattr(self, 'io_pool'): self.io_pool.shutdown(wait=False)
         QApplication.closeAllWindows()
 
 if __name__ == "__main__":

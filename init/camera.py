@@ -110,7 +110,8 @@ class VideoCapture:
         command = ['ffmpeg', '-hide_banner', '-loglevel', 'error']
         
         # Use prefer_tcp flag, which is more robust for forcing TCP transport
-        command.extend(['-rtsp_flags', 'prefer_tcp'])
+        # [2026-01-13 Latency Fix] Added nobuffer and low_delay flags
+        command.extend(['-rtsp_flags', 'prefer_tcp', '-fflags', 'nobuffer', '-flags', 'low_delay'])
 
         if error_tolerant: # Moved error tolerant flags here
             command.extend(['-err_detect', 'ignore_err', '-fflags', '+discardcorrupt'])
@@ -157,7 +158,7 @@ class VideoCapture:
         print(f"Starting software MJPEG pipeline for {self.rtsp_url}...")
         command = [
             'ffmpeg', '-hide_banner', '-loglevel', 'error',
-            '-rtsp_flags', 'prefer_tcp', # Also use prefer_tcp for MJPEG pipeline
+            '-rtsp_flags', 'prefer_tcp', '-fflags', 'nobuffer', '-flags', 'low_delay', # [2026-01-13 Latency Fix]
             '-i', self.rtsp_url,
             '-f', 'image2pipe', '-c:v', 'mjpeg', '-q:v', '2', '-'
         ]
