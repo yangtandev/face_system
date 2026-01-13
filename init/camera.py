@@ -238,12 +238,20 @@ class VideoCapture:
         """Stops the reader thread and terminates the FFmpeg subprocess gracefully."""
         print(f"Terminating camera connection to {self.rtsp_url}...")
         self.stop_threads = True
-        if self.proc and self.proc.poll() is None:
-            print(f"Sending SIGTERM to FFmpeg process {self.proc.pid}...")
-            self.proc.terminate()
+        
+        # Capture the process object locally to avoid race conditions with _reader_manager
+        proc = self.proc
+        
+        if proc and proc.poll() is None:
+            print(f"Sending SIGTERM to FFmpeg process {proc.pid}...")
             try:
-                self.proc.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                print(f"FFmpeg process {self.proc.pid} did not terminate in time. Sending SIGKILL.")
-                self.proc.kill()
+                proc.terminate()
+                try:
+                    proc.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    print(f"FFmpeg process {proc.pid} did not terminate in time. Sending SIGKILL.")
+                    proc.kill()
+            except Exception as e:
+                print(f"Error while terminating FFmpeg process: {e}")
+                
         print(f"Camera connection for {self.rtsp_url} terminated.")

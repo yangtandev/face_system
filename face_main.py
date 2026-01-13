@@ -84,34 +84,58 @@ class CameraSystem:
             self.win.img4.setScaledContents(True)
 
     def main_camera(self):
+        frame_count = 0
         while not self.stop_threads:
             original_frame = self.camera.read()
             if original_frame is None or original_frame.size == 0:
                 time.sleep(0.01); continue
+            
+            # 更新 AI 與存檔用的原圖
             self.system.state.frame[self.frame_num] = original_frame
             self.system.state.frame_high_res[self.frame_num] = original_frame
-            now_frame = original_frame.copy()
-            font_size = 60
+            
+            # [效能優化] 先縮圖，再繪圖 (Process Small, Display Small, Save Big)
+            # 原本在 1080p 上做 PIL 中文繪圖太慢，導致延遲。
+            # 改為縮小到 960px 寬 (1/2 尺寸, 1/4 像素量)，速度提升 4 倍。
+            h, w = original_frame.shape[:2]
+            target_w = 960
+            scale = target_w / w if w > target_w else 1.0
+            
+            if scale < 1.0:
+                target_h = int(h * scale)
+                now_frame = cv2.resize(original_frame, (target_w, target_h))
+            else:
+                now_frame = original_frame.copy()
+
+            font_size = int(60 * scale) # 字體也跟著縮放
+            if font_size < 20: font_size = 20
+
             if self.system.state.max_box[self.frame_num] is not None:
-                x1, y1, x2, y2 = self.system.state.max_box[self.frame_num]
-                cv2.rectangle(now_frame, (x1, y1), (x2, y2), (255, 0, 0), 6)
+                # 座標轉換: 原圖 -> 小圖
+                ox1, oy1, ox2, oy2 = self.system.state.max_box[self.frame_num]
+                x1, y1, x2, y2 = int(ox1*scale), int(oy1*scale), int(ox2*scale), int(oy2*scale)
+                
+                cv2.rectangle(now_frame, (x1, y1), (x2, y2), (255, 0, 0), max(2, int(6*scale)))
                 current_class = self.system.state.same_class[self.frame_num]
                 hint_msg = self.system.state.hint_text[self.frame_num]
-                text_y = y1 - 55 if y1 - 55 > 10 else y2 + 10
+                text_y = y1 - int(55*scale) if y1 - int(55*scale) > 10 else y2 + 10
+                
                 if hint_msg:
                     now_frame = put_chinese_text(now_frame, hint_msg, (x1, text_y), font_path, font_size, (255, 85, 0))
                 elif current_class == "__VISITOR__":
                     now_frame = put_chinese_text(now_frame, "訪客", (x1, text_y), font_path, font_size, (0, 0, 255))
                     try:
-                        h, w, _ = original_frame.shape
-                        fy1, fy2 = max(0, y1), min(h, y2); fx1, fx2 = max(0, x1), min(w, x2)
-                        if fy2 > fy1 and fx2 > fx1: self.last_visitor_face_img = original_frame[fy1:fy2, fx1:fx2].copy()
+                        # 訪客頭像截取仍需使用原圖 (保持解析度)
+                        if oy2 > oy1 and ox2 > ox1: 
+                             self.last_visitor_face_img = original_frame[max(0,oy1):min(h,oy2), max(0,ox1):min(w,ox2)].copy()
                     except Exception: pass
                 elif current_class != "None":
                     staff_name = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
                     now_frame = put_chinese_text(now_frame, staff_name, (x1, text_y), font_path, font_size, (205, 0, 0))
                 else:
                     now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0))
+                
+                # 辨識後處理邏輯 (保持不變)
                 if self.system.state.same_people[self.frame_num] > 0:
                     confidence = self.system.state.same_people[self.frame_num]
                     if current_class not in ["None", "__VISITOR__"]:
@@ -119,11 +143,12 @@ class CameraSystem:
                         if (not CONFIG["Clothes_detection"] or (self.system.state.clothes[0] and self.system.state.clothes[2])):
                             check_in_out(self.system, success_staff_name, current_class, self.frame_num, self.n_camera, confidence)
                         z_score = self.system.state.same_zscore[self.frame_num]
-                        width = self.system.state.same_width[self.frame_num]
+                        width_val = self.system.state.same_width[self.frame_num]
                         saved_img = self.system.state.success_frame[self.frame_num]
-                        if saved_img is not None: self.save_img(saved_img, "face", success_staff_name, confidence, z_score, width)
-                        else: self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score, width)
+                        if saved_img is not None: self.save_img(saved_img, "face", success_staff_name, confidence, z_score, width_val)
+                        else: self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score, width_val)
                     self.system.state.same_people[self.frame_num] = 0.0
+            
             self.show_frame = now_frame
 
     def updata_screen(self):
