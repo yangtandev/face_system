@@ -99,16 +99,19 @@ class VideoCapture:
         if self.width is None or self.height is None:
             raise RuntimeError(f"Failed to determine stream resolution for {pipeline_type}.")
 
-        command = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-analyzeduration', '0', '-probesize', '32']
+        command = ['ffmpeg', '-hide_banner', '-loglevel', 'error']
         
         # Use prefer_tcp flag, which is more robust for forcing TCP transport
         # [2026-01-14 Latency Fix] Combined flags to prevent overwriting
-        fflags = ['nobuffer']
+        fflags = []
         if error_tolerant:
             fflags.append('discardcorrupt')
             command.extend(['-err_detect', 'ignore_err'])
             
-        command.extend(['-rtsp_flags', 'prefer_tcp', '-fflags', '+'.join(fflags), '-flags', 'low_delay', '-strict', 'experimental'])
+        if fflags:
+            command.extend(['-fflags', '+'.join(fflags)])
+            
+        command.extend(['-rtsp_flags', 'prefer_tcp', '-flags', 'low_delay'])
 
         if use_hw_accel:
             # Add the appropriate hardware acceleration arguments if VAAPI is detected
@@ -150,7 +153,7 @@ class VideoCapture:
         print(f"Starting software MJPEG pipeline for {self.rtsp_url}...")
         command = [
             'ffmpeg', '-hide_banner', '-loglevel', 'error',
-            '-rtsp_flags', 'prefer_tcp', '-fflags', 'nobuffer', '-flags', 'low_delay', # [2026-01-13 Latency Fix]
+            '-rtsp_flags', 'prefer_tcp', '-flags', 'low_delay', # [2026-01-13 Latency Fix]
             '-i', self.rtsp_url,
             '-f', 'image2pipe', '-c:v', 'mjpeg', '-q:v', '2', '-'
         ]
