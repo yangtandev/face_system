@@ -12,42 +12,34 @@ from urllib.parse import urlparse
 
 _best_decoder_info = {'name': 'cpu', 'checked': False}
 
-def get_best_decoder():
+def get_best_hw_accel():
     """
-    Checks for available hardware decoders and returns the best one found.
+    Correctly detects VAAPI support under Ubuntu by checking -hwaccels.
     Caches the result to avoid re-checking.
     """
     if _best_decoder_info['checked']:
         return _best_decoder_info['name']
 
+    _best_decoder_info['checked'] = True # Mark as checked
     try:
-        print("Checking for available hardware decoders...")
-        decoders_output = subprocess.check_output(
-            ['ffmpeg', '-decoders'], 
-            text=True, 
+        print("Checking for available hardware acceleration methods...")
+        # Check FFmpeg for VAAPI support in '-hwaccels', not '-decoders'
+        hwaccels_output = subprocess.check_output(
+            ['ffmpeg', '-hwaccels'],
+            text=True,
             stderr=subprocess.DEVNULL
         )
-        
-        # Priority: Intel QSV -> NVIDIA CUVID -> CPU
-        if 'hevc_qsv' in decoders_output:
-            print("Found Intel QSV hardware decoder. Will attempt to use 'hevc_qsv'.")
-            _best_decoder_info['name'] = 'hevc_qsv'
-        elif 'hevc_cuvid' in decoders_output:
-            print("Found NVIDIA CUVID hardware decoder. Will attempt to use 'hevc_cuvid'.")
-            _best_decoder_info['name'] = 'hevc_cuvid'
-        else:
-            print("No supported hardware decoder found. Using CPU-based software decoding.")
-            _best_decoder_info['name'] = 'cpu'
+        if 'vaapi' in hwaccels_output:
+            print("✅ Found 'vaapi' hardware acceleration support.")
+            _best_decoder_info['name'] = 'vaapi'
+            return 'vaapi'
 
-    except FileNotFoundError:
-        print("Warning: 'ffmpeg' command not found. Cannot check for hardware decoders.")
-        _best_decoder_info['name'] = 'cpu'
     except Exception as e:
-        print(f"Warning: Could not check for hardware decoders: {e}. Using CPU.")
-        _best_decoder_info['name'] = 'cpu'
-    
-    _best_decoder_info['checked'] = True
-    return _best_decoder_info['name']
+        print(f"Warning: Could not check for hardware acceleration: {e}.")
+
+    print("⚠️ No supported hardware acceleration found. Using CPU.")
+    _best_decoder_info['name'] = 'cpu'
+    return 'cpu'
 
 def _ignore_sigint():
     """Function to be called in the child process to ignore SIGINT."""
@@ -67,8 +59,8 @@ class VideoCapture:
         self.proc = None
         self.config = config_data or {}
         
-        # Auto-detect the best decoder on initialization
-        self.hw_decoder_name = get_best_decoder()
+        # Auto-detect the best hardware acceleration method on initialization
+        self.hw_accel_method = get_best_hw_accel()
         
         self.width = None
         self.height = None
@@ -117,11 +109,9 @@ class VideoCapture:
             command.extend(['-err_detect', 'ignore_err', '-fflags', '+discardcorrupt'])
 
         if use_hw_accel:
-            if self.hw_decoder_name == 'hevc_qsv':
-                command.extend(['-init_hw_device', 'qsv=hw', '-filter_hw_device', 'hw']) # QSV specific
-                command.extend(['-hwaccel', 'qsv', '-c:v', 'hevc_qsv'])
-            elif self.hw_decoder_name == 'hevc_cuvid':
-                command.extend(['-hwaccel', 'cuda', '-c:v', 'hevc_cuvid'])
+            # Add the appropriate hardware acceleration arguments if VAAPI is detected
+            if self.hw_accel_method == 'vaapi':
+                command.extend(['-hwaccel', 'vaapi'])
         else: # Software HEVC decoding
             command.extend(['-c:v', 'hevc']) # Explicitly use software HEVC decoder
             
@@ -187,7 +177,7 @@ class VideoCapture:
             pipeline_success = False
             try:
                 # 1. Try Hardware Accelerated Raw Video Pipeline
-                if self.hw_decoder_name != 'cpu':
+                if self.hw_accel_method != 'cpu':
                     try:
                         print("Trying HW accelerated raw pipeline...")
                         pipeline_success = self._start_raw_video_pipeline(use_hw_accel=True)
