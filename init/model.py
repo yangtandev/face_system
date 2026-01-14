@@ -448,7 +448,7 @@ class Comparison:
 
             # 夜間強力過濾
             if is_night_mode and current_face_vec is not None:
-                if self.system.state.ann_index and self.system.state.ann_index.index.ntotal > 0:
+                if self.system.state.ann_index and self.system.state.ann_index.index is not None and self.system.state.ann_index.index.ntotal > 0:
                     dists, _ = self.system.state.ann_index.search(current_face_vec, k=1)
                     if dists[0] < 0.4:
                         continue

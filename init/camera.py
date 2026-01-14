@@ -99,14 +99,16 @@ class VideoCapture:
         if self.width is None or self.height is None:
             raise RuntimeError(f"Failed to determine stream resolution for {pipeline_type}.")
 
-        command = ['ffmpeg', '-hide_banner', '-loglevel', 'error']
+        command = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-analyzeduration', '0', '-probesize', '32']
         
         # Use prefer_tcp flag, which is more robust for forcing TCP transport
-        # [2026-01-13 Latency Fix] Added nobuffer and low_delay flags
-        command.extend(['-rtsp_flags', 'prefer_tcp', '-fflags', 'nobuffer', '-flags', 'low_delay'])
-
-        if error_tolerant: # Moved error tolerant flags here
-            command.extend(['-err_detect', 'ignore_err', '-fflags', '+discardcorrupt'])
+        # [2026-01-14 Latency Fix] Combined flags to prevent overwriting
+        fflags = ['nobuffer']
+        if error_tolerant:
+            fflags.append('discardcorrupt')
+            command.extend(['-err_detect', 'ignore_err'])
+            
+        command.extend(['-rtsp_flags', 'prefer_tcp', '-fflags', '+'.join(fflags), '-flags', 'low_delay', '-strict', 'experimental'])
 
         if use_hw_accel:
             # Add the appropriate hardware acceleration arguments if VAAPI is detected

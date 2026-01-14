@@ -307,7 +307,13 @@ class FaceRecognitionSystem:
         # Prevents main loop from stalling during disk writes.
         self.io_pool = ThreadPoolExecutor(max_workers=2)
         
+        # Blocking asset rebuild on startup (Voice -> Descriptors)
         self._rebuild_assets()
+        
+        # Load features AFTER rebuild is complete
+        self._load_features_and_profiles()
+        
+        # [Perf] Enable auto-tune to maximize runtime FPS based on hardware capability
         self._auto_tune_performance()
 
     def _rebuild_assets(self):
@@ -317,30 +323,16 @@ class FaceRecognitionSystem:
         pb = os.path.join(self.local_media_path, "pic_bak")
         vp = os.path.join(main_path, "voice")
 
-        # 1. Descriptors
-        if os.path.exists(dp): shutil.rmtree(dp)
-        os.makedirs(dp, exist_ok=True)
-        
-        if os.path.isdir(pb):
-            pic_files = [f for f in os.listdir(pb) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-            if pic_files:
-                LOGGER.info(f"Rebuilding descriptors for {len(pic_files)} images...")
-                self._generate_new_descriptors(pic_files, pb, dp)
-
-        # 2. Voice
+        # 1. Voice (IO Bound) - Run FIRST
         if os.path.exists(vp): shutil.rmtree(vp)
         os.makedirs(vp, exist_ok=True)
         
         if os.path.isdir(pb):
-            LOGGER.info("Rebuilding voice files...")
+            LOGGER.info("Stage 1/2: Rebuilding voice files...")
             generic_texts = {}
             for key, val in CONFIG.get("say", {}).items():
                 txt = val.replace("name_", "") if "name_" in val else val
                 generic_texts[key] = txt
-                try:
-                    tts = gTTS(text=txt, lang='zh-tw')
-                    tts.save(os.path.join(vp, f"_{key}.mp3"))
-                except Exception: pass
 
             names = set()
             for f in os.listdir(pb):
@@ -348,21 +340,49 @@ class FaceRecognitionSystem:
                     try: names.add(os.path.splitext(f)[0].split("_")[-1])
                     except: pass
 
-            def gen_voice_task(name):
+            # Collect all tasks: (filename, text)
+            tasks = []
+            # 1. Generic commands (e.g., _in.mp3)
+            for key, txt in generic_texts.items():
+                tasks.append((f"_{key}.mp3", txt))
+            # 2. Person-specific greetings (e.g., Yang_in.mp3)
+            for name in names:
                 for key, txt in generic_texts.items():
-                    try:
-                        full_txt = f"{name}{txt}"
-                        tts = gTTS(text=full_txt, lang='zh-tw')
-                        tts.save(os.path.join(vp, f"{name}_{key}.mp3"))
-                    except Exception: pass
+                    tasks.append((f"{name}_{key}.mp3", f"{name}{txt}"))
 
-            futures = []
-            LOGGER.info(f"Generating voice files for {len(names)} people...")
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = [executor.submit(gen_voice_task, n) for n in names]
-                for f in tqdm(futures, desc="[2/2] Voice Generation"): 
+            def gen_one_voice(filename, text):
+                try:
+                    tts = gTTS(text=text, lang='zh-tw')
+                    tts.save(os.path.join(vp, filename))
+                except Exception: pass
+
+            # Use ThreadPoolExecutor for all tasks (Blocking wait)
+            # [Perf] Maximize IO parallelism (default workers = CPU_count + 4)
+            with ThreadPoolExecutor() as executor:
+                futures = [executor.submit(gen_one_voice, fn, txt) for fn, txt in tasks]
+                for f in tqdm(futures, desc="[Voice Gen     ]"): 
                     try: f.result()
                     except Exception: pass
+
+        # 2. Descriptors (CPU Bound) - Run SECOND
+        if os.path.exists(dp): shutil.rmtree(dp)
+        os.makedirs(dp, exist_ok=True)
+        
+        if os.path.isdir(pb):
+            pic_files = [f for f in os.listdir(pb) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            if pic_files:
+                LOGGER.info(f"Stage 2/2: Rebuilding descriptors for {len(pic_files)} images...")
+                from models.mtcnn import MTCNN
+                detector = MTCNN()
+                for f in tqdm(pic_files, desc="[Descriptor Gen]"):
+                    try:
+                        img = Image.open(os.path.join(pb, f)).convert('RGB')
+                        boxes, _, points = detector.detect(img, landmarks=True)
+                        if boxes is not None:
+                            emb = self.resnet(crop_face_without_forehead(img, boxes[0], points[0]).unsqueeze(0))
+                            np.save(os.path.join(dp, f"{os.path.splitext(f)[0]}.npy"), emb[0].detach().numpy())
+                    except Exception: pass
+        
         LOGGER.info("Assets rebuild complete.")
 
     def _auto_tune_performance(self):
