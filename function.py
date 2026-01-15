@@ -7,7 +7,7 @@ import time
 import requests
 import torch
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageEnhance
 
 from init.log import LOGGER
 
@@ -341,9 +341,15 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     # Resize to the target square size
     img_resized = img_cropped.resize((image_size, image_size), Image.BILINEAR)
 
+    # --- Apply Strong Sharpening (Factor 5.0) ---
+    # Purpose: enhance high-frequency details (eyes, glasses frames) to distinguish similar faces.
+    enhancer = ImageEnhance.Sharpness(img_resized)
+    img_sharpened = enhancer.enhance(5.0)
+    # --------------------------------------------
+
     # --- Apply Trapezoid Mask (Global Optimal: 80% bottom width) ---
     # Purpose: Remove minimal background noise while preserving maximum face structure.
-    w, h = img_resized.size
+    w, h = img_sharpened.size
     mask = Image.new("L", (w, h), 0)
     draw_mask = ImageDraw.Draw(mask)
     
@@ -365,7 +371,7 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     # Apply mask to the image (Black out masked areas)
     # We use a black image as the background
     black_bg = Image.new("RGB", (w, h), "black")
-    img_final = Image.composite(img_resized, black_bg, mask)
+    img_final = Image.composite(img_sharpened, black_bg, mask)
     # -----------------------------------------------------
     
     # Convert to tensor and standardize
