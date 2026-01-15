@@ -159,8 +159,8 @@ class MediaPipeHandler:
             return False, "未正視鏡頭", pose_tuple
 
         # 4. 眼睛視線判定 (斜視 - 瞬時攔截)
-        # [2026-01-15 Relaxed] 放寬至 0.25 ~ 0.75, Diff 0.15 (因 Sharpen 5.0 增強了特徵辨識力)
-        if abs(l_h - r_h) > 0.15 or not (0.25 < s_avg_h < 0.75):
-            return False, "斜視", pose_tuple
+        # [2026-01-15 Disabled] 暫時關閉虹膜過濾，僅依靠臉部特徵比對與頭部姿態判定
+        # if abs(l_h - r_h) > 0.15 or not (0.25 < s_avg_h < 0.75):
+        #     return False, "斜視", pose_tuple
         
         return True, "Pass", pose_tuple
