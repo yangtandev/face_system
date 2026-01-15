@@ -7,7 +7,7 @@ import time
 import requests
 import torch
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from init.log import LOGGER
 
@@ -338,9 +338,40 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     
     # Resize to the target square size
     img_resized = img_cropped.resize((image_size, image_size), Image.BILINEAR)
+
+    # --- Apply Trapezoid Mask (Mild: 70% bottom width) ---
+    # Purpose: Remove helmet straps or background noise at the bottom corners.
+    w, h = img_resized.size
+    mask = Image.new("L", (w, h), 0)
+    draw_mask = ImageDraw.Draw(mask)
+    
+    # Configuration for "Mild" mask
+    bottom_ratio = 0.7
+    start_y_ratio = 0.4
+    
+    start_y = int(h * start_y_ratio)
+    bl_x = int(w * (1 - bottom_ratio) / 2)
+    br_x = int(w * (1 - (1 - bottom_ratio) / 2))
+    
+    # Polygon 1: Top rectangle (Full width)
+    draw_mask.rectangle([(0, 0), (w, start_y)], fill=255)
+    
+    # Polygon 2: Bottom trapezoid
+    # Points: Top-Left, Top-Right, Bottom-Right, Bottom-Left
+    trapezoid_points = [
+        (0, start_y), (w, start_y),
+        (br_x, h), (bl_x, h)
+    ]
+    draw_mask.polygon(trapezoid_points, fill=255)
+    
+    # Apply mask to the image (Black out masked areas)
+    # We use a black image as the background
+    black_bg = Image.new("RGB", (w, h), "black")
+    img_final = Image.composite(img_resized, black_bg, mask)
+    # -----------------------------------------------------
     
     # Convert to tensor and standardize
-    face_tensor = torch.from_numpy(np.array(img_resized)).permute(2, 0, 1).float()
+    face_tensor = torch.from_numpy(np.array(img_final)).permute(2, 0, 1).float()
     standardized_face = fixed_image_standardization(face_tensor)
     
     return standardized_face
