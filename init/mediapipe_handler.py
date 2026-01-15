@@ -146,17 +146,16 @@ class MediaPipeHandler:
             return False, "眼睛閉合", pose_tuple
 
         # 2. 垂直判定 (Chin Policy) - 優先順序最高，攔截微小偏移
-        # [抬頭攔截]
-        if pitch > pitch_up_limit:
-            return False, "抬頭", pose_tuple
+        # [2026-01-15 Disabled] 暫時關閉姿態過濾
+        # if pitch > pitch_up_limit:
+        #     return False, "抬頭", pose_tuple
             
-        # [低頭攔截]
-        if pitch < pitch_down_limit:
-            return False, "低頭", pose_tuple
+        # if pitch < pitch_down_limit:
+        #     return False, "低頭", pose_tuple
 
         # 3. 側臉與歪頭判定 (Yaw/Roll)
-        if abs(yaw) > 25 or abs(roll) > 20:
-            return False, "未正視鏡頭", pose_tuple
+        # if abs(yaw) > 25 or abs(roll) > 20:
+        #     return False, "未正視鏡頭", pose_tuple
 
         # 4. 眼睛視線判定 (斜視 - 瞬時攔截)
         # [2026-01-15 Disabled] 暫時關閉虹膜過濾，僅依靠臉部特徵比對與頭部姿態判定
