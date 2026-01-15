@@ -6,7 +6,6 @@ import threading
 import time
 import requests
 import torch
-import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -342,21 +341,9 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     # Resize to the target square size
     img_resized = img_cropped.resize((image_size, image_size), Image.BILINEAR)
 
-    # --- Apply CLAHE Enhancement (Contrast Limited Adaptive Histogram Equalization) ---
-    # Purpose: Neutralize glasses glare and enhance facial/eye details for better differentiation.
-    img_bgr = cv2.cvtColor(np.array(img_resized), cv2.COLOR_RGB2BGR)
-    lab = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    cl = clahe.apply(l)
-    img_lab = cv2.merge((cl, a, b))
-    img_final_rgb = cv2.cvtColor(img_lab, cv2.COLOR_LAB2RGB)
-    img_final_pil = Image.fromarray(img_final_rgb)
-    # ----------------------------------------------------------------------------------
-
     # --- Apply Trapezoid Mask (Global Optimal: 80% bottom width) ---
     # Purpose: Remove minimal background noise while preserving maximum face structure.
-    w, h = img_final_pil.size
+    w, h = img_resized.size
     mask = Image.new("L", (w, h), 0)
     draw_mask = ImageDraw.Draw(mask)
     
@@ -378,7 +365,7 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     # Apply mask to the image (Black out masked areas)
     # We use a black image as the background
     black_bg = Image.new("RGB", (w, h), "black")
-    img_final = Image.composite(img_final_pil, black_bg, mask)
+    img_final = Image.composite(img_resized, black_bg, mask)
     # -----------------------------------------------------
     
     # Convert to tensor and standardize
