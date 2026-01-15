@@ -10,7 +10,23 @@
 
 -   Ubuntu 20.04 或更高版本
 -   Git
+-   **Git LFS (用於下載大型模型權重檔)**
 -   Python 3.10+
+
+#### 安裝 Git LFS
+
+由於本專案的模型權重檔案 (`.pt`) 較大，使用 Git LFS 進行管理。在執行 `git clone` 之前或之後，請確保您的系統已安裝 Git LFS：
+
+```bash
+# 安裝 Git LFS 套件
+sudo apt-get update && sudo apt-get install -y git-lfs
+
+# 初始化 Git LFS (每個系統使用者只需執行一次)
+git lfs install
+
+# 如果您已經克隆了專案，請執行以下指令下載實際的模型檔案
+git lfs pull
+```
 
 ## 安裝與設定
 
