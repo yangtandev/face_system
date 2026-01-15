@@ -46,8 +46,10 @@ default_config = {
         "down": -10
     },
     "crop_params": {
-        "forehead_ratio": 0.25,
-        "chin_ratio": 0.4
+        "forehead_ratio": 0.8,
+        "chin_ratio": 0.7,
+        "mask_start_y_ratio": 0.2,
+        "mask_bottom_ratio": 0.8
     },
     "test_mod":False,
     "auto_open": False,

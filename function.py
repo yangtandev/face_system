@@ -299,8 +299,10 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     """
     # Get crop parameters from config (or use defaults)
     crop_cfg = CONFIG.get("crop_params", {})
-    forehead_ratio = crop_cfg.get("forehead_ratio", 0.25)
-    chin_ratio = crop_cfg.get("chin_ratio", 0.4)
+    forehead_ratio = crop_cfg.get("forehead_ratio", 0.8)
+    chin_ratio = crop_cfg.get("chin_ratio", 0.7)
+    mask_start_y_ratio = crop_cfg.get("mask_start_y_ratio", 0.2)
+    mask_bottom_ratio = crop_cfg.get("mask_bottom_ratio", 0.8)
 
     # 1. Calculate Top Crop (Forehead removal)
     eye_y_center = (points[0][1] + points[1][1]) / 2
@@ -339,19 +341,15 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     # Resize to the target square size
     img_resized = img_cropped.resize((image_size, image_size), Image.BILINEAR)
 
-    # --- Apply Trapezoid Mask (Global Optimal: 80% bottom width) ---
-    # Purpose: Remove minimal background noise while preserving maximum face structure.
+    # --- Apply Trapezoid Mask (Configurable) ---
+    # Purpose: Remove background noise or straps while preserving maximum face structure.
     w, h = img_resized.size
     mask = Image.new("L", (w, h), 0)
     draw_mask = ImageDraw.Draw(mask)
     
-    # Configuration for "Global Optimal" mask (Based on 10,000 Grid Search 2026-01-15)
-    bottom_ratio = 0.8
-    start_y_ratio = 0.2
-    
-    start_y = int(h * start_y_ratio)
-    bl_x = int(w * (1 - bottom_ratio) / 2)
-    br_x = int(w * (1 - (1 - bottom_ratio) / 2))
+    start_y = int(h * mask_start_y_ratio)
+    bl_x = int(w * (1 - mask_bottom_ratio) / 2)
+    br_x = int(w * (1 - (1 - mask_bottom_ratio) / 2))
     
     # Polygon 1: Top rectangle (Full width)
     draw_mask.rectangle([(0, 0), (w, start_y)], fill=255)
