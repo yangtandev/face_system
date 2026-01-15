@@ -98,7 +98,9 @@ ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
 這會在 `~/.ssh/` 目錄下產生 `id_rsa` (私鑰) 和 `id_rsa.pub` (公鑰) 兩個檔案。
 
 iii. **複製公鑰至遠端伺服器**：
-您需要將您的**公鑰** (`id_rsa.pub`) 的內容附加到遠端伺服器的 `~/.ssh/authorized_keys` 檔案中。最簡單的方法是使用 `ssh-copy-id` 命令：
+    您需要將您的**公鑰** (`id_rsa.pub`) 的內容附加到遠端伺服器的 `~/.ssh/authorized_keys` 檔案中。最簡單的方法是使用 `ssh-copy-id` 命令：
+
+    ```bash
     ssh-copy-id -i ~/.ssh/id_rsa.pub <username>@<server_ip>
     ```
     請將 `<username>` 和 `<server_ip>` 替換成您在 `setting/bulid_config.py` 中設定的伺服器使用者名稱與 IP。
