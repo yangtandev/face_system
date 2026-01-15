@@ -11,6 +11,7 @@
 -   Ubuntu 20.04 或更高版本
 -   Git
 -   **Git LFS (用於下載大型模型權重檔)**
+-   **FFmpeg (用於影像解碼與處理)**
 -   Python 3.10+
 
 #### 安裝 Git LFS
@@ -26,6 +27,14 @@ git lfs install
 
 # 如果您已經克隆了專案，請執行以下指令下載實際的模型檔案
 git lfs pull
+```
+
+#### 安裝 FFmpeg
+
+系統依賴 FFmpeg 進行攝影機串流的解碼。請執行以下指令安裝：
+
+```bash
+sudo apt-get update && sudo apt-get install -y ffmpeg
 ```
 
 ## 安裝與設定
