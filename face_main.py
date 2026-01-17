@@ -510,9 +510,29 @@ class FaceRecognitionSystem:
 
     def _load_or_build_index(self, force_rebuild=False):
         if not self.state.features_dict or not any(self.state.features_dict.values()): return
+        
+        # 嘗試載入現有索引
         if not force_rebuild and self.state.ann_index.load():
-            cnt = sum(len(v) for k, v in self.state.features_dict.items() if k != 'id_name')
-            if self.state.ann_index.index and self.state.ann_index.index.ntotal == cnt: return
+            # [2026-01-18 Fix] 強化同步檢查：不只檢查數量，還檢查 ID 集合是否一致
+            # 避免 "刪一增一" 導致數量相同但內容過期的問題
+            
+            # 1. 檢查數量
+            current_count = sum(len(v) for k, v in self.state.features_dict.items() if k != 'id_name')
+            if self.state.ann_index.index and self.state.ann_index.index.ntotal == current_count:
+                # 2. 檢查 ID 內容 (確保索引內的 ID 都在目前的 features_dict 中)
+                # self.state.ann_index.id_map 儲存了索引中每個向量對應的 Person ID
+                cached_ids = set(self.state.ann_index.id_map)
+                current_ids = set(k for k in self.state.features_dict.keys() if k != 'id_name')
+                
+                # 如果快取中的 ID 集合與目前的 ID 集合完全一致，才視為有效
+                if cached_ids == current_ids:
+                    return
+                else:
+                    LOGGER.warning("索引 ID 與目前檔案不符 (可能是刪除/新增導致數量巧合)，強制重建索引。")
+            else:
+                 LOGGER.info(f"索引數量不符 (Index: {self.state.ann_index.index.ntotal}, Files: {current_count})，重建索引。")
+        
+        # 重建索引
         self.state.ann_index.build(self.state.features_dict)
 
     def _get_valid_staff_ids(self):
