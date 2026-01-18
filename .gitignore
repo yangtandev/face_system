@@ -3,42 +3,7 @@
 .DS_Store
 Thumbs.db
 
-# --- Python ---
-# 忽略 Python 虛擬環境
-venv/
-*.venv
-env/
-.env
-
-# 忽略 Python 的快取檔案和位元組碼
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# 忽略 Python 測試和建構相關的資料夾
-.pytest_cache/
-.tox/
-build/
-dist/
-*.egg-info/
-
-# --- IDE / Editor ---
-# 忽略 VSCode 的設定檔
-.vscode/
-
-# --- Project Specific ---
-# 動態產生的媒體和日誌
-/media/*
-
-voice/
-img_log/
-log/
-*.txt
-!requirements.txt
-config.json
-
-start_rtsp.py
-
-CACHED\n# Generated reports\nreports/
 handover_notes.md
+tools/
+tools/
+
