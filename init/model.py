@@ -338,20 +338,21 @@ class Comparison:
         # 4. 臉部區域清晰度檢查 (ROI Blur Detection)
         # ---------------------------------------------------------
         # [2026-01-11] 實驗數據：誤判糊臉=7.1, 正常辨識平均=20.6
-        try:
-            x1, y1, x2, y2 = map(int, box)
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(frame_w, x2), min(frame_h, y2)
-            
-            face_roi = self.system.state.frame_mtcnn[self.frame_num][y1:y2, x1:x2]
-            if face_roi.size > 0:
-                gray_roi = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
-                blur_score = cv2.Laplacian(gray_roi, cv2.CV_64F).var()
-                
-                if blur_score < 13.0:
-                    return 0.0, f"影像模糊 (ROI Score:{blur_score:.1f} < 13.0)"
-        except Exception as e:
-            LOGGER.error(f"清晰度檢查失敗: {e}")
+        # [2026-01-18 Disabled by User Request]
+        # try:
+        #     x1, y1, x2, y2 = map(int, box)
+        #     x1, y1 = max(0, x1), max(0, y1)
+        #     x2, y2 = min(frame_w, x2), min(frame_h, y2)
+        #     
+        #     face_roi = self.system.state.frame_mtcnn[self.frame_num][y1:y2, x1:x2]
+        #     if face_roi.size > 0:
+        #         gray_roi = cv2.cvtColor(face_roi, cv2.COLOR_BGR2GRAY)
+        #         blur_score = cv2.Laplacian(gray_roi, cv2.CV_64F).var()
+        #         
+        #         if blur_score < 13.0:
+        #             return 0.0, f"影像模糊 (ROI Score:{blur_score:.1f} < 13.0)"
+        # except Exception as e:
+        #     LOGGER.error(f"清晰度檢查失敗: {e}")
 
         # 通過所有檢查
         return 1.0, "Pass"

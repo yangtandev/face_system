@@ -1,3 +1,4 @@
+
 import datetime
 import json
 from PVMS_Library import config
@@ -7,10 +8,10 @@ import time
 import requests
 import torch
 import numpy as np
+import cv2
 from PIL import Image, ImageDraw, ImageEnhance
 
 from init.log import LOGGER
-
 
 with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding="utf-8") as json_file:
     CONFIG = json.load(json_file)
@@ -299,7 +300,11 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     """
     # Get crop parameters from config (or use defaults)
     crop_cfg = CONFIG.get("crop_params", {})
-    forehead_ratio = crop_cfg.get("forehead_ratio", 0.8)
+    
+    # [2026-01-18 Optimization] Forehead Ratio 0.9
+    # Optimized from 0.8 -> 0.9 to include slightly more forehead/hairline context
+    # which aids in distinguishing face shapes.
+    forehead_ratio = crop_cfg.get("forehead_ratio", 0.9)
     chin_ratio = crop_cfg.get("chin_ratio", 0.7)
     mask_start_y_ratio = crop_cfg.get("mask_start_y_ratio", 0.2)
     mask_bottom_ratio = crop_cfg.get("mask_bottom_ratio", 0.8)
@@ -332,8 +337,18 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     # But usually new_y2 < y2, so we take the tighter crop
     new_y2 = min(new_y2, y2)
 
+    # [2026-01-18 Optimization] Loose Crop (110% width)
+    # Grid search results indicate that a slightly looser crop (1.1x) improves accuracy
+    # by including more face shape context (ears/jaw) while Sharpening=1.0 reduces noise.
+    box_width = x2 - x1
+    center_x = (x1 + x2) / 2
+    new_width = box_width * 1.1
+    
+    new_x1 = center_x - (new_width / 2)
+    new_x2 = center_x + (new_width / 2)
+
     # Create the new bounding box
-    new_box = [x1, new_y1, x2, new_y2]
+    new_box = [new_x1, new_y1, new_x2, new_y2]
     
     # Crop the image using the new bounding box
     img_cropped = image.crop(new_box)
@@ -341,14 +356,17 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     # Resize to the target square size
     img_resized = img_cropped.resize((image_size, image_size), Image.BILINEAR)
 
-    # --- Apply Strong Sharpening (Factor 5.0) ---
-    # Purpose: enhance high-frequency details (eyes, glasses frames) to distinguish similar faces.
+    # --- Apply Mild Sharpening (Factor 1.0) ---
+    # Optimized from 5.0 -> 1.0 (No sharpening) to reduce false positives caused by noise artifacts.
     enhancer = ImageEnhance.Sharpness(img_resized)
-    img_sharpened = enhancer.enhance(5.0)
+    img_sharpened = enhancer.enhance(1.0)
     # --------------------------------------------
 
-    # --- Apply Trapezoid Mask (Global Optimal: 80% bottom width) ---
+    # --- Apply Trapezoid Mask (Global Optimal: 70% bottom width) ---
     # Purpose: Remove minimal background noise while preserving maximum face structure.
+    # [2026-01-18 Optimization] Changed from 0.8 to 0.7 to mask more background corners.
+    mask_bottom_ratio = 0.7 
+    
     w, h = img_sharpened.size
     mask = Image.new("L", (w, h), 0)
     draw_mask = ImageDraw.Draw(mask)

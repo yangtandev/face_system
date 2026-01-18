@@ -84,10 +84,14 @@ class MediaPipeHandler:
             start = np.array([p[idx_start].x * w, p[idx_start].y * h])
             end   = np.array([p[idx_end].x * w,   p[idx_end].y * h])
             point = np.array([p[idx_point].x * w, p[idx_point].y * h])
+            
             vec_line = end - start
             vec_point = point - start
+            
             denom = np.dot(vec_line, vec_line)
             if denom == 0: return 0.5
+            
+            # Projection ratio
             return np.dot(vec_point, vec_line) / denom
         l_h = get_projection_ratio(self.IDX_LEFT_EYE_INNER, self.IDX_LEFT_EYE_OUTER, self.IDX_LEFT_EYE_IRIS)
         r_h = get_projection_ratio(self.IDX_RIGHT_EYE_INNER, self.IDX_RIGHT_EYE_OUTER, self.IDX_RIGHT_EYE_IRIS)
@@ -142,8 +146,9 @@ class MediaPipeHandler:
 
         # 1. 眼睛異常檢查 (閉眼/特徵崩潰) - 優先攔截
         # 正常張眼時 Avg V 約為 0.2~0.8。若 > 3.0 代表上下眼皮重疊導致數值爆炸。
-        if s_avg_v > 3.0:
-            return False, "眼睛閉合", pose_tuple
+        # [2026-01-18 Disabled by User Request]
+        # if s_avg_v > 3.0:
+        #     return False, "眼睛閉合", pose_tuple
 
         # 2. 垂直判定 (Chin Policy) - 優先順序最高，攔截微小偏移
         # [2026-01-15 Disabled] 暫時關閉姿態過濾
