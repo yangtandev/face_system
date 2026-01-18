@@ -15,7 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models import inception_resnet_v1
 from init.mediapipe_handler import MediaPipeHandler
-from function import crop_face_without_forehead
+from function import crop_face_without_forehead, get_parts_crop
 from init.model import CAM_NAME_MAP
 
 # --- Configuration Constants (Simulating GlobalState) ---
@@ -139,7 +139,8 @@ def main():
     
     # 1. Build Database
     print("\n=== Building Database from Enrollment Images ===")
-    db_embeddings = {} 
+    db_embeddings = {}
+    db_parts = {} # [2026-01-19] Part features
     
     enroll_files = glob(os.path.join(ENROLL_DIR, "*.jpg"))
     for fpath in tqdm(enroll_files):
@@ -171,13 +172,22 @@ def main():
             if name not in db_embeddings: db_embeddings[name] = []
             db_embeddings[name].append(emb)
             
+            # [2026-01-19 Feature] Generate Part Embeddings
+            parts_tensors = get_parts_crop(img_pil, lm)
+            parts_emb = {}
+            for p_name, p_tensor in parts_tensors.items():
+                with torch.no_grad():
+                    emb = resnet(p_tensor.unsqueeze(0)).detach().numpy()[0]
+                    parts_emb[p_name] = emb
+            db_parts[name] = parts_emb
+            
         except Exception as e:
             print(f"Error processing {fpath}: {e}")
 
     print(f"Database built. {len(db_embeddings)} people enrolled.")
 
     # 2. Run Strict Test
-    print("\n=== Running Strict Production Test ===")
+    print("\n=== Running Strict Production Test (Part Verification) ===")
     print(f"Config: Min Face={MIN_FACE_THRESHOLD}, ROI=1/{CLOSE_N}, Conf={CONFIDENCE_THRESHOLD}")
     
     test_files = glob(os.path.join(TEST_DIR, "*.jpg"))
@@ -268,24 +278,56 @@ def main():
             # Apply Quality Score (In this strict flow, Q is 1.0 if passed, but production multiplies)
             final_conf = best_score * q_score # q_score is 1.0 here if passed
             
-            # 7. Decision
-            pass_threshold = (final_conf >= CONFIDENCE_THRESHOLD)
-            match_name = (best_name == expected_name)
+            # Decision Logic
+            status = "FAIL"
+            reason = ""
             
-            if pass_threshold and match_name:
-                stats["Success"] += 1
+            # [2026-01-19] Part-Based Verification Logic
+            if 0.7 <= final_conf < 0.9:
+                if best_name in db_parts:
+                    current_parts = get_parts_crop(img_pil, lm)
+                    target_parts = db_parts[best_name]
+                    
+                    veto_reasons = []
+                    # Thresholds from experiment: Eye < 0.65 or Nose < 0.6 -> Reject
+                    for p_name, threshold in [('eye', 0.65), ('nose', 0.6)]:
+                        if p_name in current_parts and p_name in target_parts:
+                            with torch.no_grad():
+                                p_vec = resnet(current_parts[p_name].unsqueeze(0)).detach().numpy()[0]
+                            sim = cosine_similarity(p_vec, target_parts[p_name])
+                            if sim < threshold:
+                                veto_reasons.append(f"{p_name}({sim:.2f})")
+                    
+                    if veto_reasons:
+                        reason = f"Part Mismatch: {', '.join(veto_reasons)}"
+                        final_conf = final_conf * 0.8 # Penalize
+                        stats["Part Rejection"] += 1
+            
+            if final_conf >= CONFIDENCE_THRESHOLD:
                 status = "PASS"
             else:
-                stats["Recognition Fail"] += 1
-                status = "FAIL"
-                
+                if "Part Mismatch" in reason:
+                    status = "REJECT (Part)"
+                else:
+                    reason = "Low Confidence"
+
+            # Check correctness
+            match_name = (best_name == expected_name)
+            
+            if status == "PASS":
+                if match_name:
+                    stats["Success"] += 1
+                else:
+                    stats["Recognition Fail"] += 1
+                    status = "FAIL (MisID)"
+            
             results.append({
                 "file": filename,
                 "expected": expected_name,
                 "predicted": best_name,
                 "score": final_conf,
                 "status": status,
-                "reason": f"Exp: {expected_name}, Got: {best_name}" if not match_name else "Low Confidence"
+                "reason": reason if match_name else f"Exp: {expected_name}, Got: {best_name} [{reason}]"
             })
             
         except Exception as e:
@@ -294,12 +336,13 @@ def main():
 
     # 3. Report
     print("\n" + "="*50)
-    print("STRICT PRODUCTION SIMULATION REPORT")
+    print("STRICT PRODUCTION SIMULATION REPORT (PART VERIFICATION)")
     print("="*50)
     print(f"Total Images: {len(test_files)}")
     print("-" * 30)
     print(f"Success:           {stats['Success']}")
     print(f"Recognition Fail:  {stats['Recognition Fail']}")
+    print(f"Part Rejection:    {stats['Part Rejection']}")
     print("-" * 30)
     print(f"Filtered (ROI):    {stats['Filtered (ROI)']}")
     print(f"Filtered (Size):   {stats['Filtered (Size)']}")

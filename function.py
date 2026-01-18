@@ -397,3 +397,62 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     standardized_face = fixed_image_standardization(face_tensor)
     
     return standardized_face
+
+# [2026-01-19 Feature] Part-Based Cropping
+def crop_and_pad(img, cx, cy, w, h, target_size=160):
+    """Helper to crop a region and resize it to target size."""
+    x1 = int(cx - w/2)
+    y1 = int(cy - h/2)
+    x2 = int(cx + w/2)
+    y2 = int(cy + h/2)
+    
+    # Crop (PIL handles out of bounds by padding with 0 if using proper method, 
+    # but crop() just clamps. We want context.)
+    crop = img.crop((x1, y1, x2, y2))
+    crop = crop.resize((target_size, target_size), Image.BILINEAR)
+    return crop
+
+def get_parts_crop(image_pil, landmarks):
+    """
+    Crop Eye, Nose, Mouth regions based on MediaPipe landmarks.
+    Returns a dictionary of tensors ready for ResNet.
+    
+    Landmarks indices (5 points from MediaPipeHandler):
+    0=L_Eye, 1=R_Eye, 2=Nose, 3=L_Mouth, 4=R_Mouth
+    """
+    parts_tensors = {}
+    
+    # 1. Eyes Region (Include eyebrows)
+    # Center between eyes
+    eye_center_x = (landmarks[0][0] + landmarks[1][0]) / 2
+    eye_center_y = (landmarks[0][1] + landmarks[1][1]) / 2
+    # Width = Eye distance * 2.5
+    eye_dist = np.linalg.norm(landmarks[0] - landmarks[1])
+    crop_w = eye_dist * 2.5
+    crop_h = crop_w * 0.8 # Eyes are wider than tall
+    
+    parts_tensors['eye'] = _process_part_tensor(crop_and_pad(image_pil, eye_center_x, eye_center_y, crop_w, crop_h))
+    
+    # 2. Nose Region
+    nose_x, nose_y = landmarks[2]
+    # Width = Eye dist * 1.2 (Narrower than eyes)
+    crop_w = eye_dist * 1.2
+    crop_h = eye_dist * 1.5
+    parts_tensors['nose'] = _process_part_tensor(crop_and_pad(image_pil, nose_x, nose_y, crop_w, crop_h))
+    
+    # 3. Mouth Region
+    mouth_center_x = (landmarks[3][0] + landmarks[4][0]) / 2
+    mouth_center_y = (landmarks[3][1] + landmarks[4][1]) / 2
+    mouth_w = np.linalg.norm(landmarks[3] - landmarks[4])
+    crop_w = mouth_w * 2.0
+    crop_h = crop_w * 1.0
+    parts_tensors['mouth'] = _process_part_tensor(crop_and_pad(image_pil, mouth_center_x, mouth_center_y, crop_w, crop_h))
+    
+    return parts_tensors
+
+def _process_part_tensor(img_pil):
+    """Standardize a part crop to tensor."""
+    # No extra sharpening for parts (keep it raw)
+    face_tensor = torch.from_numpy(np.array(img_pil)).permute(2, 0, 1).float()
+    processed_tensor = (face_tensor - 127.5) / 128.0
+    return processed_tensor

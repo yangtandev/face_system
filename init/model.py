@@ -13,7 +13,7 @@ from datetime import datetime
 import pytz
 import json
 from PIL import Image
-from function import crop_face_without_forehead
+from function import crop_face_without_forehead, get_parts_crop
 from init.mediapipe_handler import MediaPipeHandler # 新增
 
 @nb.jit
@@ -555,6 +555,50 @@ class Comparison:
                         raw_confidence = distances[0]
                         confidence = raw_confidence * quality_score
                         z_score = 0.0
+                        
+                        # [2026-01-19 Feature] Part-Based Verification (Double Check)
+                        # If confidence is passing but not super high (0.7 ~ 0.9), check local features.
+                        part_msg = ""
+                        is_part_verified = True
+                        
+                        if 0.7 <= confidence < 0.9:
+                            part_db = self.system.state.part_features
+                            if part_db and predicted_id in part_db:
+                                try:
+                                    # Crop current parts
+                                    frame_img = Image.fromarray(cv2.cvtColor(_frame, cv2.COLOR_BGR2RGB))
+                                    current_parts = get_parts_crop(frame_img, _points)
+                                    
+                                    # Compare Eye and Nose (Mouth is less reliable due to expression)
+                                    target_parts = part_db[predicted_id]
+                                    
+                                    # Calc similarities
+                                    scores = {}
+                                    for p_name in ['eye', 'nose']:
+                                        if p_name in current_parts and p_name in target_parts:
+                                            p_vec = self.system.resnet(current_parts[p_name].unsqueeze(0)).detach().numpy()[0]
+                                            scores[p_name] = cosine_similarity(p_vec, target_parts[p_name])
+                                    
+                                    # Veto Logic
+                                    # Based on test: MisID had Nose=0.49, Eye=0.62. Correct had Nose=0.79, Eye=0.75.
+                                    # Thresholds: Nose < 0.6 or Eye < 0.65 -> REJECT
+                                    veto_reasons = []
+                                    if 'nose' in scores and scores['nose'] < 0.6:
+                                        veto_reasons.append(f"Nose({scores['nose']:.2f})")
+                                    if 'eye' in scores and scores['eye'] < 0.65:
+                                        veto_reasons.append(f"Eye({scores['eye']:.2f})")
+                                        
+                                    if veto_reasons:
+                                        is_part_verified = False
+                                        part_msg = f" [局部驗證失敗: {', '.join(veto_reasons)}]"
+                                        # Penalize confidence to force it below threshold
+                                        confidence = confidence * 0.8 
+                                    else:
+                                        part_msg = f" [局部驗證通過: N{scores.get('nose',0):.2f}, E{scores.get('eye',0):.2f}]"
+                                        
+                                except Exception as e:
+                                    LOGGER.error(f"Part verification failed: {e}")
+
                         if len(top_k_similarities) > 1:
                             mean_score = np.mean(top_k_similarities)
                             std_dev_score = np.std(top_k_similarities)
@@ -587,6 +631,9 @@ class Comparison:
             quality_info = ""
             if quality_score < 1.0:
                 quality_info = f" (原:{raw_confidence:.2%}, 品質:{quality_score:.2f} {quality_msg})"
+            
+            # Append Part Verification Msg
+            quality_info += part_msg
 
             log_message = (
                 f"{log_time} [辨識事件][{camera_name}] 偵測到 {staff_name} (ID: {predicted_id}), "
