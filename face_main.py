@@ -132,9 +132,11 @@ class CameraSystem:
                              self.last_visitor_face_img = original_frame[max(0,oy1):min(h,oy2), max(0,ox1):min(w,ox2)].copy()
                     except Exception: pass
                 elif current_class != "None":
+                    self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img to avoid showing previous person
                     staff_name = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
                     now_frame = put_chinese_text(now_frame, staff_name, (x1, text_y), font_path, font_size, (205, 0, 0))
                 else:
+                    self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img
                     now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0))
                 
                 # 辨識後處理邏輯 (保持不變)
