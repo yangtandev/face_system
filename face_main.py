@@ -440,8 +440,20 @@ class FaceRecognitionSystem:
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.original_tty_settings)
                 except Exception: pass
             
-            # Fallback just in case
-            os.system("stty sane")
+            # [2026-01-19 Fix TTY] Launch a detached "rescuer" process.
+            # Even if we restore termios above, background C++ threads (OpenCV/FFmpeg)
+            # might corrupt the TTY during the final os._exit().
+            # This external 'stty sane' will run 0.1s AFTER we die to clean up any mess.
+            # start_new_session=True ensures it survives our os._exit().
+            try:
+                subprocess.Popen(
+                    "sleep 0.1; stty sane", 
+                    shell=True, 
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            except Exception: pass
             
             print("Force exiting system...")
             os._exit(0)
