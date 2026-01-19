@@ -435,9 +435,11 @@ def get_parts_crop(image_pil, landmarks):
     
     # 2. Nose Region
     nose_x, nose_y = landmarks[2]
-    # Width = Eye dist * 1.2 (Narrower than eyes)
-    crop_w = eye_dist * 1.2
-    crop_h = eye_dist * 1.5
+    # [2026-01-19 Optimization] Expanded nose context
+    # Old: w=1.2, h=1.5 (Too tight, led to unstable features < 0.2)
+    # New: w=1.6, h=2.0 (Include nostrils, bridge, and partial cheeks for context)
+    crop_w = eye_dist * 1.6
+    crop_h = eye_dist * 2.0
     parts_tensors['nose'] = _process_part_tensor(crop_and_pad(image_pil, nose_x, nose_y, crop_w, crop_h))
     
     # 3. Mouth Region
