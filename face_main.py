@@ -230,8 +230,18 @@ class CameraSystem:
     def terminate(self, event):
         print(f"Terminating CameraSystem for window {self.frame_num}...")
         self.stop_threads = True
-        if hasattr(self, 'win'): self.win.my_thread.exit()
-        self.camera.terminate(); self.detect.terminate(); self.compar.terminate(); event.accept()
+        
+        # [2026-01-19 Fix] Wait for UI thread worker
+        if hasattr(self, 'win') and hasattr(self.win, 'my_thread'): 
+             self.win.my_thread.exit()
+             self.win.my_thread.wait(100) # Wait max 100ms
+
+        # Terminate components
+        self.camera.terminate()
+        self.detect.terminate() 
+        self.compar.terminate() 
+        
+        event.accept()
 
 with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding="utf-8") as f:
     CONFIG = json.load(f)
@@ -404,6 +414,12 @@ class FaceRecognitionSystem:
         LOGGER.info(f"Auto-Tuning: Det {1/self.state.detection_interval:.1f} FPS, Rec {1/self.state.comparison_interval:.1f} FPS")
 
     def run(self):
+        # [2026-01-19 Fix TTY] Backup terminal settings at startup
+        try:
+            self.original_tty_settings = termios.tcgetattr(sys.stdin)
+        except Exception: 
+            self.original_tty_settings = None
+
         app = QApplication(sys.argv)
         safe_shutdown_pipe_read, self.safe_shutdown_pipe_write = os.pipe()
         def signal_handler(sig, frame): os.write(self.safe_shutdown_pipe_write, b'x')
@@ -413,9 +429,22 @@ class FaceRecognitionSystem:
         self._load_features_and_profiles(); self.setup_mqtt_client(); self.update_inout_log(); self.setup_cameras()
         try: ret = app.exec_()
         finally:
-            subprocess.Popen("sleep 0.1; stty sane", shell=True)
-            try: sys.exit(ret)
-            except Exception: sys.exit(0)
+            # [2026-01-19 Fix] Force exit to prevent hanging/high-load due to daemon threads spinning
+            # or C++ resource cleanup issues (OpenCV/MediaPipe).
+            
+            # [2026-01-19 Fix TTY] Synchronously restore terminal state BEFORE exit using Python termios
+            # This is more reliable than os.system('stty sane')
+            if self.original_tty_settings:
+                print("Restoring terminal settings via termios...")
+                try:
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.original_tty_settings)
+                except Exception: pass
+            
+            # Fallback just in case
+            os.system("stty sane")
+            
+            print("Force exiting system...")
+            os._exit(0)
 
     def setup_mqtt_client(self):
         s_ip = CONFIG.get("Server", {}).get("ip", "localhost")

@@ -90,6 +90,27 @@ class MainWindow(QWidget, Ui_Form):
             n = 1
         elif config_["cameraIP"]["in_camera"] == "0" or config_["cameraIP"]["out_camera"] == "0":
             n = 1
+
+        # [2026-01-19] 強制視窗排版邏輯 (當 full_screen = False)
+        # 即使只有單螢幕，也強制將視窗左右並排，方便測試與除錯
+        if not config_.get("full_screen", True):
+            screen_rect = desktop.screenGeometry(0)
+            w = screen_rect.width()
+            h = screen_rect.height()
+            
+            # 若只有單一視窗 (n=1)，預設佔據左半邊
+            if n == 1:
+                 self.setGeometry(0, 0, w // 2, h)
+            else:
+                # 雙視窗模式：Cam 0 (Entry) 左邊，Cam 1 (Exit) 右邊
+                if self.frame_num == 0:
+                    self.setGeometry(0, 0, w // 2, h)
+                elif self.frame_num == 1:
+                    self.setGeometry(w // 2, 0, w // 2, h)
+            
+            self.showNormal()
+            return
+
         if n == screen_count:
             pass
 

@@ -235,19 +235,24 @@ class VideoCapture:
         print(f"Terminating camera connection to {self.rtsp_url}...")
         self.stop_threads = True
         
-        # Capture the process object locally to avoid race conditions with _reader_manager
+        # [2026-01-19 Fix] Avoid race condition between terminate() and _reader_manager()
+        # Instead of killing manually and waiting here, we send a signal to interrupt
+        # the blocking read() in the thread, then wait for the thread to cleanup.
+        
+        # Capture the process object locally
         proc = self.proc
         
+        # Send SIGTERM to interrupt ffmpeg immediately (breaking the blocking read)
         if proc and proc.poll() is None:
-            print(f"Sending SIGTERM to FFmpeg process {proc.pid}...")
             try:
+                print(f"Signal SIGTERM to FFmpeg {proc.pid} to interrupt stream...")
                 proc.terminate()
-                try:
-                    proc.wait(timeout=1)
-                except subprocess.TimeoutExpired:
-                    print(f"FFmpeg process {proc.pid} did not terminate in time. Sending SIGKILL.")
-                    proc.kill()
-            except Exception as e:
-                print(f"Error while terminating FFmpeg process: {e}")
+            except Exception: pass
+            
+        # Wait for the manager thread to finish cleanup (it has the finally block)
+        if self.thread.is_alive():
+            self.thread.join(timeout=2.0)
+            if self.thread.is_alive():
+                print("Warning: Camera thread did not exit in time.")
                 
         print(f"Camera connection for {self.rtsp_url} terminated.")
