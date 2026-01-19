@@ -567,7 +567,7 @@ class Comparison:
                                 try:
                                     # Crop current parts
                                     frame_img = Image.fromarray(cv2.cvtColor(_frame, cv2.COLOR_BGR2RGB))
-                                    current_parts = get_parts_crop(frame_img, _points)
+                                    current_parts, part_coords = get_parts_crop(frame_img, _points)
                                     
                                     # Compare Eye and Nose (Mouth is less reliable due to expression)
                                     target_parts = part_db[predicted_id]
@@ -595,6 +595,26 @@ class Comparison:
                                         confidence = confidence * 0.8 
                                     else:
                                         part_msg = f" [局部驗證通過: N{scores.get('nose',0):.2f}, E{scores.get('eye',0):.2f}]"
+                                    
+                                    # [2026-01-19 Feature] Create Metadata for Snapshot
+                                    # This allows us to replay the EXACT logic offline if a mis-identification occurs.
+                                    # We save: landmarks, crop coords, scores, and decisions.
+                                    meta = {
+                                        "timestamp": datetime.now(self.TIMEZONE).isoformat(),
+                                        "camera": CAM_NAME_MAP.get(self.frame_num, str(self.frame_num)),
+                                        "predicted_id": predicted_id,
+                                        "landmarks": _points.tolist() if isinstance(_points, np.ndarray) else _points,
+                                        "crop_box": _box,
+                                        "part_coords": part_coords,
+                                        "scores": scores,
+                                        "raw_confidence": float(raw_confidence),
+                                        "final_confidence": float(confidence),
+                                        "quality_score": float(quality_score),
+                                        "quality_msg": quality_msg,
+                                        "veto_reasons": veto_reasons
+                                    }
+                                    # Store temporarily in the loop, will assign to state if reliable
+                                    self.system.state.success_metadata[self.frame_num] = meta 
                                         
                                 except Exception as e:
                                     LOGGER.error(f"Part verification failed: {e}")

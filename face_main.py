@@ -149,8 +149,9 @@ class CameraSystem:
                         z_score = self.system.state.same_zscore[self.frame_num]
                         width_val = self.system.state.same_width[self.frame_num]
                         saved_img = self.system.state.success_frame[self.frame_num]
-                        if saved_img is not None: self.save_img(saved_img, "face", success_staff_name, confidence, z_score, width_val)
-                        else: self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score, width_val)
+                        meta = self.system.state.success_metadata[self.frame_num]
+                        if saved_img is not None: self.save_img(saved_img, "face", success_staff_name, confidence, z_score, width_val, metadata=meta)
+                        else: self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score, width_val, metadata=meta)
                     self.system.state.same_people[self.frame_num] = 0.0
             
             self.show_frame = now_frame
@@ -211,19 +212,37 @@ class CameraSystem:
             return 'color: rgb(0, 170, 0); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', name
         return 'color: rgb(0, 85, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "辨識中"
 
-    def save_img(self, img, path, staffname="", conf=0.0, z_score=0.0, width=0):
+    def save_img(self, img, path, staffname="", conf=0.0, z_score=0.0, width=0, metadata=None):
         # [2026-01-13 Perf] Offload disk I/O to background thread
-        self.system.io_pool.submit(self._save_img_task, img.copy(), path, staffname, conf, z_score, width)
+        self.system.io_pool.submit(self._save_img_task, img.copy(), path, staffname, conf, z_score, width, metadata)
 
-    def _save_img_task(self, img, path, staffname, conf, z_score, width):
+    def _save_img_task(self, img, path, staffname, conf, z_score, width, metadata=None):
         try:
             dict_={"face":0, "clothes":1}
             dt = datetime.datetime.today()
             d_str, t_str = dt.strftime("%Y_%m_%d"), dt.strftime("%H;%M;%S")
             os.makedirs(f"{main_path}/img_log/{path}/{d_str}", exist_ok=True)
             if time.time()-self.save_img_time[dict_[path]] > 5 or (self.save_name_last != staffname and staffname != ""):
-                fname = f"{t_str}_{staffname}_C{int(conf*100)}_Z{z_score:.2f}_W{width}.jpg" if staffname else f"{t_str}.jpg"
+                fname_base = f"{t_str}_{staffname}_C{int(conf*100)}_Z{z_score:.2f}_W{width}" if staffname else f"{t_str}"
+                fname = f"{fname_base}.jpg"
                 cv2.imwrite(f"{main_path}/img_log/{path}/{d_str}/{fname}", img)
+                
+                # [2026-01-19 Feature] Save Snapshot Metadata for Replay/Debugging
+                if metadata:
+                    json_path = f"{main_path}/img_log/{path}/{d_str}/{fname_base}.json"
+                    try:
+                        # Convert numpy types to native python types for JSON serialization
+                        def default_converter(o):
+                            if isinstance(o, np.integer): return int(o)
+                            elif isinstance(o, np.floating): return float(o)
+                            elif isinstance(o, np.ndarray): return o.tolist()
+                            return str(o)
+                            
+                        with open(json_path, 'w', encoding='utf-8') as jf:
+                            json.dump(metadata, jf, default=default_converter, indent=2, ensure_ascii=False)
+                    except Exception as je:
+                        LOGGER.error(f"Failed to save metadata JSON: {je}")
+
                 self.save_img_time[dict_[path]] = time.time()
                 if staffname: self.save_name_last = staffname
         except Exception as e:
@@ -262,6 +281,7 @@ class GlobalState:
     frame_high_res: List[Any] = None
     frame_mtcnn_high_res: List[Any] = None
     success_frame: List[Any] = None
+    success_metadata: List[Any] = None # [2026-01-19 Feature] Snapshot metadata for debugging
     clothes: List[bool] = None
     check_time: Dict[str, List[Any]] = None
     features_dict: Dict[str, Any] = None
@@ -292,6 +312,7 @@ class FaceRecognitionSystem:
         self.state.frame, self.state.frame_mtcnn = [None, None], [None, None]
         self.state.frame_high_res, self.state.frame_mtcnn_high_res = [None, None], [None, None]
         self.state.success_frame = [None, None]
+        self.state.success_metadata = [None, None] # Initialize
         self.state.clothes = [False, False, False]
         self.state.check_time, self.state.features_dict, self.state.profile_dict = {}, {}, {}
         self.state.part_features = {} # Initialize empty
@@ -575,7 +596,7 @@ class FaceRecognitionSystem:
                         # Get part crops (Eye, Nose, Mouth)
                         # Note: We convert to PIL inside get_parts_crop if needed, or pass PIL
                         img_pil = Image.fromarray(img_rgb)
-                        parts_tensors = get_parts_crop(img_pil, points[0])
+                        parts_tensors, _ = get_parts_crop(img_pil, points[0]) # Ignore coords here
                         
                         parts_emb = {}
                         for p_name, p_tensor in parts_tensors.items():

@@ -415,12 +415,15 @@ def crop_and_pad(img, cx, cy, w, h, target_size=160):
 def get_parts_crop(image_pil, landmarks):
     """
     Crop Eye, Nose, Mouth regions based on MediaPipe landmarks.
-    Returns a dictionary of tensors ready for ResNet.
+    Returns:
+        parts_tensors (dict): {'eye': tensor, ...} ready for ResNet.
+        parts_coords (dict): {'eye': [cx, cy, w, h], ...} for logging/debugging.
     
     Landmarks indices (5 points from MediaPipeHandler):
     0=L_Eye, 1=R_Eye, 2=Nose, 3=L_Mouth, 4=R_Mouth
     """
     parts_tensors = {}
+    parts_coords = {}
     
     # 1. Eyes Region (Include eyebrows)
     # Center between eyes
@@ -432,6 +435,7 @@ def get_parts_crop(image_pil, landmarks):
     crop_h = crop_w * 0.8 # Eyes are wider than tall
     
     parts_tensors['eye'] = _process_part_tensor(crop_and_pad(image_pil, eye_center_x, eye_center_y, crop_w, crop_h))
+    parts_coords['eye'] = [float(x) for x in [eye_center_x, eye_center_y, crop_w, crop_h]]
     
     # 2. Nose Region
     nose_x, nose_y = landmarks[2]
@@ -441,6 +445,7 @@ def get_parts_crop(image_pil, landmarks):
     crop_w = eye_dist * 1.6
     crop_h = eye_dist * 2.0
     parts_tensors['nose'] = _process_part_tensor(crop_and_pad(image_pil, nose_x, nose_y, crop_w, crop_h))
+    parts_coords['nose'] = [float(x) for x in [nose_x, nose_y, crop_w, crop_h]]
     
     # 3. Mouth Region
     mouth_center_x = (landmarks[3][0] + landmarks[4][0]) / 2
@@ -449,8 +454,9 @@ def get_parts_crop(image_pil, landmarks):
     crop_w = mouth_w * 2.0
     crop_h = crop_w * 1.0
     parts_tensors['mouth'] = _process_part_tensor(crop_and_pad(image_pil, mouth_center_x, mouth_center_y, crop_w, crop_h))
+    parts_coords['mouth'] = [float(x) for x in [mouth_center_x, mouth_center_y, crop_w, crop_h]]
     
-    return parts_tensors
+    return parts_tensors, parts_coords
 
 def _process_part_tensor(img_pil):
     """Standardize a part crop to tensor."""
