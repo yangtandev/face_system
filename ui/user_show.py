@@ -46,9 +46,10 @@ class MainWindow(QWidget, Ui_Form):
         self.my_thread.start()
         self.update_screen()
         # 設定定時器
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_screen)
-        self.timer.start(30000)  # 每1000毫秒（1秒）更新一次
+        # [2026-01-19 Fix] 移除 30 秒自動重置視窗大小的機制，允許使用者手動調整版面
+        # self.timer = QTimer(self)
+        # self.timer.timeout.connect(self.update_screen)
+        # self.timer.start(30000)  # 每1000毫秒（1秒）更新一次
 
     def update_img( self, obj, pixmap:QPixmap):
         obj.setPixmap(pixmap)
