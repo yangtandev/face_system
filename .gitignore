@@ -11,6 +11,7 @@ tools/
 img_log/
 log/
 media/
+models/data/
 py_ssh/
 venv/
 __pycache__/
