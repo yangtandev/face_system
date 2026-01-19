@@ -336,6 +336,13 @@ def load_weights(mdl, name):
     filename = os.path.basename(path)
     dict_path = os.path.join(os.path.dirname(__file__), save_dir, filename)
     
+    # 檢查檔案是否存在且大小是否合理 (避免 LFS 指標檔導致崩潰)
+    # VGG2 模型檔約 111MB，設定 100MB 為安全門檻
+    if os.path.exists(dict_path) and os.path.getsize(dict_path) < 100 * 1024 * 1024:
+        print(f"[警告] 模型檔 {filename} 大小異常 ({os.path.getsize(dict_path)} bytes)，可能為 Git LFS 指標檔。")
+        print("正在刪除並重新下載完整模型...")
+        os.remove(dict_path)
+
     # 如果檔案不存在則下載
     if not os.path.exists(dict_path):
         print(f"{dict_path} 不存在，正在下載...")
