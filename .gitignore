@@ -1,18 +1,29 @@
+
 # --- System Files ---
-# 忽略作業系統產生的暫存檔
 .DS_Store
 Thumbs.db
 
+# --- Configuration & Secrets ---
+config.json
 handover_notes.md
-tools/
+
+# --- Development Tools ---
 tools/
 
 # --- Log & Media ---
 img_log/
 log/
 media/
-models/data/
+reports/
+voice/
+
+# --- System Generated ---
 py_ssh/
 venv/
 __pycache__/
 *.pyc
+
+# --- Scripts ---
+start_rtsp.py
+sync_face_system.sh
+
