@@ -7,3 +7,11 @@ handover_notes.md
 tools/
 tools/
 
+# --- Log & Media ---
+img_log/
+log/
+media/
+py_ssh/
+venv/
+__pycache__/
+*.pyc

@@ -46,6 +46,12 @@ class MediaPipeHandler:
 
         self.gaze_history = deque(maxlen=5)
 
+    def close(self):
+        """Explicitly close the MediaPipe FaceMesh instance to release resources."""
+        if hasattr(self, 'face_mesh') and self.face_mesh:
+            self.face_mesh.close()
+            self.face_mesh = None
+
     def detect(self, image, landmarks=True):
         if not isinstance(image, np.ndarray):
             image = np.array(image)

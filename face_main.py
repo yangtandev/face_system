@@ -509,41 +509,44 @@ class FaceRecognitionSystem:
         from init.mediapipe_handler import MediaPipeHandler
         mp_handler = MediaPipeHandler(max_num_faces=1) # Temporary instance
         
-        pic_files = [f for f in os.listdir(pb) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        if not pic_files: return
-        
-        LOGGER.info(f"Loading Part Features for {len(pic_files)} users...")
-        part_db = {}
-        
-        for f in tqdm(pic_files, desc="[Part Feature Gen]"):
-            try:
-                # Filename: G07_..._Name.jpg
-                bn = os.path.splitext(f)[0]
-                staff_id = bn.split('_')[0] 
-                
-                img_path = os.path.join(pb, f)
-                img_bgr = cv2.imread(img_path)
-                if img_bgr is None: continue
-                img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-                
-                boxes, _, points = mp_handler.detect(img_rgb)
-                if boxes is not None:
-                    # Get part crops (Eye, Nose, Mouth)
-                    # Note: We convert to PIL inside get_parts_crop if needed, or pass PIL
-                    img_pil = Image.fromarray(img_rgb)
-                    parts_tensors = get_parts_crop(img_pil, points[0])
+        try:
+            pic_files = [f for f in os.listdir(pb) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+            if not pic_files: return
+            
+            LOGGER.info(f"Loading Part Features for {len(pic_files)} users...")
+            part_db = {}
+            
+            for f in tqdm(pic_files, desc="[Part Feature Gen]"):
+                try:
+                    # Filename: G07_..._Name.jpg
+                    bn = os.path.splitext(f)[0]
+                    staff_id = bn.split('_')[0] 
                     
-                    parts_emb = {}
-                    for p_name, p_tensor in parts_tensors.items():
-                        emb = self.resnet(p_tensor.unsqueeze(0)).detach().numpy()[0]
-                        parts_emb[p_name] = emb
+                    img_path = os.path.join(pb, f)
+                    img_bgr = cv2.imread(img_path)
+                    if img_bgr is None: continue
+                    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
                     
-                    part_db[staff_id] = parts_emb
-            except Exception as e:
-                pass
-                
-        self.state.part_features = part_db
-        LOGGER.info(f"Loaded Part Features for {len(part_db)} users.")
+                    boxes, _, points = mp_handler.detect(img_rgb)
+                    if boxes is not None:
+                        # Get part crops (Eye, Nose, Mouth)
+                        # Note: We convert to PIL inside get_parts_crop if needed, or pass PIL
+                        img_pil = Image.fromarray(img_rgb)
+                        parts_tensors = get_parts_crop(img_pil, points[0])
+                        
+                        parts_emb = {}
+                        for p_name, p_tensor in parts_tensors.items():
+                            emb = self.resnet(p_tensor.unsqueeze(0)).detach().numpy()[0]
+                            parts_emb[p_name] = emb
+                        
+                        part_db[staff_id] = parts_emb
+                except Exception as e:
+                    pass
+                    
+            self.state.part_features = part_db
+            LOGGER.info(f"Loaded Part Features for {len(part_db)} users.")
+        finally:
+            mp_handler.close()
 
     def _update_profile_pictures(self):
         pb = os.path.join(self.local_media_path, "pic_bak")
