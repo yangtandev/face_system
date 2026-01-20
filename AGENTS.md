@@ -2,6 +2,8 @@
 
 This document provides essential information for autonomous agents working on the Face System repository. Follow these guidelines to ensure consistency and stability.
 
+<priority>CRITICAL RULE: NEVER use `git add -f`. Respect `.gitignore` absolutely. If a file is ignored, it implies it is local-only.</priority>
+
 ## 1. Project Overview
 
 This is a **Face Recognition System** built with **Python**, **PyQt5** (UI), **PyTorch** (Face embeddings), **MediaPipe** (Face detection), and **OpenVINO**. It integrates with MQTT and REST APIs for attendance tracking and access control.
