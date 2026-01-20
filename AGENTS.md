@@ -145,7 +145,7 @@ The application uses a `GlobalState` dataclass passed via the `system` object.
 - **Git Ignore Check (MANDATORY):** Before running `git add`, ALWAYS check the content of `.gitignore`. Never blindly add files, especially logs (`*.log`), images (`*.jpg`, `*.png`), database files (`*.db`), or virtual environment directories.
 - **Handover Notes (MANDATORY):** For every new commit, you MUST append a detailed explanation of the changes (what was changed, why, and impact) to the end of `./handover_notes.md`.
   - **Do NOT delete** existing content in `handover_notes.md`; it is a critical historical record.
-  - **Commit Inclusion:** You MUST confirm that `handover_notes.md` is included in your commit. Use `git add -f handover_notes.md` if it is ignored. NEVER make a code commit without simultaneously committing the updated handover notes.
+  - **Do NOT upload .gitignore files:** Strictly respect `.gitignore`. If a file is in `.gitignore` (including `handover_notes.md`), do NOT upload it.
   - **Refinement:** If a change becomes a permanent standard (e.g., LFS check), promote the rule to this `AGENTS.md` file while keeping the history in `handover_notes.md`.
 - **Commits:** Write clear, concise commit messages in **English ONLY**.
 - **Secrets:** Check `git status` before adding files to ensure no temporary config files or credential files are committed.
