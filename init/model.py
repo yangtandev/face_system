@@ -552,83 +552,106 @@ class Comparison:
                         predicted_id = "None"; confidence = 0.0; z_score = 0.0; raw_confidence = 0.0; part_msg = ""
                     else:
                         top_k_similarities = np.array(distances)
-                        best_match_id = faiss_person_ids[0]
-                        predicted_id = best_match_id
-                        raw_confidence = distances[0]
-                        confidence = raw_confidence * quality_score
-                        z_score = 0.0
                         
-                        # [2026-01-19 Feature] Part-Based Verification (Double Check)
-                        # If confidence is passing but not super high (0.7 ~ 0.9), check local features.
-                        part_msg = ""
-                        is_part_verified = True
+                        # 1. Phase 1: Filter Candidates (Confidence >= 0.7 AND Z >= 1.5)
+                        candidates = []
                         
-                        if 0.7 <= confidence < 0.9:
-                            part_db = self.system.state.part_features
-                            if part_db and predicted_id in part_db:
-                                try:
-                                    # Crop current parts
-                                    frame_img = Image.fromarray(cv2.cvtColor(_frame, cv2.COLOR_BGR2RGB))
-                                    current_parts, part_coords = get_parts_crop(frame_img, _points)
-                                    
-                                    # Compare Eye and Nose (Mouth is less reliable due to expression)
-                                    target_parts = part_db[predicted_id]
-                                    
-                                    # Calc similarities
-                                    scores = {}
-                                    for p_name in ['eye', 'nose']:
-                                        if p_name in current_parts and p_name in target_parts:
-                                            p_vec = self.system.resnet(current_parts[p_name].unsqueeze(0)).detach().numpy()[0]
-                                            scores[p_name] = cosine_similarity(p_vec, target_parts[p_name])
-                                    
-                                    # Veto Logic
-                                    # [2026-01-20 Tuned] Adjusted based on field data:
-                                    # G04 (Glasses/Shadow) had Eye~0.62 -> Lower Eye threshold to 0.60
-                                    # Impostor (C86 vs JY14) had Nose~0.65 -> Raise Nose threshold to 0.68
-                                    veto_reasons = []
-                                    if 'nose' in scores and scores['nose'] < 0.68:
-                                        veto_reasons.append(f"Nose({scores['nose']:.2f})")
-                                    if 'eye' in scores and scores['eye'] < 0.60:
-                                        veto_reasons.append(f"Eye({scores['eye']:.2f})")
-                                        
-                                    if veto_reasons:
-                                        is_part_verified = False
-                                        part_msg = f" [局部驗證失敗: {', '.join(veto_reasons)}]"
-                                        # Penalize confidence to force it below threshold
-                                        confidence = confidence * 0.8 
-                                    else:
-                                        part_msg = f" [局部驗證通過: N{scores.get('nose',0):.2f}, E{scores.get('eye',0):.2f}]"
-                                    
-                                    # [2026-01-19 Feature] Create Metadata for Snapshot
-                                    meta = {
-                                        "timestamp": datetime.now(self.TIMEZONE).isoformat(),
-                                        "camera": CAM_NAME_MAP.get(self.frame_num, str(self.frame_num)),
-                                        "predicted_id": predicted_id,
-                                        "landmarks": _points.tolist() if isinstance(_points, np.ndarray) else _points,
-                                        "crop_box": _box,
-                                        "part_coords": part_coords,
-                                        "scores": scores,
-                                        "raw_confidence": float(raw_confidence),
-                                        "final_confidence": float(confidence),
-                                        "quality_score": float(quality_score),
-                                        "quality_msg": quality_msg,
-                                        "veto_reasons": veto_reasons
-                                    }
-                                    # Store temporarily in the loop, will assign to state if reliable
-                                    self.system.state.success_metadata[self.frame_num] = meta 
-                                        
-                                except Exception as e:
-                                    LOGGER.error(f"Part verification failed: {e}")
-
+                        # Calculate population stats from Top K (Full Face)
                         if len(top_k_similarities) > 1:
                             mean_score = np.mean(top_k_similarities)
                             std_dev_score = np.std(top_k_similarities)
-                            if std_dev_score > 0:
-                                z_score = (raw_confidence - mean_score) / std_dev_score
-                            else:
-                                z_score = Z_SCORE_THRESHOLD if confidence >= self.CONFIDENCE_THRESHOLD else 0
                         else:
-                            z_score = Z_SCORE_THRESHOLD if confidence >= self.CONFIDENCE_THRESHOLD else 0
+                            mean_score = 0
+                            std_dev_score = 0
+                        
+                        for i, pid in enumerate(faiss_person_ids):
+                            s_raw = distances[i]
+                            s_final = s_raw * quality_score
+                            
+                            z = (s_raw - mean_score) / std_dev_score if std_dev_score > 0 else 0
+                            
+                            # Strict Filter: Must pass BOTH thresholds
+                            if s_final >= self.CONFIDENCE_THRESHOLD and z >= Z_SCORE_THRESHOLD:
+                                candidates.append({
+                                    'id': pid, 
+                                    'raw': s_raw, 
+                                    'conf': s_final, 
+                                    'z': z,
+                                    't_zone': 0.0
+                                })
+                        
+                        # Set Default Winner (Top 1) for fallback/logging
+                        # Even if no one passes, we need to know who was the closest match
+                        best_match_id = faiss_person_ids[0]
+                        raw_confidence = distances[0]
+                        confidence = raw_confidence * quality_score
+                        z_score = (raw_confidence - mean_score) / std_dev_score if std_dev_score > 0 else 0
+                        part_msg = ""
+                        
+                        # 2. Phase 2: T-Zone Re-ranking (Tie-Breaker)
+                        # Only triggered if we have valid candidates passing Phase 1
+                        if candidates:
+                            part_db = self.system.state.part_features
+                            if part_db:
+                                try:
+                                    frame_img = Image.fromarray(cv2.cvtColor(_frame, cv2.COLOR_BGR2RGB))
+                                    current_parts, part_coords = get_parts_crop(frame_img, _points)
+                                    
+                                    # Use T-Zone Long if available
+                                    if 't_zone' in current_parts:
+                                        curr_vec = self.system.resnet(current_parts['t_zone'].unsqueeze(0)).detach().numpy()[0]
+                                        
+                                        for cand in candidates:
+                                            if cand['id'] in part_db and 't_zone' in part_db[cand['id']]:
+                                                cand['t_zone'] = cosine_similarity(curr_vec, part_db[cand['id']]['t_zone'])
+                                        
+                                        # Sort by T-Zone Score Descending
+                                        candidates.sort(key=lambda x: x['t_zone'], reverse=True)
+                                        
+                                        # New Winner based on T-Zone
+                                        winner = candidates[0]
+                                        best_match_id = winner['id']
+                                        raw_confidence = winner['raw']
+                                        confidence = winner['conf']
+                                        z_score = winner['z'] # The winner already passed Z >= 1.5 in Phase 1
+                                        part_msg = f" [T-Zone Winner: {winner['t_zone']:.2f}]"
+                                        
+                                        # Snapshot Metadata
+                                        meta = {
+                                            "timestamp": datetime.now(self.TIMEZONE).isoformat(),
+                                            "predicted_id": best_match_id,
+                                            "t_zone_score": float(winner['t_zone']),
+                                            "full_score": float(winner['conf']),
+                                            "z_score": float(winner['z']),
+                                            "quality_score": float(quality_score)
+                                        }
+                                        self.system.state.success_metadata[self.frame_num] = meta
+                                        
+                                    else:
+                                        # Fallback to highest Z/Conf (candidates[0] depends on loop order -> original rank)
+                                        winner = candidates[0]
+                                        best_match_id = winner['id']
+                                        raw_confidence = winner['raw']
+                                        confidence = winner['conf']
+                                        z_score = winner['z']
+                                        
+                                except Exception as e:
+                                    LOGGER.error(f"T-Zone comparison failed: {e}")
+                                    winner = candidates[0]
+                                    best_match_id = winner['id']
+                                    raw_confidence = winner['raw']
+                                    confidence = winner['conf']
+                                    z_score = winner['z']
+                            else:
+                                # No part db
+                                winner = candidates[0]
+                                best_match_id = winner['id']
+                                raw_confidence = winner['raw']
+                                confidence = winner['conf']
+                                z_score = winner['z']
+                        
+                        predicted_id = best_match_id
+
             except Exception as e:
                 LOGGER.error(f"[ERROR][{camera_name}] 預測失敗: {e}")
                 continue

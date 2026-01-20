@@ -148,3 +148,10 @@ The application uses a `GlobalState` dataclass passed via the `system` object.
   - **Refinement:** If a change becomes a permanent standard (e.g., LFS check), promote the rule to this `AGENTS.md` file while keeping the history in `handover_notes.md`.
 - **Commits:** Write clear, concise commit messages in **English ONLY**.
 - **Secrets:** Check `git status` before adding files to ensure no temporary config files or credential files are committed.
+
+## 9. Professional Responsibility & Edge Cases
+- **No Excuses for Edge Cases:** "Edge cases" are not an excuse for system failure. To the user, a failure is a failure, regardless of the cause (blur, lighting, angle).
+- **Relentless Problem Solving:** Do not dismiss difficult samples as "outliers." Use all available tools (texture analysis, frequency domain, geometric consistency) to find a solution.
+- **Accountability:** If a method fails, analyze *why* mathematically and propose concrete alternatives. Do not simply state "it's impossible."
+- **User-Centric Quality:** The only metric that matters is the end-user experience. If the user says it's wrong, it's wrong.
+

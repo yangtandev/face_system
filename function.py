@@ -357,7 +357,7 @@ def crop_face_without_forehead(image, box, points, image_size=160):
     img_cropped = image.crop(new_box)
     
     # Resize to the target square size
-    img_resized = img_cropped.resize((image_size, image_size), Image.BILINEAR)
+    img_resized = img_cropped.resize((image_size, image_size), Image.Resampling.BILINEAR)
 
     # --- Apply Mild Sharpening (Factor 1.0) ---
     # Optimized from 5.0 -> 1.0 (No sharpening) to reduce false positives caused by noise artifacts.
@@ -412,7 +412,7 @@ def crop_and_pad(img, cx, cy, w, h, target_size=160):
     # Crop (PIL handles out of bounds by padding with 0 if using proper method, 
     # but crop() just clamps. We want context.)
     crop = img.crop((x1, y1, x2, y2))
-    crop = crop.resize((target_size, target_size), Image.BILINEAR)
+    crop = crop.resize((target_size, target_size), Image.Resampling.BILINEAR)
     return crop
 
 def get_parts_crop(image_pil, landmarks):
@@ -428,36 +428,27 @@ def get_parts_crop(image_pil, landmarks):
     parts_tensors = {}
     parts_coords = {}
     
-    # 1. Eyes Region (Include eyebrows)
-    # Center between eyes
+    # [2026-01-20 New Feature] T-Zone Long Crop (Eyebrows + Eyes + Nose + Philtrum)
+    # Replaces individual Eye/Nose/Mouth checks for better stability against expression/glasses.
+    # Center: Midpoint between Eye-Center and Nose
     eye_center_x = (landmarks[0][0] + landmarks[1][0]) / 2
     eye_center_y = (landmarks[0][1] + landmarks[1][1]) / 2
-    # Width = Eye distance * 2.5
-    eye_dist = np.linalg.norm(landmarks[0] - landmarks[1])
-    crop_w = eye_dist * 2.5
-    crop_h = crop_w * 0.8 # Eyes are wider than tall
-    
-    parts_tensors['eye'] = _process_part_tensor(crop_and_pad(image_pil, eye_center_x, eye_center_y, crop_w, crop_h))
-    parts_coords['eye'] = [float(x) for x in [eye_center_x, eye_center_y, crop_w, crop_h]]
-    
-    # 2. Nose Region
     nose_x, nose_y = landmarks[2]
-    # [2026-01-19 Optimization] Expanded nose context
-    # Old: w=1.2, h=1.5 (Too tight, led to unstable features < 0.2)
-    # New: w=1.6, h=2.0 (Include nostrils, bridge, and partial cheeks for context)
-    crop_w = eye_dist * 1.6
-    crop_h = eye_dist * 2.0
-    parts_tensors['nose'] = _process_part_tensor(crop_and_pad(image_pil, nose_x, nose_y, crop_w, crop_h))
-    parts_coords['nose'] = [float(x) for x in [nose_x, nose_y, crop_w, crop_h]]
     
-    # 3. Mouth Region
-    mouth_center_x = (landmarks[3][0] + landmarks[4][0]) / 2
-    mouth_center_y = (landmarks[3][1] + landmarks[4][1]) / 2
-    mouth_w = np.linalg.norm(landmarks[3] - landmarks[4])
-    crop_w = mouth_w * 2.0
-    crop_h = crop_w * 1.0
-    parts_tensors['mouth'] = _process_part_tensor(crop_and_pad(image_pil, mouth_center_x, mouth_center_y, crop_w, crop_h))
-    parts_coords['mouth'] = [float(x) for x in [mouth_center_x, mouth_center_y, crop_w, crop_h]]
+    eye_dist = np.linalg.norm(landmarks[0] - landmarks[1])
+    
+    t_center_x = (eye_center_x + nose_x) / 2
+    t_center_y = (eye_center_y + nose_y) / 2
+    
+    # Shift center down slightly for "Long" version to include Philtrum without cutting forehead
+    t_long_cy = t_center_y + eye_dist * 0.2
+    
+    # Dimensions: 2.0x EyeDist Width, 3.0x EyeDist Height
+    crop_w = eye_dist * 2.0
+    crop_h = eye_dist * 3.0
+    
+    parts_tensors['t_zone'] = _process_part_tensor(crop_and_pad(image_pil, t_center_x, t_long_cy, crop_w, crop_h))
+    parts_coords['t_zone'] = [float(x) for x in [t_center_x, t_long_cy, crop_w, crop_h]]
     
     return parts_tensors, parts_coords
 
