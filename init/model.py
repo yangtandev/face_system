@@ -544,10 +544,12 @@ class Comparison:
                     predicted_id = "None"
                     confidence = 0.0
                     z_score = 0.0
+                    raw_confidence = 0.0
+                    part_msg = ""
                 else:
                     distances, faiss_person_ids = self.system.state.ann_index.search(current_face_vec, k=min(5, self.system.state.ann_index.index.ntotal))
                     if faiss_person_ids is None or len(faiss_person_ids) == 0:
-                        predicted_id = "None"; confidence = 0.0; z_score = 0.0
+                        predicted_id = "None"; confidence = 0.0; z_score = 0.0; raw_confidence = 0.0; part_msg = ""
                     else:
                         top_k_similarities = np.array(distances)
                         best_match_id = faiss_person_ids[0]
@@ -580,12 +582,13 @@ class Comparison:
                                             scores[p_name] = cosine_similarity(p_vec, target_parts[p_name])
                                     
                                     # Veto Logic
-                                    # Based on test: MisID had Nose=0.49, Eye=0.62. Correct had Nose=0.79, Eye=0.75.
-                                    # Thresholds: Nose < 0.6 or Eye < 0.65 -> REJECT
+                                    # [2026-01-20 Tuned] Adjusted based on field data:
+                                    # G04 (Glasses/Shadow) had Eye~0.62 -> Lower Eye threshold to 0.60
+                                    # Impostor (C86 vs JY14) had Nose~0.65 -> Raise Nose threshold to 0.68
                                     veto_reasons = []
-                                    if 'nose' in scores and scores['nose'] < 0.6:
+                                    if 'nose' in scores and scores['nose'] < 0.68:
                                         veto_reasons.append(f"Nose({scores['nose']:.2f})")
-                                    if 'eye' in scores and scores['eye'] < 0.65:
+                                    if 'eye' in scores and scores['eye'] < 0.60:
                                         veto_reasons.append(f"Eye({scores['eye']:.2f})")
                                         
                                     if veto_reasons:
@@ -597,8 +600,6 @@ class Comparison:
                                         part_msg = f" [局部驗證通過: N{scores.get('nose',0):.2f}, E{scores.get('eye',0):.2f}]"
                                     
                                     # [2026-01-19 Feature] Create Metadata for Snapshot
-                                    # This allows us to replay the EXACT logic offline if a mis-identification occurs.
-                                    # We save: landmarks, crop coords, scores, and decisions.
                                     meta = {
                                         "timestamp": datetime.now(self.TIMEZONE).isoformat(),
                                         "camera": CAM_NAME_MAP.get(self.frame_num, str(self.frame_num)),
@@ -669,17 +670,9 @@ class Comparison:
                     pass
 
                 speaker = self.system.speaker
-                is_cooldown = False
-                with speaker.status_lock:
-                    last_start = speaker.last_start_time.get(person_id, 0)
-                    last_end = speaker.last_end_time.get(person_id, 0)
-                
-                if last_start > last_end and now - last_start < 10.0:
-                    is_cooldown = True
-                elif now - last_end < 2.0:
-                    is_cooldown = True
-                
-                if not is_cooldown:
+                # [2026-01-20 Logic] 移除 10s/2s 冷卻，改由 Speaker 類別統一控管播放狀態
+                # 只要 Speaker 空閒，就會播放；若 Speaker 忙碌 (P1)，則此次觸發會被 Speaker 丟棄。
+                if True:
                     self.system.state.same_people[self.frame_num] = confidence
                     self.system.state.same_zscore[self.frame_num] = z_score
                     self.system.state.same_width[self.frame_num] = face_width
