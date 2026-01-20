@@ -121,7 +121,10 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
         threading.Timer(0, open_door).start()
 
     # 原本的離開判斷保留，雖在主流程未被使用，但保持結構完整
-    if (now - system.state.check_time[staff_id][1]) >= 2:
+    # [2026-01-20 Fix] 防止 Race Condition 導致 KeyError
+    # 若在執行到此處時 staff_id 被其他執行緒(如 clear_leave_employee)刪除，則視為初始狀態
+    last_time = system.state.check_time.get(staff_id, [True, 0])[1]
+    if (now - last_time) >= 2:
         leave = 1
 
     return leave
