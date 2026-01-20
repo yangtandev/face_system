@@ -146,5 +146,5 @@ The application uses a `GlobalState` dataclass passed via the `system` object.
 - **Handover Notes (MANDATORY):** For every new commit, you MUST append a detailed explanation of the changes (what was changed, why, and impact) to the end of `./handover_notes.md`.
   - **Do NOT delete** existing content in `handover_notes.md`; it is a critical historical record.
   - **Refinement:** If a change becomes a permanent standard (e.g., LFS check), promote the rule to this `AGENTS.md` file while keeping the history in `handover_notes.md`.
-- **Commits:** Write clear, concise commit messages.
+- **Commits:** Write clear, concise commit messages in **English ONLY**.
 - **Secrets:** Check `git status` before adding files to ensure no temporary config files or credential files are committed.
