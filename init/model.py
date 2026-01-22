@@ -121,9 +121,14 @@ class Detector:
                                 box = [x1, y1, x2, y2]
                                 # [2026-01-11 Fix] 強制同步計算 Gaze，避免 Comparison 線程讀到舊的 State
                                 # 在此時計算，mp_handler.last_results 必然對應當前這幀 new_frame
-                                g_pass, g_msg, g_pose = self.mp_handler.check_gaze(0)
+                                g_pass, g_msg, g_pose, g_ear = self.mp_handler.check_gaze(0)
                                 self.system.state.gaze_status[self.frame_num] = (g_pass, g_msg)
                                 self.system.state.head_pose[self.frame_num] = g_pose
+                                
+                                # [2026-01-22 Fix] Store EAR
+                                if not hasattr(self.system.state, 'face_ear'):
+                                    self.system.state.face_ear = {}
+                                self.system.state.face_ear[self.frame_num] = g_ear
                                 
                                 # 存入系統以便 Comparison 呼叫 (雖然現在 Comparison 改讀 status 了)
                                 self.system.mp_detectors[self.frame_num] = self.mp_handler
@@ -333,6 +338,40 @@ class Comparison:
             else:
                 # [2026-01-11 Fix] 若無 Gaze 狀態 (可能因 Race Condition 被清空)，嚴格禁止放行
                 return 0.0, "Gaze Status Missing"
+
+        # ---------------------------------------------------------
+        # 3.1 幾何比例檢查 (Geometry Check) - 低頭防禦
+        # ---------------------------------------------------------
+        # [2026-01-22 Fix] 防止極端低頭導致特徵崩壞誤判 (V-Ratio < 0.55)
+        # Points: 0:LE, 1:RE, 2:Nose, 3:LM, 4:RM
+        eye_y = (points[0][1] + points[1][1]) / 2
+        nose_y = points[2][1]
+        mouth_y = (points[3][1] + points[4][1]) / 2
+        
+        eye_nose_dist = nose_y - eye_y
+        nose_mouth_dist = mouth_y - nose_y
+        
+        if eye_nose_dist > 0:
+            v_ratio = nose_mouth_dist / eye_nose_dist
+            # 正常值: 0.8 ~ 1.2, 低頭測試照: 0.18 ~ 0.40
+            
+            # 1. 極端低頭過濾 (絕對死線)
+            # 殺死 9 張極端低頭測試照 (V < 0.35)
+            if v_ratio < 0.35:
+                return 0.0, f"低頭 (V-Ratio: {v_ratio:.2f} < 0.35)"
+            
+            # 2. 低頭+遮眼 Combo 過濾 (0.35 <= V < 0.42)
+            # [2026-01-22] 針對灰色地帶進行補刀
+            # - 蔡準庭帽子照 (V=0.403, EAR=0.213) -> 符合雙重條件 -> KILL
+            # - 楊昌裕 (V=0.47, EAR=0.10) -> V正常 -> PASS
+            # - 林文明 (V=0.40, EAR=0.26) -> EAR正常 -> PASS
+            if v_ratio < 0.42:
+                current_ear = 1.0
+                if hasattr(self.system.state, 'face_ear'):
+                    current_ear = self.system.state.face_ear.get(self.frame_num, 1.0)
+                
+                if current_ear < 0.22:
+                    return 0.0, f"低頭/遮眼 (V {v_ratio:.2f}<0.42 & EAR {current_ear:.2f}<0.22)"
 
         # ---------------------------------------------------------
         # 4. 臉部區域清晰度檢查 (ROI Blur Detection)

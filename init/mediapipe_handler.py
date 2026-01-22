@@ -105,6 +105,29 @@ class MediaPipeHandler:
         r_v = get_projection_ratio(self.IDX_RIGHT_EYE_UPPER, self.IDX_RIGHT_EYE_LOWER, self.IDX_RIGHT_EYE_IRIS)
         return (l_h + r_h)/2, l_h, r_h, (l_v + r_v)/2, l_v, r_v
 
+    def _calculate_ear(self, landmarks, w, h):
+        """
+        計算眼睛張開度 (Eye Aspect Ratio)
+        Use standard 6-point EAR approximation (or 4-point height/width if sufficient)
+        """
+        p = landmarks.landmark
+        def dist(idx1, idx2):
+            x1, y1 = p[idx1].x * w, p[idx1].y * h
+            x2, y2 = p[idx2].x * w, p[idx2].y * h
+            return np.sqrt((x1-x2)**2 + (y1-y2)**2)
+
+        # Left Eye: 33-133 (Width), 159-145 (Height)
+        l_h = dist(33, 133)
+        l_v = dist(159, 145)
+        l_ear = l_v / l_h if l_h > 0 else 0
+        
+        # Right Eye: 362-263 (Width), 386-374 (Height)
+        r_h = dist(362, 263)
+        r_v = dist(386, 374)
+        r_ear = r_v / r_h if r_h > 0 else 0
+        
+        return (l_ear + r_ear) / 2
+
     def _get_head_pose_angles(self, landmarks, w, h):
         p = landmarks.landmark
         model_points = np.array([(0.0, 0.0, 0.0), (0.0, 330.0, -65.0), (-225.0, -170.0, -135.0), (225.0, -170.0, -135.0), (-150.0, 150.0, -125.0), (150.0, 150.0, -125.0)], dtype=np.float64)
@@ -144,6 +167,9 @@ class MediaPipeHandler:
         self.gaze_history.append((avg_h, l_h, r_h, avg_v, l_v, r_v))
         s_avg_h, s_l_h, s_r_h, s_avg_v, s_l_v, s_r_v = np.mean(self.gaze_history, axis=0)
         
+        # [2026-01-22 Fix] 新增 EAR 計算 (不直接過濾，改為回傳數值供後端判斷)
+        ear = self._calculate_ear(landmarks, w, h)
+        
         pose_tuple = (pitch, yaw, roll)
 
         # 取得動態 Pitch 門檻 (預設: 抬頭25, 低頭-10)
@@ -155,8 +181,30 @@ class MediaPipeHandler:
         # [2026-01-18 Disabled by User Request]
         # if s_avg_v > 3.0:
         #     return False, "眼睛閉合", pose_tuple
-
+        
+        # [2026-01-22 Logic Change] 
+        # 不在此處直接攔截 EAR < 0.22，避免誤殺天生小眼的重要長官 (如楊昌裕 EAR=0.10)。
+        # 改為回傳 EAR 數值，由 model.py 進行「低 EAR 需高 Z-Score」的動態門檻判斷。
+        
         # 2. 垂直判定 (Chin Policy) - 優先順序最高，攔截微小偏移
+        # [2026-01-15 Disabled] 暫時關閉姿態過濾
+        # if pitch > pitch_up_limit:
+        #     return False, "抬頭", pose_tuple
+            
+        # if pitch < pitch_down_limit:
+        #     return False, "低頭", pose_tuple
+
+        # 3. 側臉與歪頭判定 (Yaw/Roll)
+        # if abs(yaw) > 25 or abs(roll) > 20:
+        #     return False, "未正視鏡頭", pose_tuple
+
+        # 4. 眼睛視線判定 (斜視 - 瞬時攔截)
+        # [2026-01-15 Disabled] 暫時關閉虹膜過濾，僅依靠臉部特徵比對與頭部姿態判定
+        # if abs(l_h - r_h) > 0.15 or not (0.25 < s_avg_h < 0.75):
+        #     return False, "斜視", pose_tuple
+        
+        # 回傳增加 ear 欄位
+        return True, "Pass", pose_tuple, ear
         # [2026-01-15 Disabled] 暫時關閉姿態過濾
         # if pitch > pitch_up_limit:
         #     return False, "抬頭", pose_tuple
