@@ -723,6 +723,9 @@ class Comparison:
                 f"信賴度: {confidence:.2%}{quality_info}, Z-Score: {z_score:.2f}, Width: {face_width} px [評級: {rating_str}]"
             )
             
+            # [2026-01-23 Fix] 統一記錄所有辨識事件 (包含可靠/訪客/模糊)，解決報表數據遺失問題
+            LOGGER.info(log_message)
+            
             if is_reliable:
                 person_id = predicted_id
                 self.system.state.hint_text[self.frame_num] = "" # 畫面優先
@@ -742,13 +745,14 @@ class Comparison:
                 self._update_display_state(person_id)
                 self.last_recognition_time = now
             elif is_visitor:
-                 LOGGER.info(log_message)
+                 # LOGGER.info(log_message) # 已統一移至上方
                  # 標記為訪客，但不觸發打卡
                  self.system.state.same_people[self.frame_num] = 0.0
                  self._update_display_state("__VISITOR__")
             else:
                  # Ambiguous Case: 信賴度不足 (0.5~0.7)，記錄 Log 以供除錯
-                 LOGGER.info(log_message)
+                 # LOGGER.info(log_message) # 已統一移至上方
+                 pass
 
             if time.time() - last_warmup_time > 10 and self.frame_num == 0:
                 try:
