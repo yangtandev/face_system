@@ -9,3 +9,7 @@
     1. Modifying `./handover_notes.md`.
     2. Creating any git commit.
     3. Pushing to remote repositories.
+
+## 12. System Design Constraints (Iron Laws)
+- **Zero False Acceptance:** The system must achieve 0% False Acceptance Rate (FAR). Any misidentification is unacceptable.
+- **Single Enrollment Photo:** Each user is limited to exactly ONE enrollment photo. This photo cannot be replaced or augmented with additional angles. The system must solve challenges through algorithmic improvement, not data augmentation.
