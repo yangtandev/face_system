@@ -27,3 +27,10 @@ __pycache__/
 start_rtsp.py
 sync_face_system.sh
 
+# --- Debug & Testing ---
+debug_crops/
+debug_prod/
+test_results*.json
+sim_rescue*.txt
+*.swp
+
