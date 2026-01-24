@@ -13,3 +13,4 @@
 ## 12. System Design Constraints (Iron Laws)
 - **Zero False Acceptance:** The system must achieve 0% False Acceptance Rate (FAR). Any misidentification is unacceptable.
 - **Single Enrollment Photo:** Each user is limited to exactly ONE enrollment photo. This photo cannot be replaced or augmented with additional angles. The system must solve challenges through algorithmic improvement, not data augmentation.
+- **No Defeatism:** Never declare "maintain status quo" or "impossible to fix" based on a single failure. Lazy resignation is strictly forbidden. You must exhaust all algorithmic possibilities (e.g., hybrid scoring, dynamic thresholding, negative mining) before conceding.
