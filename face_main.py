@@ -432,6 +432,12 @@ class FaceRecognitionSystem:
                         except Exception: pass
                 finally:
                     mp_handler.close()
+            
+            # [2026-01-24 Fix] Force delete stale index to ensure rebuild from new descriptors
+            index_path = os.path.join(self.local_media_path, "faiss.index")
+            if os.path.exists(index_path):
+                os.remove(index_path)
+                LOGGER.info(f"Removed stale index: {index_path}")
         
         LOGGER.info("Assets rebuild complete.")
 
