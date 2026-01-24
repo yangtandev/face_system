@@ -417,16 +417,21 @@ class FaceRecognitionSystem:
             pic_files = [f for f in os.listdir(pb) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
             if pic_files:
                 LOGGER.info(f"Stage 2/2: Rebuilding descriptors for {len(pic_files)} images...")
-                from models.mtcnn import MTCNN
-                detector = MTCNN()
-                for f in tqdm(pic_files, desc="[Descriptor Gen]"):
-                    try:
-                        img = Image.open(os.path.join(pb, f)).convert('RGB')
-                        boxes, _, points = detector.detect(img, landmarks=True)
-                        if boxes is not None:
-                            emb = self.resnet(crop_face_without_forehead(img, boxes[0], points[0]).unsqueeze(0))
-                            np.save(os.path.join(dp, f"{os.path.splitext(f)[0]}.npy"), emb[0].detach().numpy())
-                    except Exception: pass
+                # [2026-01-24 Fix] 改用 MediaPipe，與辨識端保持一致
+                from init.mediapipe_handler import MediaPipeHandler
+                mp_handler = MediaPipeHandler(static_image_mode=True, max_num_faces=1)
+                try:
+                    for f in tqdm(pic_files, desc="[Descriptor Gen]"):
+                        try:
+                            img_pil = Image.open(os.path.join(pb, f)).convert('RGB')
+                            img_np = np.array(img_pil)
+                            boxes, _, points = mp_handler.detect(img_np)
+                            if boxes is not None:
+                                emb = self.resnet(crop_face_without_forehead(img_pil, boxes[0], points[0]).unsqueeze(0))
+                                np.save(os.path.join(dp, f"{os.path.splitext(f)[0]}.npy"), emb[0].detach().numpy())
+                        except Exception: pass
+                finally:
+                    mp_handler.close()
         
         LOGGER.info("Assets rebuild complete.")
 
@@ -541,16 +546,21 @@ class FaceRecognitionSystem:
             except OSError: pass
 
     def _generate_new_descriptors(self, new_files, pb, dp):
-        from models.mtcnn import MTCNN
-        detector = MTCNN()
-        for f in tqdm(new_files, desc="[1/2] Descriptor Generation"):
-            try:
-                img = Image.open(os.path.join(pb, f)).convert('RGB')
-                boxes, _, points = detector.detect(img, landmarks=True)
-                if boxes is not None:
-                    emb = self.resnet(crop_face_without_forehead(img, boxes[0], points[0]).unsqueeze(0))
-                    np.save(os.path.join(dp, f"{os.path.splitext(f)[0]}.npy"), emb[0].detach().numpy())
-            except Exception: pass
+        # [2026-01-24 Fix] 改用 MediaPipe，與辨識端保持一致
+        from init.mediapipe_handler import MediaPipeHandler
+        mp_handler = MediaPipeHandler(static_image_mode=True, max_num_faces=1)
+        try:
+            for f in tqdm(new_files, desc="[1/2] Descriptor Generation"):
+                try:
+                    img_pil = Image.open(os.path.join(pb, f)).convert('RGB')
+                    img_np = np.array(img_pil)
+                    boxes, _, points = mp_handler.detect(img_np)
+                    if boxes is not None:
+                        emb = self.resnet(crop_face_without_forehead(img_pil, boxes[0], points[0]).unsqueeze(0))
+                        np.save(os.path.join(dp, f"{os.path.splitext(f)[0]}.npy"), emb[0].detach().numpy())
+                except Exception: pass
+        finally:
+            mp_handler.close()
 
     def _load_features_from_disk(self):
         dp = os.path.join(self.local_media_path, "descriptors")
