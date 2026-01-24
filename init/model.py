@@ -627,8 +627,22 @@ class Comparison:
                         z_score = (raw_confidence - mean_score) / std_dev_score if std_dev_score > 0 else 0
                         part_msg = ""
                         
+                        # [2026-01-24 Feature] 記錄 Top-5 搜尋結果供除錯重現
+                        top5_results = []
+                        for i, pid in enumerate(faiss_person_ids):
+                            s_raw = distances[i]
+                            z = (s_raw - mean_score) / std_dev_score if std_dev_score > 0 else 0
+                            top5_results.append({
+                                "rank": i + 1,
+                                "id": pid,
+                                "score": float(s_raw),
+                                "z_score": float(z)
+                            })
+                        
                         # 2. Phase 2: T-Zone Re-ranking (Tie-Breaker)
                         # Only triggered if we have valid candidates passing Phase 1
+                        t_zone_applied = False
+                        t_zone_score = None
                         if candidates:
                             part_db = self.system.state.part_features
                             if part_db:
@@ -654,17 +668,8 @@ class Comparison:
                                         confidence = winner['conf']
                                         z_score = winner['z'] # The winner already passed Z >= 1.5 in Phase 1
                                         part_msg = f" [T-Zone Winner: {winner['t_zone']:.2f}]"
-                                        
-                                        # Snapshot Metadata
-                                        meta = {
-                                            "timestamp": datetime.now(self.TIMEZONE).isoformat(),
-                                            "predicted_id": best_match_id,
-                                            "t_zone_score": float(winner['t_zone']),
-                                            "full_score": float(winner['conf']),
-                                            "z_score": float(winner['z']),
-                                            "quality_score": float(quality_score)
-                                        }
-                                        self.system.state.success_metadata[self.frame_num] = meta
+                                        t_zone_applied = True
+                                        t_zone_score = float(winner['t_zone'])
                                         
                                     else:
                                         # Fallback to highest Z/Conf (candidates[0] depends on loop order -> original rank)
@@ -690,6 +695,21 @@ class Comparison:
                                 z_score = winner['z']
                         
                         predicted_id = best_match_id
+                        
+                        # [2026-01-24 Feature] 建立完整的 Snapshot Metadata (供離線重現測試)
+                        # 無論是否有 T-Zone，只要有有效的辨識結果都要記錄
+                        if current_face_vec is not None:
+                            meta = {
+                                "timestamp": datetime.now(self.TIMEZONE).isoformat(),
+                                "predicted_id": best_match_id,
+                                "full_score": float(confidence),
+                                "z_score": float(z_score),
+                                "quality_score": float(quality_score),
+                                "t_zone_score": t_zone_score if t_zone_applied else None,
+                                "top5": top5_results,
+                                "embedding": current_face_vec.tolist()  # 關鍵：儲存特徵向量
+                            }
+                            self.system.state.success_metadata[self.frame_num] = meta
 
             except Exception as e:
                 LOGGER.error(f"[ERROR][{camera_name}] 預測失敗: {e}")
@@ -729,8 +749,15 @@ class Comparison:
             if is_reliable:
                 person_id = predicted_id
                 self.system.state.hint_text[self.frame_num] = "" # 畫面優先
+                
+                # [2026-01-24 Fix] 原子打包 success_snapshot = (frame, metadata)
+                # 確保 CameraSystem 讀取時，frame 和 metadata 一定來自同一次辨識
                 try:
-                    self.system.state.success_frame[self.frame_num] = _frame.copy()
+                    snapshot_frame = _frame.copy()
+                    snapshot_meta = self.system.state.success_metadata[self.frame_num]
+                    self.system.state.success_snapshot[self.frame_num] = (snapshot_frame, snapshot_meta)
+                    # 保留舊欄位以相容其他程式碼
+                    self.system.state.success_frame[self.frame_num] = snapshot_frame
                 except:
                     pass
 

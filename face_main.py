@@ -148,8 +148,16 @@ class CameraSystem:
                             check_in_out(self.system, success_staff_name, current_class, self.frame_num, self.n_camera, confidence)
                         z_score = self.system.state.same_zscore[self.frame_num]
                         width_val = self.system.state.same_width[self.frame_num]
-                        saved_img = self.system.state.success_frame[self.frame_num]
-                        meta = self.system.state.success_metadata[self.frame_num]
+                        
+                        # [2026-01-24 Fix] 使用原子打包的 success_snapshot，避免 Race Condition
+                        snapshot = self.system.state.success_snapshot[self.frame_num]
+                        if snapshot is not None:
+                            saved_img, meta = snapshot
+                        else:
+                            # Fallback to old method (for backwards compatibility)
+                            saved_img = self.system.state.success_frame[self.frame_num]
+                            meta = self.system.state.success_metadata[self.frame_num]
+                        
                         if saved_img is not None: self.save_img(saved_img, "face", success_staff_name, confidence, z_score, width_val, metadata=meta)
                         else: self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score, width_val, metadata=meta)
                     self.system.state.same_people[self.frame_num] = 0.0
@@ -282,6 +290,7 @@ class GlobalState:
     frame_mtcnn_high_res: List[Any] = None
     success_frame: List[Any] = None
     success_metadata: List[Any] = None # [2026-01-19 Feature] Snapshot metadata for debugging
+    success_snapshot: List[Any] = None # [2026-01-24 Fix] 原子打包 (frame, metadata)，避免 Race Condition
     clothes: List[bool] = None
     check_time: Dict[str, List[Any]] = None
     features_dict: Dict[str, Any] = None
@@ -313,6 +322,7 @@ class FaceRecognitionSystem:
         self.state.frame_high_res, self.state.frame_mtcnn_high_res = [None, None], [None, None]
         self.state.success_frame = [None, None]
         self.state.success_metadata = [None, None] # Initialize
+        self.state.success_snapshot = [None, None] # [2026-01-24 Fix] 原子打包 (frame, metadata)
         self.state.clothes = [False, False, False]
         self.state.check_time, self.state.features_dict, self.state.profile_dict = {}, {}, {}
         self.state.part_features = {} # Initialize empty
