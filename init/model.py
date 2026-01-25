@@ -122,10 +122,11 @@ class Detector:
                                 # [2026-01-11 Fix] 強制同步計算 Gaze，避免 Comparison 線程讀到舊的 State
                                 # 在此時計算，mp_handler.last_results 必然對應當前這幀 new_frame
                                 g_pass, g_msg, g_pose, g_ear = self.mp_handler.check_gaze(0)
-                                self.system.state.gaze_status[self.frame_num] = (g_pass, g_msg)
+                                # [2026-01-26 Fix] 將 Pose 和 EAR 一併打包入 gaze_status，確保原子性傳遞
+                                self.system.state.gaze_status[self.frame_num] = (g_pass, g_msg, g_pose, g_ear)
                                 self.system.state.head_pose[self.frame_num] = g_pose
                                 
-                                # [2026-01-22 Fix] Store EAR
+                                # [Deprecated] face_ear Global State is risky, use gaze_status tuple instead
                                 if not hasattr(self.system.state, 'face_ear'):
                                     self.system.state.face_ear = {}
                                 self.system.state.face_ear[self.frame_num] = g_ear
@@ -332,7 +333,17 @@ class Comparison:
         face_w = max(10, box[2] - box[0])
         if face_w > 100:
             if gaze_status:
-                is_looking, gaze_msg = gaze_status
+                # [2026-01-26 Fix] 兼容擴充後的 gaze_status (4 elements: pass, msg, pose, ear)
+                is_looking = gaze_status[0]
+                gaze_msg = gaze_status[1]
+                
+                # 預先提取 EAR，優先使用原子打包數據
+                current_ear = 1.0
+                if len(gaze_status) >= 4:
+                    current_ear = gaze_status[3]
+                elif hasattr(self.system.state, 'face_ear'): # Fallback for backward compatibility
+                    current_ear = self.system.state.face_ear.get(self.frame_num, 1.0)
+
                 if not is_looking:
                     return 0.0, f"{gaze_msg}"
             else:
@@ -366,10 +377,7 @@ class Comparison:
             # - 楊昌裕 (V=0.47, EAR=0.10) -> V正常 -> PASS
             # - 林文明 (V=0.40, EAR=0.26) -> EAR正常 -> PASS
             if v_ratio < 0.42:
-                current_ear = 1.0
-                if hasattr(self.system.state, 'face_ear'):
-                    current_ear = self.system.state.face_ear.get(self.frame_num, 1.0)
-                
+                # [2026-01-26 Refactor] Use pre-extracted EAR
                 if current_ear < 0.22:
                     return 0.0, f"低頭/遮眼 (V {v_ratio:.2f}<0.42 & EAR {current_ear:.2f}<0.22)"
 
@@ -377,11 +385,8 @@ class Comparison:
         # 3.2 閉眼檢查 (Eye Closure Check) - [2026-01-26 Fix]
         # ---------------------------------------------------------
         # 根據測試，閉眼誤判照 EAR=0.0694，小眼(楊昌裕) EAR=0.0837。
-        # 設定精確門檻 0.075，以在過濾誤判的同時保留小眼特徵。
-        current_ear = 1.0
-        if hasattr(self.system.state, 'face_ear'):
-            current_ear = self.system.state.face_ear.get(self.frame_num, 1.0)
-        
+        # 設定底層安全門檻 0.05 (極端閉眼)。
+        # 中間地帶 (0.05~0.10) 交由 mp_handler 的 Combo Check 處理。
         if current_ear < 0.075:
             return 0.0, f"眼睛閉合 (EAR: {current_ear:.4f} < 0.075)"
 

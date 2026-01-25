@@ -195,19 +195,22 @@ class MediaPipeHandler:
         #     return False, "低頭", pose_tuple
 
         # 3. 側臉與歪頭判定 (Yaw/Roll)
-        # if abs(yaw) > 25 or abs(roll) > 20:
-        #     return False, "未正視鏡頭", pose_tuple
+        # [2026-01-26 Enable] 恢復側臉過濾 (Yaw > 25, Roll > 20)
+        # 用於攔截因透視變形導致特徵崩壞的側臉照片 (如誤判案 Yaw=-31)
+        if abs(yaw) > 25 or abs(roll) > 20:
+            return False, f"未正視鏡頭 (Yaw:{yaw:.1f}, Roll:{roll:.1f})", pose_tuple, ear
+
+        gaze_diff = abs(l_h - r_h)
 
         # 4. 眼睛視線判定 (斜視 - 瞬時攔截)
-        # [2026-01-15 Disabled] 暫時關閉虹膜過濾，僅依靠臉部特徵比對與頭部姿態判定
-        # if abs(l_h - r_h) > 0.15 or not (0.25 < s_avg_h < 0.75):
-        #     return False, "斜視", pose_tuple
-        
-        # 4. 眼睛視線判定 (斜視 - 瞬時攔截)
-        # [2026-01-26 Enable] 恢復斜視過濾，門檻放寬至 0.20 以攔截嚴重特徵錯位 (如陳炳睿誤判案 Diff=0.26)
-        # 同時保留 s_avg_h 檢查以過濾同步側視
-        if abs(l_h - r_h) > 0.20 or not (0.25 < s_avg_h < 0.75):
-            return False, f"斜視 (Diff: {abs(l_h - r_h):.2f})", pose_tuple, ear
+        # [2026-01-26 Enable] 恢復斜視過濾，門檻放寬至 0.20 以攔截嚴重特徵錯位
+        if gaze_diff > 0.20 or not (0.25 < s_avg_h < 0.75):
+            return False, f"斜視 (Diff: {gaze_diff:.2f})", pose_tuple, ear
+            
+        # [2026-01-26 New] 組合過濾 (Combo Check)
+        # 針對灰色地帶：瞇眼 (EAR<0.10) 且 微斜視 (Diff>0.15) -> 視為特徵不穩
+        if ear < 0.10 and gaze_diff > 0.15:
+            return False, f"眼神不穩 (EAR:{ear:.2f} & Diff:{gaze_diff:.2f})", pose_tuple, ear
         
         # 回傳增加 ear 欄位
         return True, "Pass", pose_tuple, ear
