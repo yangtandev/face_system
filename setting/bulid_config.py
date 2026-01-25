@@ -41,16 +41,6 @@ default_config = {
     "Clothes_show": False,
     "min_face":450,
     "max_face":700,
-    "pitch_threshold": {
-        "up": 10,
-        "down": -10
-    },
-    "crop_params": {
-        "forehead_ratio": 0.9,
-        "chin_ratio": 0.7,
-        "mask_start_y_ratio": 0.2,
-        "mask_bottom_ratio": 0.7
-    },
     "test_mod":False,
     "auto_open": False,
     "full_screen": False,

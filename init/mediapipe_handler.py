@@ -75,8 +75,8 @@ class MediaPipeHandler:
             all_probs.append(1.0)
             p = face_landmarks.landmark
             points_5 = np.array([
-                [p[self.IDX_LEFT_EYE_IRIS].x * w, p[self.IDX_LEFT_EYE_IRIS].y * h],
-                [p[self.IDX_RIGHT_EYE_IRIS].x * w, p[self.IDX_RIGHT_EYE_IRIS].y * h],
+                [p[self.IDX_LEFT_EYE_OUTER].x * w, p[self.IDX_LEFT_EYE_OUTER].y * h],
+                [p[self.IDX_RIGHT_EYE_OUTER].x * w, p[self.IDX_RIGHT_EYE_OUTER].y * h],
                 [p[self.IDX_NOSE_TIP].x * w, p[self.IDX_NOSE_TIP].y * h],
                 [p[self.IDX_MOUTH_LEFT].x * w, p[self.IDX_MOUTH_LEFT].y * h],
                 [p[self.IDX_MOUTH_RIGHT].x * w, p[self.IDX_MOUTH_RIGHT].y * h]

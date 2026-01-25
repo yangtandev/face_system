@@ -289,114 +289,57 @@ def fixed_image_standardization(image_tensor):
 
 def crop_face_without_forehead(image, box, points, image_size=160):
     """
-    Crops the face from an image, excluding the forehead and chin, based on landmarks.
-    This helps to avoid issues with hats (forehead) and helmet straps (chin).
-
-    Args:
-        image (PIL.Image): The input image.
-        box (list or np.ndarray): The bounding box of the face [x1, y1, x2, y2].
-        points (np.ndarray): Facial landmarks (0:LE, 1:RE, 2:Nose, 3:LM, 4:RM).
-        image_size (int): The desired output image size.
-
-    Returns:
-        torch.Tensor: A tensor of the cropped, resized, and standardized face image.
+    Option SMALL (Method J) Implementation:
+    - Square Crop (2.0 * Eye Distance)
+    - Centered on Eyes/Nose
+    - Square Padding (Black Background)
+    - No Mask
+    - Area Resize
     """
-    # Get crop parameters from config (or use defaults)
-    crop_cfg = CONFIG.get("crop_params", {})
+    # Convert PIL to Numpy (RGB)
+    img_np = np.array(image)
     
-    # [2026-01-18 Optimization] Forehead Ratio 0.9
-    # Optimized from 0.8 -> 0.9 to include slightly more forehead/hairline context
-    # which aids in distinguishing face shapes.
-    forehead_ratio = crop_cfg.get("forehead_ratio", 0.9)
-    chin_ratio = crop_cfg.get("chin_ratio", 0.7)
-    mask_start_y_ratio = crop_cfg.get("mask_start_y_ratio", 0.2)
-    mask_bottom_ratio = crop_cfg.get("mask_bottom_ratio", 0.8)
-
-    # 1. Calculate Top Crop (Forehead removal)
-    eye_y_center = (points[0][1] + points[1][1]) / 2
-    x1, y1, x2, y2 = box
+    # Points: 0=LE, 1=RE, 2=Nose
+    le = points[0]
+    re = points[1]
+    nose = points[2]
     
-    box_height = y2 - y1
-    eye_to_top_dist = eye_y_center - y1
-
-    # Define the new top: slightly above the eyes
-    new_y1 = eye_y_center - (eye_to_top_dist * forehead_ratio)
-    new_y1 = max(0, new_y1)
-
-    # 2. Calculate Bottom Crop (Chin removal)
-    # Use mouth position as reference
-    mouth_y_center = (points[3][1] + points[4][1]) / 2
-    nose_y = points[2][1]
+    # Calculate Geometry
+    eye_dist = np.linalg.norm(le - re)
     
-    # Calculate nose-to-mouth distance
-    nose_to_mouth = mouth_y_center - nose_y
+    eye_center = (le + re) / 2
+    t_center_x = (eye_center[0] + nose[0]) / 2
+    t_center_y = (eye_center[1] + nose[1]) / 2
     
-    # Set new bottom: Slightly below the mouth
-    # Keeping about Xx of nose-to-mouth distance below the mouth center.
-    # This usually keeps the lips but removes the chin tip/strap area.
-    new_y2 = mouth_y_center + (nose_to_mouth * chin_ratio)
+    # Shift center down 0.2 * eye_dist
+    t_center_y += eye_dist * 0.2
     
-    # Ensure new_y2 doesn't exceed original box or image height (implied by crop)
-    # But usually new_y2 < y2, so we take the tighter crop
-    new_y2 = min(new_y2, y2)
-
-    # [2026-01-18 Optimization] Loose Crop (110% width)
-    # Grid search results indicate that a slightly looser crop (1.1x) improves accuracy
-    # by including more face shape context (ears/jaw) while Sharpening=1.0 reduces noise.
-    box_width = x2 - x1
-    center_x = (x1 + x2) / 2
-    new_width = box_width * 1.1
+    # Crop Size: 2.0 * Eye Distance
+    size = int(eye_dist * 2.0)
     
-    new_x1 = center_x - (new_width / 2)
-    new_x2 = center_x + (new_width / 2)
-
-    # Create the new bounding box
-    new_box = [new_x1, new_y1, new_x2, new_y2]
+    x1 = int(t_center_x - size/2)
+    y1 = int(t_center_y - size/2)
+    x2 = x1 + size
+    y2 = y1 + size
     
-    # Crop the image using the new bounding box
-    img_cropped = image.crop(new_box)
+    # Square Padding Logic
+    h, w = img_np.shape[:2]
+    square_img = np.zeros((size, size, 3), dtype=np.uint8)
     
-    # Resize to the target square size
-    img_resized = img_cropped.resize((image_size, image_size), Image.Resampling.BILINEAR)
-
-    # --- Apply Mild Sharpening (Factor 1.0) ---
-    # Optimized from 5.0 -> 1.0 (No sharpening) to reduce false positives caused by noise artifacts.
-    enhancer = ImageEnhance.Sharpness(img_resized)
-    img_sharpened = enhancer.enhance(1.0)
-    # --------------------------------------------
-
-    # --- Apply Trapezoid Mask (Global Optimal: 70% bottom width) ---
-    # Purpose: Remove minimal background noise while preserving maximum face structure.
-    # [2026-01-18 Optimization] Changed from 0.8 to 0.7 to mask more background corners.
-    mask_bottom_ratio = 0.7 
+    src_x1 = max(0, x1); src_y1 = max(0, y1)
+    src_x2 = min(w, x2); src_y2 = min(h, y2)
     
-    w, h = img_sharpened.size
-    mask = Image.new("L", (w, h), 0)
-    draw_mask = ImageDraw.Draw(mask)
+    dst_x1 = src_x1 - x1; dst_y1 = src_y1 - y1
+    dst_x2 = dst_x1 + (src_x2 - src_x1); dst_y2 = dst_y1 + (src_y2 - src_y1)
     
-    start_y = int(h * mask_start_y_ratio)
-    bl_x = int(w * (1 - mask_bottom_ratio) / 2)
-    br_x = int(w * (1 - (1 - mask_bottom_ratio) / 2))
+    if src_x2 > src_x1 and src_y2 > src_y1:
+        square_img[dst_y1:dst_y2, dst_x1:dst_x2] = img_np[src_y1:src_y2, src_x1:src_x2]
+        
+    # Resize (Area Interpolation)
+    img_resized = cv2.resize(square_img, (image_size, image_size), interpolation=cv2.INTER_AREA)
     
-    # Polygon 1: Top rectangle (Full width)
-    draw_mask.rectangle([(0, 0), (w, start_y)], fill=255)
-    
-    # Polygon 2: Bottom trapezoid
-    # Points: Top-Left, Top-Right, Bottom-Right, Bottom-Left
-    trapezoid_points = [
-        (0, start_y), (w, start_y),
-        (br_x, h), (bl_x, h)
-    ]
-    draw_mask.polygon(trapezoid_points, fill=255)
-    
-    # Apply mask to the image (Black out masked areas)
-    # We use a black image as the background
-    black_bg = Image.new("RGB", (w, h), "black")
-    img_final = Image.composite(img_sharpened, black_bg, mask)
-    # -----------------------------------------------------
-    
-    # Convert to tensor and standardize
-    face_tensor = torch.from_numpy(np.array(img_final)).permute(2, 0, 1).float()
+    # To Tensor & Standardize
+    face_tensor = torch.from_numpy(img_resized).permute(2, 0, 1).float()
     standardized_face = fixed_image_standardization(face_tensor)
     
     return standardized_face

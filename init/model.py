@@ -13,7 +13,7 @@ from datetime import datetime
 import pytz
 import json
 from PIL import Image
-from function import crop_face_without_forehead, get_parts_crop
+from function import crop_face_without_forehead
 from init.mediapipe_handler import MediaPipeHandler # 新增
 
 @nb.jit
@@ -586,7 +586,7 @@ class Comparison:
                     raw_confidence = 0.0
                     part_msg = ""
                 else:
-                    distances, faiss_person_ids = self.system.state.ann_index.search(current_face_vec, k=min(5, self.system.state.ann_index.index.ntotal))
+                    distances, faiss_person_ids = self.system.state.ann_index.search(current_face_vec, k=self.system.state.ann_index.index.ntotal)
                     if faiss_person_ids is None or len(faiss_person_ids) == 0:
                         predicted_id = "None"; confidence = 0.0; z_score = 0.0; raw_confidence = 0.0; part_msg = ""
                     else:
@@ -595,7 +595,7 @@ class Comparison:
                         # 1. Phase 1: Filter Candidates (Confidence >= 0.7 AND Z >= 1.5)
                         candidates = []
                         
-                        # Calculate population stats from Top K (Full Face)
+                        # Calculate population stats from All Candidates (Option SMALL Logic)
                         if len(top_k_similarities) > 1:
                             mean_score = np.mean(top_k_similarities)
                             std_dev_score = np.std(top_k_similarities)
@@ -615,12 +615,10 @@ class Comparison:
                                     'id': pid, 
                                     'raw': s_raw, 
                                     'conf': s_final, 
-                                    'z': z,
-                                    't_zone': 0.0
+                                    'z': z
                                 })
                         
                         # Set Default Winner (Top 1) for fallback/logging
-                        # Even if no one passes, we need to know who was the closest match
                         best_match_id = faiss_person_ids[0]
                         raw_confidence = distances[0]
                         confidence = raw_confidence * quality_score
@@ -629,7 +627,10 @@ class Comparison:
                         
                         # [2026-01-24 Feature] 記錄 Top-5 搜尋結果供除錯重現
                         top5_results = []
-                        for i, pid in enumerate(faiss_person_ids):
+                        # Log top 5 only for debugging
+                        log_k = min(5, len(faiss_person_ids))
+                        for i in range(log_k):
+                            pid = faiss_person_ids[i]
                             s_raw = distances[i]
                             z = (s_raw - mean_score) / std_dev_score if std_dev_score > 0 else 0
                             top5_results.append({
@@ -639,65 +640,23 @@ class Comparison:
                                 "z_score": float(z)
                             })
                         
-                        # 2. Phase 2: T-Zone Re-ranking (Tie-Breaker)
-                        # Only triggered if we have valid candidates passing Phase 1
+                        # 2. Single Stage Decision (Option SMALL)
+                        # No T-Zone re-ranking. Just pick the best candidate that passed filters.
                         t_zone_applied = False
                         t_zone_score = None
+                        
                         if candidates:
-                            part_db = self.system.state.part_features
-                            if part_db:
-                                try:
-                                    frame_img = Image.fromarray(cv2.cvtColor(_frame, cv2.COLOR_BGR2RGB))
-                                    current_parts, part_coords = get_parts_crop(frame_img, _points)
-                                    
-                                    # Use T-Zone Long if available
-                                    if 't_zone' in current_parts:
-                                        curr_vec = self.system.resnet(current_parts['t_zone'].unsqueeze(0)).detach().numpy()[0]
-                                        
-                                        for cand in candidates:
-                                            if cand['id'] in part_db and 't_zone' in part_db[cand['id']]:
-                                                cand['t_zone'] = cosine_similarity(curr_vec, part_db[cand['id']]['t_zone'])
-                                        
-                                        # Sort by T-Zone Score Descending
-                                        candidates.sort(key=lambda x: x['t_zone'], reverse=True)
-                                        
-                                        # New Winner based on T-Zone
-                                        winner = candidates[0]
-                                        best_match_id = winner['id']
-                                        raw_confidence = winner['raw']
-                                        confidence = winner['conf']
-                                        z_score = winner['z'] # The winner already passed Z >= 1.5 in Phase 1
-                                        part_msg = f" [T-Zone Winner: {winner['t_zone']:.2f}]"
-                                        t_zone_applied = True
-                                        t_zone_score = float(winner['t_zone'])
-                                        
-                                    else:
-                                        # Fallback to highest Z/Conf (candidates[0] depends on loop order -> original rank)
-                                        winner = candidates[0]
-                                        best_match_id = winner['id']
-                                        raw_confidence = winner['raw']
-                                        confidence = winner['conf']
-                                        z_score = winner['z']
-                                        
-                                except Exception as e:
-                                    LOGGER.error(f"T-Zone comparison failed: {e}")
-                                    winner = candidates[0]
-                                    best_match_id = winner['id']
-                                    raw_confidence = winner['raw']
-                                    confidence = winner['conf']
-                                    z_score = winner['z']
-                            else:
-                                # No part db
-                                winner = candidates[0]
-                                best_match_id = winner['id']
-                                raw_confidence = winner['raw']
-                                confidence = winner['conf']
-                                z_score = winner['z']
+                            # Candidates are populated in order of FAISS result (descending similarity)
+                            # So candidates[0] is the best match that passed filters.
+                            winner = candidates[0]
+                            best_match_id = winner['id']
+                            raw_confidence = winner['raw']
+                            confidence = winner['conf']
+                            z_score = winner['z']
                         
                         predicted_id = best_match_id
                         
                         # [2026-01-24 Feature] 建立完整的 Snapshot Metadata (供離線重現測試)
-                        # 無論是否有 T-Zone，只要有有效的辨識結果都要記錄
                         if current_face_vec is not None:
                             meta = {
                                 "timestamp": datetime.now(self.TIMEZONE).isoformat(),
@@ -705,9 +664,9 @@ class Comparison:
                                 "full_score": float(confidence),
                                 "z_score": float(z_score),
                                 "quality_score": float(quality_score),
-                                "t_zone_score": t_zone_score if t_zone_applied else None,
+                                "t_zone_score": None,
                                 "top5": top5_results,
-                                "embedding": current_face_vec.tolist()  # 關鍵：儲存特徵向量
+                                "embedding": current_face_vec.tolist()
                             }
                             self.system.state.success_metadata[self.frame_num] = meta
 
@@ -735,9 +694,6 @@ class Comparison:
             if quality_score < 1.0:
                 quality_info = f" (原:{raw_confidence:.2%}, 品質:{quality_score:.2f} {quality_msg})"
             
-            # Append Part Verification Msg
-            quality_info += part_msg
-
             log_message = (
                 f"{log_time} [辨識事件][{camera_name}] 偵測到 {staff_name} (ID: {predicted_id}), "
                 f"信賴度: {confidence:.2%}{quality_info}, Z-Score: {z_score:.2f}, Width: {face_width} px [評級: {rating_str}]"
