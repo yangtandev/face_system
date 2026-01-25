@@ -5,6 +5,7 @@
 
 ## 11. Operational Protocol (Strict Enforcement)
 - **Mandatory Planning:** Upon receiving any instruction, you must first present a detailed, step-by-step plan and wait for the user's explicit confirmation before proceeding with any execution.
+- **Post-Commit Documentation Protocol:** After every successful `git commit`, you MUST actively ask the user: "Do you want to update `./handover_notes.md` with the details of these changes?" You may ONLY proceed with the update after receiving explicit permission.
 - **Explicit Permission Required:** You must obtain specific user approval before:
     1. Modifying `./handover_notes.md`.
     2. Creating any git commit.
