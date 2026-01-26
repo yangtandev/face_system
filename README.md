@@ -60,14 +60,14 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 
 ### 1. 修改預設設定
 
-本系統的所有預設設定都集中管理於 `setting/bulid_config.py` 檔案中的 `default_config` 字典。
+本系統的所有預設設定都集中管理於 `setting/build_config.py` 檔案中的 `default_config` 字典。
 
 **首次設定或需要修改預設值時，請直接編輯此檔案，並根據您的實際環境修改以下重要設定：**
 
 *   **SSH 金鑰路徑**：
     `Server` -> `ssh_key_path`: 確保此路徑指向您正確的 SSH **私鑰**檔案。
     ```python
-    # setting/bulid_config.py
+    # setting/build_config.py
 
     "Server": {
         "ip": "43.213.128.240",
@@ -80,7 +80,7 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 *   **攝影機 IP**：
     `cameraIP`: 修改 `in_camera` 和 `out_camera` 的值，填入您實際的 RTSP 串流 URL。
     ```python
-    # setting/bulid_config.py
+    # setting/build_config.py
 
     "cameraIP": {
         "in_camera": "rtsp://your_camera_ip_here",      # <-- 修改成您的攝影機 IP
@@ -90,10 +90,10 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 
 ### 2. 生成 `config.json` 設定檔
 
-完成 `setting/bulid_config.py` 的修改後，請執行以下指令來生成系統實際會讀取的 `config.json` 檔案：
+完成 `setting/build_config.py` 的修改後，請執行以下指令來生成系統實際會讀取的 `config.json` 檔案：
 
 ```bash
-python setting/bulid_config.py
+python setting/build_config.py
 ```
 
 `config.json` 檔案會被 `.gitignore` 忽略，不應手動修改或提交至版本控制。
@@ -123,12 +123,13 @@ ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
 這會在 `~/.ssh/` 目錄下產生 `id_rsa` (私鑰) 和 `id_rsa.pub` (公鑰) 兩個檔案。
 
 iii. **複製公鑰至遠端伺服器**：
-    您需要將您的**公鑰** (`id_rsa.pub`) 的內容附加到遠端伺服器的 `~/.ssh/authorized_keys` 檔案中。最簡單的方法是使用 `ssh-copy-id` 命令：
+您需要將您的**公鑰** (`id_rsa.pub`) 的內容附加到遠端伺服器的 `~/.ssh/authorized_keys` 檔案中。最簡單的方法是使用 `ssh-copy-id` 命令：
 
-    ```bash
-    ssh-copy-id -i ~/.ssh/id_rsa.pub <username>@<server_ip>
-    ```
-    請將 `<username>` 和 `<server_ip>` 替換成您在 `setting/bulid_config.py` 中設定的伺服器使用者名稱與 IP。
+```bash
+ssh-copy-id -i ~/.ssh/id_rsa.pub <username>@<server_ip>
+```
+
+請將 `<username>` 和 `<server_ip>` 替換成您在 `setting/build_config.py` 中設定的伺服器使用者名稱與 IP。
 
 ### 4. 設定與安裝 MQTT Broker (Mosquitto)
 
@@ -184,7 +185,7 @@ python face_main.py
 
     **重要提示：**
     *   請務必將所有 `<您的使用者名稱>` 替換成您自己的 Linux **使用者名稱** (例如：`ubuntu`, `your_username`)。
-    *   請務必將所有 `<您的專案絕對路徑>` 替換成您的 `face_system` **專案所在的絕對路徑** (例如：`/home/your_username/face_system`)。
+    *   請務必將所有 `/home/<您的使用者名稱>/face_system` 替換成您的 `face_system` **專案所在的絕對路徑** (例如：`/home/your_username/face_system`)。
 
     ```ini
     [Unit]
@@ -200,16 +201,15 @@ python face_main.py
     # *** 關鍵改動 2: 指定環境變數 ***
     # 這讓服務知道要在哪個螢幕、哪個使用者會話中顯示 GUI
     Environment=DISPLAY=:0
-    Environment=XAUTHORITY=/home/<您的使用者名稱>/.Xauthority
     # 新增 XDG_RUNTIME_DIR，解決部分桌面環境下的通訊問題
     # 注意：'1000' 是常見的預設使用者 ID，請根據您的系統作調整 (可用 `id -u <您的使用者名稱>` 查詢)
     Environment="XDG_RUNTIME_DIR=/run/user/1000"
 
     # 設定工作目錄
-    WorkingDirectory=<您的專案絕對路徑>
+    WorkingDirectory=/home/<您的使用者名稱>/face_system
 
     # 執行指令（使用絕對路徑）
-    ExecStart=<您的專案絕對路徑>/venv/bin/python -u <您的專案絕對路徑>/face_main.py
+    ExecStart=/home/<您的使用者名稱>/face_system/venv/bin/python -u /home/<您的使用者名稱>/face_system/face_main.py
 
     # 自動重啟設定
     Restart=always
@@ -286,10 +286,10 @@ sudo apt-get update && sudo apt-get install -y libxcb-xinerama0 libxcb-xfixes0 l
     在打開的文字編輯器中，將以下這一整行指令複製並貼上到檔案的最後。
 
     **重要提示：**
-    *   請務必將 `<您的專案絕對路徑>` 替換成您的 `face_system` **專案所在的絕對路徑** (例如：`/home/your_username/face_system`)。您可以使用 `pwd` 命令在專案根目錄下查詢。
+    *   請務必將 `/home/<您的使用者名稱>/face_system` 替換成您的 `face_system` **專案所在的絕對路徑** (例如：`/home/your_username/face_system`)。您可以使用 `pwd` 命令在專案根目錄下查詢。
 
     ```bash
-    0 * * * * <您的專案絕對路徑>/venv/bin/python <您的專案絕對路徑>/analytics_reporter.py >> <您的專案絕對路徑>/log/reporter.log 2>&1
+    0 * * * * /home/<您的使用者名稱>/face_system/venv/bin/python /home/<您的使用者名稱>/face_system/analytics_reporter.py >> /home/<您的使用者名稱>/face_system/log/reporter.log 2>&1
     ```
     替換後的範例：
     ```bash

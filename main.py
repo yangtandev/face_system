@@ -9,7 +9,7 @@ from PyQt5.QtGui import QImage, QPixmap
 import signal
 import os, sys, json, threading
 
-from setting.bulid_config import update_config_file
+from setting.build_config import update_config_file
 
 # === 全域主程式路徑 ===
 main_path = os.path.dirname(__file__)
