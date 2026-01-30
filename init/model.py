@@ -271,9 +271,10 @@ class Comparison:
 
         threading.Thread(target=self.face_comparison, daemon=True).start()
 
-    def _save_potential_miss_image(self, frame, width, threshold, camera_name):
+    def _save_potential_miss_image(self, frame, width, threshold, camera_name, reason="Unknown"):
         """
         儲存潛在辨識失敗的截圖 (寬度介於意圖區間的人臉)。
+        [2026-01-30] Added reason to filename.
         """
         try:
             today_str = datetime.now().strftime('%Y_%m_%d')
@@ -288,8 +289,13 @@ class Comparison:
             save_dir = os.path.join(os.getcwd(), "img_log", "potential_miss", today_str)
             os.makedirs(save_dir, exist_ok=True)
             
-            # 檔名格式: HH;MM;SS_In_W{width}_T{threshold}.jpg
-            filename = f"{time_str}_{cam_tag}_W{width}_T{threshold}.jpg"
+            # Sanitize reason string for filename
+            safe_reason = reason.replace(" ", "_").replace("/", "-").replace(":", "").replace("(", "").replace(")", "").replace("<", "lt").replace(">", "gt")
+            # Limit length to avoid OS limits
+            if len(safe_reason) > 50: safe_reason = safe_reason[:50]
+            
+            # 檔名格式: HH;MM;SS_In_W{width}_Fail_{reason}.jpg
+            filename = f"{time_str}_{cam_tag}_W{width}_Fail_{safe_reason}.jpg"
             filepath = os.path.join(save_dir, filename)
             
             cv2.imwrite(filepath, frame)
@@ -297,6 +303,25 @@ class Comparison:
         except Exception as e:
             LOGGER.error(f"儲存潛在失敗截圖時發生錯誤: {e}")
             return None
+
+    def _save_potential_miss_json(self, image_path, metrics, msg):
+        """
+        [2026-01-30 Feature] 為潛在失敗截圖產生搭配的 JSON 檔。
+        """
+        try:
+            json_path = os.path.splitext(image_path)[0] + ".json"
+            
+            data = {
+                "timestamp": datetime.now(self.TIMEZONE).isoformat(),
+                "reason": msg,
+                "metrics": metrics
+            }
+            
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+                
+        except Exception as e:
+            LOGGER.error(f"儲存潛在失敗 JSON 時發生錯誤: {e}")
 
     def check_face_quality(self, box, points, frame_w, frame_h, gaze_status):
         """
@@ -313,18 +338,35 @@ class Comparison:
         frame_center_x = frame_w / 2
         offset = abs(face_center_x - frame_center_x)
         limit_offset = frame_w * 0.15 # 允許偏離 15%
+        margin = 5
         
+        # [2026-01-30 Fix] Initialize current_ear to prevent UnboundLocalError if face_w <= 100
+        current_ear = 1.0
+
+        metrics = {
+            'center_offset_px': float(offset),
+            'center_limit_px': float(limit_offset),
+            'face_width_px': float(box[2] - box[0]),
+            'visibility_margin': float(margin),
+            'gaze_passed': False,
+            'gaze_msg': 'Init',
+            'ear': 1.0,
+            'v_ratio': 0.0,
+            'roll_angle': 0.0, # Not strictly calculated here, but could be added if needed
+            'pitch_check': 'Pass',
+            'yaw_check': 'Pass'
+        }
+
         if offset > limit_offset:
-            return 0.0, f"未置中 (偏離 {offset:.1f}px > 容許 {limit_offset:.1f}px)"
+            return 0.0, f"未置中 (偏離 {offset:.1f}px > 容許 {limit_offset:.1f}px)", metrics
 
         # ---------------------------------------------------------
         # 2. 特徵點完整性檢查 (Visibility) - 完整性需求
         # ---------------------------------------------------------
-        margin = 5
         for i, p in enumerate(points):
             if p[0] < margin or p[0] > frame_w - margin or \
                p[1] < margin or p[1] > frame_h - margin:
-                 return 0.0, f"特徵點被切除/遮擋 (點{i}座標 {p} 超出邊界)"
+                 return 0.0, f"特徵點被切除/遮擋 (點{i}座標 {p} 超出邊界)", metrics
 
         # ---------------------------------------------------------
         # 3. 3D 姿態與視線檢查 (Gaze & Pose Check) - 核心邏輯
@@ -344,11 +386,15 @@ class Comparison:
                 elif hasattr(self.system.state, 'face_ear'): # Fallback for backward compatibility
                     current_ear = self.system.state.face_ear.get(self.frame_num, 1.0)
 
+                metrics['gaze_passed'] = is_looking
+                metrics['gaze_msg'] = gaze_msg
+                metrics['ear'] = float(current_ear)
+
                 if not is_looking:
-                    return 0.0, f"{gaze_msg}"
+                    return 0.0, f"{gaze_msg}", metrics
             else:
                 # [2026-01-11 Fix] 若無 Gaze 狀態 (可能因 Race Condition 被清空)，嚴格禁止放行
-                return 0.0, "Gaze Status Missing"
+                return 0.0, "Gaze Status Missing", metrics
 
         # ---------------------------------------------------------
         # 3.1 幾何比例檢查 (Geometry Check) - 低頭防禦
@@ -364,12 +410,14 @@ class Comparison:
         
         if eye_nose_dist > 0:
             v_ratio = nose_mouth_dist / eye_nose_dist
+            metrics['v_ratio'] = float(v_ratio)
             # 正常值: 0.8 ~ 1.2, 低頭測試照: 0.18 ~ 0.40
             
             # 1. 極端低頭過濾 (絕對死線)
             # 殺死 9 張極端低頭測試照 (V < 0.35)
             if v_ratio < 0.35:
-                return 0.0, f"低頭 (V-Ratio: {v_ratio:.2f} < 0.35)"
+                metrics['pitch_check'] = 'Fail (Extreme Low)'
+                return 0.0, f"低頭 (V-Ratio: {v_ratio:.2f} < 0.35)", metrics
             
             # 2. 低頭+遮眼 Combo 過濾 (0.35 <= V < 0.42)
             # [2026-01-22] 針對灰色地帶進行補刀
@@ -379,7 +427,8 @@ class Comparison:
             if v_ratio < 0.42:
                 # [2026-01-26 Refactor] Use pre-extracted EAR
                 if current_ear < 0.22:
-                    return 0.0, f"低頭/遮眼 (V {v_ratio:.2f}<0.42 & EAR {current_ear:.2f}<0.22)"
+                    metrics['pitch_check'] = 'Fail (Combo Low+Cover)'
+                    return 0.0, f"低頭/遮眼 (V {v_ratio:.2f}<0.42 & EAR {current_ear:.2f}<0.22)", metrics
 
         # ---------------------------------------------------------
         # 3.2 閉眼檢查 (Eye Closure Check) - [2026-01-26 Fix]
@@ -388,7 +437,7 @@ class Comparison:
         # 設定底層安全門檻 0.05 (極端閉眼)。
         # 中間地帶 (0.05~0.10) 交由 mp_handler 的 Combo Check 處理。
         if current_ear < 0.075:
-            return 0.0, f"眼睛閉合 (EAR: {current_ear:.4f} < 0.075)"
+            return 0.0, f"眼睛閉合 (EAR: {current_ear:.4f} < 0.075)", metrics
 
         # ---------------------------------------------------------
         # 4. 臉部區域清晰度檢查 (ROI Blur Detection)
@@ -411,7 +460,7 @@ class Comparison:
         #     LOGGER.error(f"清晰度檢查失敗: {e}")
 
         # 通過所有檢查
-        return 1.0, "Pass"
+        return 1.0, "Pass", metrics
 
     def _update_display_state(self, person_id):
         """更新當前顯示的人員ID和時間"""
@@ -528,7 +577,8 @@ class Comparison:
                         snapshot = _frame
                         saved_path = "無影像"
                         if snapshot is not None:
-                            saved_path = self._save_potential_miss_image(snapshot, face_width, min_face_threshold, camera_name)
+                            # [2026-01-30] Pass reason="SmallFace"
+                            saved_path = self._save_potential_miss_image(snapshot, face_width, min_face_threshold, camera_name, reason="SmallFace")
                             
                         LOGGER.info(f"[{camera_name}][潛在失敗] 偵測到人臉但過小 (寬度: {face_width}) - 已存檔: {saved_path}")
                         self.last_potential_miss_log_time = now
@@ -550,7 +600,7 @@ class Comparison:
                 continue
 
             # 檢查人臉品質 (同步版)
-            quality_score, quality_msg = self.check_face_quality(_box, _points, frame_w, frame_h, _gaze_status)
+            quality_score, quality_msg, quality_metrics = self.check_face_quality(_box, _points, frame_w, frame_h, _gaze_status)
             
             if quality_score == 0.0:
                  if is_staff_displaying:
@@ -558,6 +608,21 @@ class Comparison:
 
                  LOGGER.info(f"[{camera_name}][品質過濾] {quality_msg}")
                  
+                 # [2026-01-30 Feature] 潛在失敗數據收集 (大臉但被品質過濾)
+                 if face_width >= min_face_threshold and now - self.last_potential_miss_log_time > 1.0:
+                     try:
+                         snapshot = _frame
+                         if snapshot is not None:
+                             saved_path = self._save_potential_miss_image(snapshot, face_width, min_face_threshold, camera_name, reason=quality_msg)
+                             # 產生搭配的 JSON
+                             if saved_path:
+                                 self._save_potential_miss_json(saved_path, quality_metrics, quality_msg)
+                             
+                             LOGGER.info(f"[{camera_name}][品質失敗收集] 寬度 {face_width} 但品質未過 - 已存檔")
+                             self.last_potential_miss_log_time = now
+                     except Exception as e:
+                         LOGGER.error(f"Save potential miss (quality) failed: {e}")
+
                  if "低頭" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "請抬頭"
                      self.system.speaker.say("請抬頭", "hint_look_up", priority=2)
@@ -681,6 +746,7 @@ class Comparison:
                                 "full_score": float(confidence),
                                 "z_score": float(z_score),
                                 "quality_score": float(quality_score),
+                                "quality_metrics": quality_metrics, # [2026-01-30] Add metrics
                                 "t_zone_score": None,
                                 "top5": top5_results,
                                 "embedding": current_face_vec.tolist()
