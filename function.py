@@ -73,17 +73,50 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
     # 簽到/簽離邏輯判斷
     is_check_in_action = False
     is_check_out_action = False
+    
+    # [2026-01-27 Feature] Time-based Schedule (Overrides standard logic)
+    schedule_conf = CONFIG.get("Schedule", {})
+    schedule_active = False
+    
+    if schedule_conf.get("enabled", False):
+        try:
+            start_str = schedule_conf.get("in_start", "06:00")
+            end_str = schedule_conf.get("in_end", "17:00")
+            
+            # Use local time
+            now_dt = datetime.datetime.now()
+            now_time = now_dt.time()
+            
+            start_time = datetime.datetime.strptime(start_str, "%H:%M").time()
+            end_time = datetime.datetime.strptime(end_str, "%H:%M").time()
+            
+            is_in_period = False
+            if start_time <= end_time:
+                is_in_period = start_time <= now_time <= end_time
+            else:
+                # Cross-midnight case (e.g. 22:00 to 06:00)
+                is_in_period = start_time <= now_time or now_time <= end_time
+                
+            if is_in_period:
+                is_check_in_action = True
+            else:
+                is_check_out_action = True
+                
+            schedule_active = True
+        except Exception as e:
+            LOGGER.error(f"Schedule Logic Error: {e}")
 
-    if n:  # 單鏡頭模式：根據狀態自動判斷
-        if system.state.check_time[staff_id][0]:
-            is_check_in_action = True
-        else:
-            is_check_out_action = True
-    else:  # 雙鏡頭模式：根據攝影機編號判斷
-        if camera_num == 0:
-            is_check_in_action = True
-        elif camera_num == 1:
-            is_check_out_action = True
+    if not schedule_active:
+        if n:  # 單鏡頭模式：根據狀態自動判斷
+            if system.state.check_time[staff_id][0]:
+                is_check_in_action = True
+            else:
+                is_check_out_action = True
+        else:  # 雙鏡頭模式：根據攝影機編號判斷
+            if camera_num == 0:
+                is_check_in_action = True
+            elif camera_num == 1:
+                is_check_out_action = True
 
     # 執行簽到
     if is_check_in_action:

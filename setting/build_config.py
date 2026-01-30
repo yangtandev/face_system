@@ -37,6 +37,11 @@ default_config = {
         "min_face": 450
     },
     "door": "0",
+    "Schedule": {
+        "enabled": False,
+        "in_start": "06:00",
+        "in_end": "17:00"
+    },
     "Clothes_detection": False,
     "Clothes_show": False,
     "min_face":450,
