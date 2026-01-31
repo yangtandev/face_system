@@ -80,22 +80,37 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
     
     if schedule_conf.get("enabled", False):
         try:
-            start_str = schedule_conf.get("in_start", "06:00")
-            end_str = schedule_conf.get("in_end", "17:00")
-            
             # Use local time
             now_dt = datetime.datetime.now()
             now_time = now_dt.time()
             
-            start_time = datetime.datetime.strptime(start_str, "%H:%M").time()
-            end_time = datetime.datetime.strptime(end_str, "%H:%M").time()
-            
             is_in_period = False
-            if start_time <= end_time:
-                is_in_period = start_time <= now_time <= end_time
-            else:
-                # Cross-midnight case (e.g. 22:00 to 06:00)
-                is_in_period = start_time <= now_time or now_time <= end_time
+            
+            # Support multiple periods (Prioritize new list format)
+            periods = schedule_conf.get("in_periods", [])
+            if not periods:
+                # Fallback to legacy single period
+                start_str = schedule_conf.get("in_start", "06:00")
+                end_str = schedule_conf.get("in_end", "17:00")
+                periods = [{"start": start_str, "end": end_str}]
+            
+            for period in periods:
+                start_str = period.get("start", "00:00")
+                end_str = period.get("end", "00:00")
+                
+                start_time = datetime.datetime.strptime(start_str, "%H:%M").time()
+                end_time = datetime.datetime.strptime(end_str, "%H:%M").time()
+                
+                # Check if current time is within this period
+                if start_time <= end_time:
+                    if start_time <= now_time <= end_time:
+                        is_in_period = True
+                        break
+                else:
+                    # Cross-midnight case
+                    if start_time <= now_time or now_time <= end_time:
+                        is_in_period = True
+                        break
                 
             if is_in_period:
                 is_check_in_action = True

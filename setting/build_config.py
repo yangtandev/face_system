@@ -39,8 +39,10 @@ default_config = {
     "door": "0",
     "Schedule": {
         "enabled": False,
-        "in_start": "06:00",
-        "in_end": "17:00"
+        "in_periods": [
+            {"start": "06:00", "end": "12:00"},
+            {"start": "13:00", "end": "17:00"}
+        ]
     },
     "Clothes_detection": False,
     "Clothes_show": False,
