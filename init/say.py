@@ -130,12 +130,12 @@ class Say_:
 
                     if os.path.getsize(full_path) < 100: continue
 
-                    # --- 使用系統 mpg123 播放 ---
-                    # -q: 安靜模式
-                    # 使用 Popen 開啟進程並等待
+                    # --- 使用系統 ffplay 播放 (取代不穩定的 mpg123) ---
+                    # [2026-02-01 Fix] mpg123 segfaults in systemd environment (Code -11)
+                    # ffplay is more robust.
                     with self.process_lock:
                         self.current_process = subprocess.Popen(
-                            ['mpg123', '-q', full_path],
+                            ['ffplay', '-nodisp', '-autoexit', '-hide_banner', full_path],
                             stdout=subprocess.DEVNULL,
                             stderr=subprocess.DEVNULL
                         )
@@ -167,6 +167,16 @@ class Say_:
     def is_busy(self):
         with self.process_lock:
             return self.current_process is not None and self.current_process.poll() is None
+
+    def reset(self):
+        """[2026-01-30 Fix] Reset speaker state on configuration reload."""
+        self._kill_current_process()
+        with self.queue.mutex:
+            self.queue.queue.clear()
+        with self.priority_lock:
+            self.current_priority = 0
+        self.last_queued_item = None
+        LOGGER.info("Speaker state reset.")
 
     def terminate(self):
         self.stop_threads = True

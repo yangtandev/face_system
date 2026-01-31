@@ -15,6 +15,7 @@ from ultralytics import YOLOv10
 from PVMS_Library import config
 from init.log import LOGGER
 from ui.user_show import MainWindow
+from ui import styles
 from py_ssh import ssh
 from init.say import Say_
 import datetime
@@ -465,11 +466,23 @@ class FaceRecognitionSystem:
             self.original_tty_settings = None
 
         app = QApplication(sys.argv)
+        
+        # [2026-01-30 Feature] Apply Global Theme
+        try:
+            theme = CONFIG.get("theme", "dark")
+            app.setStyleSheet(styles.get_stylesheet(theme))
+        except Exception as e:
+            print(f"Failed to apply theme: {e}")
+
         safe_shutdown_pipe_read, self.safe_shutdown_pipe_write = os.pipe()
         def signal_handler(sig, frame): os.write(self.safe_shutdown_pipe_write, b'x')
         signal.signal(signal.SIGINT, signal_handler); signal.signal(signal.SIGTERM, signal_handler)
         self.shutdown_notifier = QSocketNotifier(safe_shutdown_pipe_read, QSocketNotifier.Read)
         self.shutdown_notifier.activated.connect(lambda: (os.read(safe_shutdown_pipe_read, 1), self._safe_shutdown()))
+        
+        # [2026-01-30 Feature] Soft Reload via SIGHUP
+        signal.signal(signal.SIGHUP, self._handle_sighup)
+        
         self._load_features_and_profiles(); self.setup_mqtt_client(); self.update_inout_log(); self.setup_cameras()
         try: ret = app.exec_()
         finally:
@@ -701,11 +714,105 @@ class FaceRecognitionSystem:
     def setup_cameras(self):
         ips = [CONFIG["cameraIP"]["in_camera"], CONFIG["cameraIP"]["out_camera"]]
         n = 2 if ips[0] != ips[1] else 1
-        self.cameras = [CameraSystem(ip, i, n, self, CONFIG) for i, ip in enumerate(ips) if ip != "0"]
-        for i in range(len(self.cameras)-(2-n)):
-            if CONFIG.get("full_screen", False): self.cameras[i].win.showFullScreen()
-            else: self.cameras[i].win.showNormal()
-            self.cameras[i].win.activateWindow(); self.cameras[i].win.raise_()
+        
+        # [2026-01-30 Fix] Ensure only ONE CameraSystem is created if n=1 (Same IP)
+        if n == 1:
+            # Only process the first IP (index 0)
+            target_source = [(0, ips[0])]
+        else:
+            # Process both
+            target_source = enumerate(ips)
+            
+        self.cameras = [CameraSystem(ip, i, n, self, CONFIG) for i, ip in target_source if ip != "0"]
+        
+        for cam in self.cameras:
+            if CONFIG.get("full_screen", False): cam.win.showFullScreen()
+            else: cam.win.showNormal()
+            cam.win.activateWindow(); cam.win.raise_()
+
+    def _handle_sighup(self, signum, frame):
+        """Handle SIGHUP signal to reload configuration."""
+        LOGGER.info("Received SIGHUP. Scheduling configuration reload...")
+        # Schedule reload in the main thread event loop
+        QTimer.singleShot(0, self._reload_configuration)
+
+    def _reload_configuration(self):
+        """Reload configuration and restart camera systems."""
+        LOGGER.info("Reloading configuration and restarting subsystems...")
+        
+        # 1. Terminate existing cameras
+        if hasattr(self, 'cameras'):
+            for cam in self.cameras:
+                # We need a clean way to close the window and stop threads
+                # cam.win.close() triggers terminate via closeEvent, but let's be explicit
+                try:
+                    cam.win.close() # This triggers cam.terminate
+                except Exception as e:
+                    LOGGER.error(f"Error closing camera window: {e}")
+            
+            # Wait a bit for threads to die?
+            # Or just clear the list. CameraSystem.terminate sets stop_threads=True.
+            self.cameras = []
+            
+        # 2. Reload Config
+        global CONFIG
+        try:
+            with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding="utf-8") as f:
+                new_config = json.load(f)
+            
+            # [2026-01-30 Fix] Check if asset rebuild is needed
+            # Rebuild if 'say' (voice content) or 'Server' (staff list source) changed
+            need_rebuild = (new_config.get("say") != CONFIG.get("say")) or \
+                           (new_config.get("Server") != CONFIG.get("Server"))
+
+            # Update global CONFIG
+            CONFIG.clear()
+            CONFIG.update(new_config)
+            LOGGER.info("Configuration reloaded from disk.")
+            
+            # [2026-01-30 Fix] Reload Theme
+            try:
+                theme = CONFIG.get("theme", "dark")
+                from ui import styles
+                QApplication.instance().setStyleSheet(styles.get_stylesheet(theme))
+            except Exception as e:
+                LOGGER.error(f"Failed to reload theme: {e}")
+                
+            # [2026-01-30 Fix] Reset Speaker
+            try:
+                if hasattr(self, 'speaker'):
+                    self.speaker.reset()
+                
+                # Rebuild assets if needed (Voice & Descriptors)
+                if need_rebuild:
+                    LOGGER.info("Config changed (Say/Server), triggering asset rebuild...")
+                    # This handles syncing, voice generation, and descriptor generation
+                    # Note: This is blocking, UI might freeze briefly
+                    self._rebuild_assets()
+                else:
+                    LOGGER.info("Config changed (Params only), skipping asset rebuild.")
+                    
+            except Exception as e:
+                LOGGER.error(f"Failed to reset speaker or rebuild assets: {e}")
+
+            # [2026-01-30 Fix] Sync function.py CONFIG global variable
+            # function.py loads its own CONFIG copy on import, which becomes stale on reload.
+            # We must explicitly update it.
+            import function
+            function.CONFIG = CONFIG
+            LOGGER.info("Synced configuration to function module.")
+
+        except Exception as e:
+            LOGGER.error(f"Failed to reload config.json: {e}")
+            return
+
+        # 3. Re-setup cameras with new config
+        # setup_cameras uses global CONFIG
+        try:
+            self.setup_cameras()
+            LOGGER.info("Cameras re-initialized.")
+        except Exception as e:
+            LOGGER.error(f"Failed to setup cameras: {e}")
 
     def update_inout_log(self):
         try:

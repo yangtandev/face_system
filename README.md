@@ -144,18 +144,21 @@ sudo apt-get update && sudo apt-get install -y mosquitto mosquitto-clients && su
 **驗證安裝：**
 安裝完成後，您可以使用 `systemctl status mosquitto` 檢查服務狀態，應顯示為 `active (running)`。
 
-### 5. 安裝系統音訊播放器 (mpg123)
+### 5. 圖形化設定工具 (GUI Config Tool)
 
-本系統利用系統級播放器 `mpg123` 來提供流暢且低延遲的語音播報。這能確保在 MediaPipe 高負載運算時，語音依然清晰且不影響 UI 效能。
+本系統提供了一個方便的圖形化介面，讓您可以無需編輯 JSON 檔案即可調整各項參數。
 
-執行以下指令安裝：
+**啟動方式：**
+1.  **從主畫面啟動**：在人臉辨識主視窗的左上角，點擊 **齒輪圖示 (⚙)**。輸入管理員密碼（預設：`admin`）即可開啟。
+2.  **獨立啟動**：
+    ```bash
+    python setting_tool.py
+    ```
 
-```bash
-sudo apt-get update && sudo apt-get install -y mpg123
-```
-
-**驗證安裝：**
-安裝完成後，您可以執行 `mpg123 --version` 確認是否安裝成功。
+**功能特色：**
+*   **一般設定**：修改攝影機 RTSP、切換介面主題 (Dark/Light)。
+*   **排程設定**：針對單鏡頭場景，設定多個自動切換「入口/出口」的時段。
+*   **熱更新 (Soft Reload)**：修改設定後，系統會自動重新載入而不中斷服務 (PID 不變)。
 
 ## 執行應用程式
 
@@ -201,7 +204,7 @@ python face_main.py
     # *** 關鍵改動 2: 指定環境變數 ***
     # 這讓服務知道要在哪個螢幕、哪個使用者會話中顯示 GUI
     Environment=DISPLAY=:0
-    # 新增 XDG_RUNTIME_DIR，解決部分桌面環境下的通訊問題
+    # 新增 XDG_RUNTIME_DIR，解決部分桌面環境下的通訊問題 (特別是 PulseAudio 音訊輸出)
     # 注意：'1000' 是常見的預設使用者 ID，請根據您的系統作調整 (可用 `id -u <您的使用者名稱>` 查詢)
     Environment="XDG_RUNTIME_DIR=/run/user/1000"
 

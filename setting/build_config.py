@@ -51,7 +51,8 @@ default_config = {
     "test_mod":False,
     "auto_open": False,
     "full_screen": False,
-    "excel_api_enabled": False
+    "excel_api_enabled": False,
+    "theme": "dark"
 }
 
 
