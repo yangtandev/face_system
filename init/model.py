@@ -707,6 +707,39 @@ class Comparison:
                         z_score = (raw_confidence - mean_score) / std_dev_score if std_dev_score > 0 else 0
                         part_msg = ""
                         
+                        # [2026-02-01 Feature] Gap Check for Ambiguity Rejection
+                        # 攔截高分誤判 (High Confidence False Positive)
+                        # 測試驗證：Test誤判組 Gap < 0.016，Correct組 Gap > 0.05
+                        gap = 0.0
+                        if len(distances) > 1:
+                            gap = float(distances[0]) - float(distances[1])
+                            
+                        # Dynamic Threshold Formula
+                        # 如果信心度極高 (>0.80)，容忍較小的 Gap (0.02)
+                        # 否則需要較大的 Gap (0.03) 以確保安全
+                        gap_threshold = 0.02 if confidence > 0.80 else 0.03
+                        
+                        if gap < gap_threshold:
+                             LOGGER.info(f"[{camera_name}][Gap過濾] 分數過於接近 (Gap: {gap:.4f} < {gap_threshold}) - 拒絕辨識")
+                             # 視為模糊辨識，不予放行
+                             # 為了不讓它變成 "Unknown" (低分)，我們可以直接 continue 
+                             # 這樣它就不會進入 candidates 列表，最終會因為 candidates 空而判為 None
+                             # 或者我們可以將其標記為 Ambiguous，但在這裡過濾掉最乾淨。
+                             
+                             # [2026-01-30 Feature] 潛在失敗數據收集 (Gap Fail)
+                             if face_width >= min_face_threshold and now - self.last_potential_miss_log_time > 1.0:
+                                 try:
+                                     snapshot = _frame
+                                     if snapshot is not None:
+                                         reason_str = f"Gap_Fail_{gap:.4f}"
+                                         saved_path = self._save_potential_miss_image(snapshot, face_width, min_face_threshold, camera_name, reason=reason_str)
+                                         if saved_path:
+                                             self._save_potential_miss_json(saved_path, quality_metrics, f"Gap Fail: {gap:.4f}")
+                                         self.last_potential_miss_log_time = now
+                                 except: pass
+                             
+                             continue
+
                         # [2026-01-24 Feature] 記錄 Top-5 搜尋結果供除錯重現
                         top5_results = []
                         # Log top 5 only for debugging
