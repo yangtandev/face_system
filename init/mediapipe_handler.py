@@ -187,12 +187,12 @@ class MediaPipeHandler:
         # 改為回傳 EAR 數值，由 model.py 進行「低 EAR 需高 Z-Score」的動態門檻判斷。
         
         # 2. 垂直判定 (Chin Policy) - 優先順序最高，攔截微小偏移
-        # [2026-01-15 Disabled] 暫時關閉姿態過濾
-        # if pitch > pitch_up_limit:
-        #     return False, "抬頭", pose_tuple
+        # [2026-02-01 Enable] 恢復姿態過濾以攔截仰頭誤判 (如 09:23:30 案例 Pitch=31.6)
+        if pitch > pitch_up_limit:
+            return False, f"抬頭 (Pitch:{pitch:.1f} > {pitch_up_limit})", pose_tuple, ear
             
-        # if pitch < pitch_down_limit:
-        #     return False, "低頭", pose_tuple
+        if pitch < pitch_down_limit:
+            return False, f"低頭 (Pitch:{pitch:.1f} < {pitch_down_limit})", pose_tuple, ear
 
         # 3. 側臉與歪頭判定 (Yaw/Roll)
         # [2026-01-26 Enable] 恢復側臉過濾 (Yaw > 25, Roll > 20)
