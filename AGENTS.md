@@ -23,3 +23,4 @@
 - **Slow Down & Double Check:** Prioritize correctness over speed. Before confirming a task is done, perform a line-by-line diff review of your own changes, specifically looking for "what I forgot to change" rather than just "what I changed".
 - **Code-First Verification:** Before making any hypothesis or writing any simulation code, you MUST thoroughly read the relevant source code (function bodies, variable definitions). Assume the answer is already in the code, and do not waste time on invalid assumptions.
 - **Date Verification:** Before editing `./handover_notes.md`, you MUST check the system time (`date` command) to ensure the documented date is correct.
+- **Verify via Testing:** After completing a significant code change or feature implementation, you MUST thoroughly review your changes and write a test script (or run manual verification steps) to confirm it works as expected. Do not rely on assumptions.
