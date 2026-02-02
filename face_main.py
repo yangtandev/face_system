@@ -598,7 +598,8 @@ class FaceRecognitionSystem:
         try:
             f, _, _, _, _ = self._load_features_from_disk()
             self.state.features_dict = f; self._update_profile_pictures(); self._load_or_build_index(force_rebuild=False)
-            self._load_part_features() # [2026-01-19] Load part features for verification
+            # [2026-02-01 Optimization] Disable unused Part Feature Generation to speed up startup
+            # self._load_part_features() 
         except Exception: pass
 
     def _load_part_features(self):
