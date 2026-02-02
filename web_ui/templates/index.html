@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face System Config</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background-color: #2b2b2b; color: white; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background-color: #3b3b3b; padding: 20px; border-radius: 8px; }
+        h1 { text-align: center; border-bottom: 1px solid #555; padding-bottom: 10px; }
+        
+        /* Tabs */
+        .tabs { display: flex; border-bottom: 1px solid #555; margin-bottom: 20px; }
+        .tab { padding: 10px 20px; cursor: pointer; background: #444; margin-right: 5px; border-radius: 5px 5px 0 0; }
+        .tab.active { background: #4CAF50; color: white; font-weight: bold; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Form */
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="number"] { width: 100%; padding: 8px; background: #2b2b2b; border: 1px solid #555; color: white; border-radius: 4px; box-sizing: border-box; }
+        input[type="checkbox"] { transform: scale(1.5); margin-right: 10px; }
+        
+        /* Schedule Table */
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #555; padding: 8px; text-align: center; }
+        th { background: #444; }
+        .btn-del { background: #ff5555; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 3px; }
+        
+        /* Action Buttons */
+        .actions { text-align: right; margin-top: 20px; padding-top: 20px; border-top: 1px solid #555; }
+        .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-left: 10px; }
+        .btn-save { background: #4CAF50; color: white; }
+        .btn-restart { background: #FF9800; color: white; }
+        
+        .loading { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 999; text-align: center; padding-top: 20%; font-size: 24px; }
+    </style>
+</head>
+<body>
+
+<div class="loading" id="loading">處理中...</div>
+
+<div class="container">
+    <h1>臉辨設定後台</h1>
+    
+    <div class="tabs">
+        <div class="tab active" onclick="showTab('basic')">一般設定</div>
+        <div class="tab" onclick="showTab('server')">伺服器</div>
+        <div class="tab" onclick="showTab('recog')">辨識參數</div>
+        <div class="tab" onclick="showTab('schedule')">排程</div>
+        <div class="tab" onclick="showTab('voice')">語音</div>
+        <div class="tab" onclick="showTab('logs')">日誌</div>
+    </div>
+
+    <form id="configForm">
+        <!-- Basic -->
+        <div id="basic" class="tab-content active">
+            <div class="form-group"><label>入口攝影機 (In RTSP)</label><input type="text" name="cameraIP.in_camera"></div>
+            <div class="form-group"><label>出口攝影機 (Out RTSP)</label><input type="text" name="cameraIP.out_camera"></div>
+            <div class="form-group"><label><input type="checkbox" name="Clothes_detection">啟用服裝偵測</label></div>
+            <div class="form-group"><label><input type="checkbox" name="Clothes_show">顯示服裝框</label></div>
+            <div class="form-group"><label><input type="checkbox" name="full_screen">全螢幕模式</label></div>
+        </div>
+
+        <!-- Server -->
+        <div id="server" class="tab-content">
+            <div class="form-group"><label>IP</label><input type="text" name="Server.ip"></div>
+            <div class="form-group"><label>Username</label><input type="text" name="Server.username"></div>
+            <div class="form-group"><label>API URL</label><input type="text" name="Server.API_url"></div>
+            <div class="form-group"><label>Location ID</label><input type="number" name="Server.location_ID"></div>
+            <div class="form-group"><label>Face Data Dir</label><input type="text" name="Server.face_data_dir"></div>
+        </div>
+
+        <!-- Recognition -->
+        <div id="recog" class="tab-content">
+            <div class="form-group"><label>Min Face (Global)</label><input type="number" name="min_face"></div>
+            <div class="form-group"><label>Min Face (In)</label><input type="number" name="inCamera.min_face"></div>
+            <div class="form-group"><label>Min Face (Out)</label><input type="number" name="outCamera.min_face"></div>
+            <div class="form-group"><label>Max Face</label><input type="number" name="max_face"></div>
+            <div class="form-group"><label><input type="checkbox" name="test_mod">除錯模式</label></div>
+        </div>
+
+        <!-- Schedule -->
+        <div id="schedule" class="tab-content">
+            <div class="form-group"><label><input type="checkbox" name="Schedule.enabled">啟用排程</label></div>
+            <button type="button" class="btn" style="background:#555; color:white; margin-bottom:10px;" onclick="addPeriod()">+ 新增時段</button>
+            <table id="schedTable">
+                <thead><tr><th>開始 (HH:MM)</th><th>結束 (HH:MM)</th><th>操作</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <!-- Voice -->
+        <div id="voice" class="tab-content">
+            <div class="form-group"><label>語音 (In)</label><input type="text" name="say.in"></div>
+            <div class="form-group"><label>語音 (Out)</label><input type="text" name="say.out"></div>
+            <div class="form-group"><label>語音 (Clothes)</label><input type="text" name="say.clothes"></div>
+        </div>
+
+        <!-- Logs -->
+        <div id="logs" class="tab-content">
+            <div style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
+                <select id="logType" style="padding: 8px; background: #2b2b2b; color: white; border: 1px solid #555;">
+                    <option value="app">App Log (faceLog)</option>
+                    <option value="system">System Log (journalctl)</option>
+                </select>
+                <input type="number" id="logLines" value="100" style="width: 80px;" title="行數">
+                <label style="display:inline;"><input type="checkbox" id="autoRefresh">自動更新 (3s)</label>
+                <button type="button" class="btn" style="background:#2196F3; color:white; padding: 5px 15px;" onclick="fetchLogs()">重新整理</button>
+                <span id="lastLogUpdate" style="color: #888; font-size: 12px; margin-left: 10px;"></span>
+            </div>
+            <pre id="logContent" style="background: #000; color: #0f0; padding: 10px; height: 400px; overflow: auto; border: 1px solid #555; white-space: pre-wrap; font-family: monospace;"></pre>
+        </div>
+
+        <div class="actions">
+            <button type="button" class="btn" style="background:#F44336; color:white;" onclick="hardRestart()">強制重啟</button>
+            <button type="button" class="btn btn-restart" onclick="restart()">軟重啟</button>
+            <button type="submit" class="btn btn-save">儲存設定</button>
+        </div>
+    </form>
+</div>
+
+<script>
+    let currentConfig = {};
+
+    // Helper: Access nested object by string "a.b.c"
+    const getVal = (obj, path, def) => path.split('.').reduce((o, k) => (o || {})[k], obj) || def;
+    const setVal = (obj, path, val) => {
+        const keys = path.split('.');
+        const last = keys.pop();
+        const target = keys.reduce((o, k) => o[k] = o[k] || {}, obj);
+        target[last] = val;
+    };
+
+    function showTab(id) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        event.target.classList.add('active');
+        document.getElementById(id).classList.add('active');
+    }
+
+    async function loadConfig() {
+        const res = await fetch('/api/config');
+        if (res.status === 401) { window.location.href='/'; return; }
+        currentConfig = await res.json();
+        
+        // Populate inputs
+        document.querySelectorAll('input').forEach(el => {
+            if (!el.name) return;
+            if (el.name.startsWith("Schedule.")) return; // Handle manually
+            
+            const val = getVal(currentConfig, el.name, "");
+            if (el.type === 'checkbox') el.checked = val;
+            else el.value = val;
+        });
+
+        // Populate Schedule
+        const sched = currentConfig.Schedule || {};
+        document.querySelector('[name="Schedule.enabled"]').checked = sched.enabled || false;
+        const periods = sched.in_periods || [];
+        const tbody = document.querySelector('#schedTable tbody');
+        tbody.innerHTML = '';
+        periods.forEach(p => addPeriodRow(p.start, p.end));
+    }
+
+    function addPeriod() { addPeriodRow("06:00", "12:00"); }
+
+    function addPeriodRow(start, end) {
+        const tbody = document.querySelector('#schedTable tbody');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><input type="time" class="p-start" value="${start}"></td>
+            <td><input type="time" class="p-end" value="${end}"></td>
+            <td><button type="button" class="btn-del" onclick="this.closest('tr').remove()">刪除</button></td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    document.getElementById('configForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        document.getElementById('loading').style.display = 'block';
+        
+        // Harvest Data
+        const formData = new FormData(e.target);
+        // Deep clone current config to preserve structure
+        const newConfig = JSON.parse(JSON.stringify(currentConfig));
+
+        // Update inputs
+        document.querySelectorAll('input').forEach(el => {
+            if (!el.name || el.name.startsWith("Schedule.")) return;
+            const val = el.type === 'checkbox' ? el.checked : (el.type==='number' ? parseInt(el.value) : el.value);
+            setVal(newConfig, el.name, val);
+        });
+
+        // Update Schedule
+        newConfig.Schedule = newConfig.Schedule || {};
+        newConfig.Schedule.enabled = document.querySelector('[name="Schedule.enabled"]').checked;
+        const periods = [];
+        document.querySelectorAll('#schedTable tbody tr').forEach(tr => {
+            periods.push({
+                start: tr.querySelector('.p-start').value,
+                end: tr.querySelector('.p-end').value
+            });
+        });
+        newConfig.Schedule.in_periods = periods;
+
+        // Post
+        await fetch('/api/config', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(newConfig)
+        });
+
+        document.getElementById('loading').style.display = 'none';
+        
+        // Ask for Soft Reload
+        if(confirm("設定已儲存！\n是否立即執行「軟重啟」以套用變更？\n(推薦: 不會中斷連線)")) {
+            restart(true);
+        }
+    });
+
+    async function restart(force=false) {
+        if(!force && !confirm("確定要軟重啟系統嗎？畫面將會閃爍。")) return;
+        document.getElementById('loading').style.display = 'block';
+        await fetch('/api/restart', { method: 'POST' });
+        setTimeout(() => {
+            document.getElementById('loading').style.display = 'none';
+        }, 1500);
+    }
+    
+    async function hardRestart() {
+        if(!confirm("⚠️ 警告：強制重啟\n\n這將完全重啟 Systemd 服務。網頁將會斷線。\n確定要執行嗎？")) return;
+        
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('loading').innerText = "系統重啟中，請稍候...";
+        
+        try {
+            await fetch('/api/hard_restart', { method: 'POST' });
+        } catch(e) {
+            // Ignore error as server dies
+        }
+        
+        setTimeout(() => {
+            alert("重啟指令已發送。請等待約 10-15 秒後重新整理網頁。");
+            window.location.reload();
+        }, 5000);
+    }
+
+    // Log Logic
+    async function fetchLogs() {
+        const type = document.getElementById('logType').value;
+        const lines = document.getElementById('logLines').value;
+        try {
+            // [2026-02-01 Fix] Add timestamp to prevent caching
+            const res = await fetch(`/api/log?type=${type}&lines=${lines}&t=${Date.now()}`);
+            if (res.status === 401) { window.location.href='/'; return; }
+            const data = await res.json();
+            const pre = document.getElementById('logContent');
+            pre.innerText = data.content || "No content.";
+            pre.scrollTop = pre.scrollHeight; // Auto scroll to bottom
+            
+            // Update time indicator
+            const now = new Date();
+            document.getElementById('lastLogUpdate').innerText = "更新於: " + now.toLocaleTimeString();
+        } catch(e) {
+            console.error(e);
+        }
+    }
+
+    let refreshInterval = null;
+    document.getElementById('autoRefresh').addEventListener('change', (e) => {
+        if (e.target.checked) {
+            fetchLogs();
+            refreshInterval = setInterval(fetchLogs, 3000);
+        } else {
+            if (refreshInterval) clearInterval(refreshInterval);
+        }
+    });
+
+    loadConfig();
+</script>
+
+</body>
+</html>

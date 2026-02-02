@@ -160,6 +160,31 @@ sudo apt-get update && sudo apt-get install -y mosquitto mosquitto-clients && su
 *   **排程設定**：針對單鏡頭場景，設定多個自動切換「入口/出口」的時段。
 *   **熱更新 (Soft Reload)**：修改設定後，系統會自動重新載入而不中斷服務 (PID 不變)。
 
+### 6. 網頁版設定後台 (Web Config Interface)
+
+除了本機的圖形化工具外，本系統也內建了輕量級的網頁設定介面，方便遠端管理。
+
+**使用方式：**
+1.  確保您的裝置與主機在同一區域網路 (LAN) 下。
+2.  打開瀏覽器，輸入：`http://<主機IP>:5000` (例如 `http://192.168.1.100:5000`)。
+3.  登入密碼預設為：`admin`。
+
+**功能特色：**
+*   **跨平台支援**：手機、平板、筆電皆可使用。
+*   **即時日誌檢視**：可直接查看應用程式日誌 (App Log) 與系統日誌 (System Log)。
+*   **遠端重啟**：支援軟重啟 (Soft Reload) 與強制重啟 (Hard Restart)。
+
+### 7. 設定 Web 介面強制重啟權限 (可選)
+
+Web 介面的「強制重啟 (Hard Restart)」功能需要 `sudo` 權限來重啟 systemd 服務。為了讓此功能正常運作，您需要設定免密碼 sudo。
+
+1.  執行 `sudo visudo`。
+2.  在檔案末尾加入以下內容：
+    ```bash
+    ubuntu ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart face_system.service
+    ```
+    (請將 `ubuntu` 替換為您的實際使用者名稱)
+
 ## 執行應用程式
 
 完成所有設定後，您可以使用以下命令來啟動主程式：

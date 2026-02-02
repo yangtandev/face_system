@@ -16,6 +16,7 @@ from PVMS_Library import config
 from init.log import LOGGER
 from ui.user_show import MainWindow
 from ui import styles
+from web_ui.app import run_web_server
 from py_ssh import ssh
 from init.say import Say_
 import datetime
@@ -482,6 +483,14 @@ class FaceRecognitionSystem:
         
         # [2026-01-30 Feature] Soft Reload via SIGHUP
         signal.signal(signal.SIGHUP, self._handle_sighup)
+        
+        # [2026-02-01 Feature] Start Web Config Server
+        try:
+            web_port = 5000
+            threading.Thread(target=run_web_server, args=(web_port,), daemon=True).start()
+            LOGGER.info(f"Web Config Server started on port {web_port}")
+        except Exception as e:
+            LOGGER.error(f"Failed to start Web Server: {e}")
         
         self._load_features_and_profiles(); self.setup_mqtt_client(); self.update_inout_log(); self.setup_cameras()
         try: ret = app.exec_()
