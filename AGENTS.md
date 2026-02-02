@@ -24,3 +24,4 @@
 - **Code-First Verification:** Before making any hypothesis or writing any simulation code, you MUST thoroughly read the relevant source code (function bodies, variable definitions). Assume the answer is already in the code, and do not waste time on invalid assumptions.
 - **Date Verification:** Before editing `./handover_notes.md`, you MUST check the system time (`date` command) to ensure the documented date is correct.
 - **Verify via Testing:** After completing a significant code change or feature implementation, you MUST thoroughly review your changes and write a test script (or run manual verification steps) to confirm it works as expected. Do not rely on assumptions.
+- **Mandatory Syntax Check:** Before creating or editing any code file (`.py`, `.js`, etc.), you MUST run a syntax checker (e.g., `python -m py_compile filename`) to verify its correctness. **Do not assume your generated code is error-free.**
