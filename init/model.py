@@ -67,6 +67,11 @@ class Detector:
         self.clothe_time = [0, 0, 0]
         # 初始化 MediaPipe 處理器
         self.mp_handler = MediaPipeHandler()
+        
+        # [2026-02-03 Fix] 初始化衣著偵測旗標
+        # 僅在入口攝影機 (frame_num == 0) 且設定開啟時執行
+        self.do_clothes = (self.frame_num == 0 and CONFIG.get("Clothes_show", False))
+        
         threading.Thread(target=self.face_detector, daemon=True).start()
 
     def face_detector(self):
@@ -86,6 +91,16 @@ class Detector:
                     self.system.state.max_box[self.frame_num] = last_box
                     self.system.state.max_points[self.frame_num] = last_points
                     new_frame = self.system.state.frame[self.frame_num].copy()
+                    
+                    # [2026-02-03 Fix] 執行衣著偵測
+                    # 必須在每一幀重置狀態，否則會殘留上一幀的結果
+                    if self.do_clothes:
+                        self.system.state.clothes = [False, False, False] # Reset
+                        self.mask_frame, x_offset = self.apply_mask(new_frame)
+                        try:
+                            self.clothes_detector(x_offset)
+                        except Exception as e:
+                            LOGGER.error(f"衣著偵測失敗: {e}")
                     
                     new_high_res = None
                     if self.system.state.frame_high_res is not None and self.system.state.frame_high_res[self.frame_num] is not None:
