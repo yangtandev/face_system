@@ -87,6 +87,48 @@ class CameraSystem:
             self.win.img3.setScaledContents(True)
             self.win.img4.setScaledContents(True)
 
+    def _is_entry_active(self):
+        """
+        判斷當前鏡頭是否處於「入口」模式。
+        - 雙鏡頭模式：frame_num == 0 為入口。
+        - 單鏡頭模式：需檢查排程。若排程啟用且在入口時段，則為入口；否則為出口。
+        """
+        # 1. 雙鏡頭模式 (n_camera 為 False，代表有兩個鏡頭實例)
+        # 注意: self.n_camera 在 __init__ 中定義為 n < 2，這變數命名有點反直覺
+        # n < 2 (True) -> 單鏡頭
+        # n >= 2 (False) -> 雙鏡頭
+        if not self.n_camera: 
+            return self.frame_num == 0
+
+        # 2. 單鏡頭模式 (self.n_camera == True)
+        schedule_conf = CONFIG.get("Schedule", {})
+        if not schedule_conf.get("enabled", False):
+            # 若無排程，單鏡頭預設為入口 (或者根據 check_time 狀態自動切換，但衣著檢查通常只在入口)
+            # 根據 function.py 的邏輯，如果沒排程，單鏡頭是自動切換。
+            # 但為了安全起見，衣著檢查應從嚴：預設檢查 (視為入口)，除非明確知道是出口。
+            return True 
+
+        # 3. 檢查排程
+        try:
+            now_time = datetime.datetime.now().time()
+            periods = schedule_conf.get("in_periods", [])
+            if not periods:
+                start_str = schedule_conf.get("in_start", "06:00")
+                end_str = schedule_conf.get("in_end", "17:00")
+                periods = [{"start": start_str, "end": end_str}]
+            
+            for period in periods:
+                start_time = datetime.datetime.strptime(period.get("start", "00:00"), "%H:%M").time()
+                end_time = datetime.datetime.strptime(period.get("end", "00:00"), "%H:%M").time()
+                if start_time <= end_time:
+                    if start_time <= now_time <= end_time: return True
+                else:
+                    if start_time <= now_time or now_time <= end_time: return True
+            
+            return False # 不在入口時段 -> 出口
+        except:
+            return True # 發生錯誤，從嚴認定
+
     def main_camera(self):
         frame_count = 0
         while not self.stop_threads:
@@ -124,44 +166,97 @@ class CameraSystem:
                 hint_msg = self.system.state.hint_text[self.frame_num]
                 text_y = y1 - int(55*scale) if y1 - int(55*scale) > 10 else y2 + 10
                 
-                if hint_msg:
-                    now_frame = put_chinese_text(now_frame, hint_msg, (x1, text_y), font_path, font_size, (255, 85, 0))
-                elif current_class == "__VISITOR__":
-                    now_frame = put_chinese_text(now_frame, "訪客", (x1, text_y), font_path, font_size, (0, 0, 255))
-                    try:
-                        # 訪客頭像截取仍需使用原圖 (保持解析度)
-                        if oy2 > oy1 and ox2 > ox1: 
-                             self.last_visitor_face_img = original_frame[max(0,oy1):min(h,oy2), max(0,ox1):min(w,ox2)].copy()
-                    except Exception: pass
-                elif current_class != "None":
-                    self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img to avoid showing previous person
-                    staff_name = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
-                    now_frame = put_chinese_text(now_frame, staff_name, (x1, text_y), font_path, font_size, (205, 0, 0))
+                # [2026-02-03 Fix] 衣著檢查邏輯：需考慮單鏡頭排程切換
+                is_entry = self._is_entry_active()
+                need_check_clothes = (is_entry and CONFIG["Clothes_detection"])
+                
+                # 若不在檢查時段(出口模式)，也應關閉 Detector 的偵測以節省資源 (這裡只能做顯示層的忽略)
+                # 理想上應該去控制 init/model.py 的 self.do_clothes，但那是 Thread，很難動態改。
+                # 所以我們在這裡忽略結果即可。
+                
+                is_clothes_pass = (self.system.state.clothes[0] and self.system.state.clothes[2])
+                passed_gate = (not need_check_clothes) or is_clothes_pass
+                
+                staff_name_display = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
+
+                # [2026-02-03 Fix] 顯示邏輯重構：採用巢狀結構確保互斥
+                # 若被衣著檢查攔截，絕對優先顯示提示，並跳過後續所有名字/訪客顯示邏輯
+                # 修正：只有在有人臉 (current_class != "None") 時才顯示 "請正確著裝"
+                # 若無人臉，應繼續執行下方的 else 顯示 "辨識中"
+                blocked_by_clothes = (not passed_gate) and (current_class != "None" and current_class != "__VISITOR__")
+                
+                if blocked_by_clothes:
+                    now_frame = put_chinese_text(now_frame, "請正確著裝", (x1, text_y), font_path, font_size, (255, 85, 0))
                 else:
-                    self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img
-                    now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0))
+                    # 通過檢查 (或無需檢查) 後，才執行原本的顯示邏輯
+                    if hint_msg:
+                        now_frame = put_chinese_text(now_frame, hint_msg, (x1, text_y), font_path, font_size, (255, 85, 0))
+                    elif current_class == "__VISITOR__":
+                        now_frame = put_chinese_text(now_frame, "訪客", (x1, text_y), font_path, font_size, (0, 0, 255))
+                        try:
+                            # 訪客頭像截取仍需使用原圖 (保持解析度)
+                            if oy2 > oy1 and ox2 > ox1: 
+                                 self.last_visitor_face_img = original_frame[max(0,oy1):min(h,oy2), max(0,ox1):min(w,ox2)].copy()
+                        except Exception: pass
+                    elif current_class != "None" and staff_name_display:
+                        self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img to avoid showing previous person
+                        now_frame = put_chinese_text(now_frame, staff_name_display, (x1, text_y), font_path, font_size, (205, 0, 0))
+                    else:
+                        self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img
+                        now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0))
                 
                 # 辨識後處理邏輯 (保持不變)
                 if self.system.state.same_people[self.frame_num] > 0:
                     confidence = self.system.state.same_people[self.frame_num]
                     if current_class not in ["None", "__VISITOR__"]:
                         success_staff_name = self.system.state.features_dict.get("id_name", {}).get(current_class, "未知員工")
-                        if (not CONFIG["Clothes_detection"] or (self.system.state.clothes[0] and self.system.state.clothes[2])):
+                        
+                        # [2026-02-03 Fix] 修正存檔與放行邏輯
+                        # 1. 只有通過衣著檢查才放行 + 存檔
+                        # 2. 未通過則提示請著裝，且不存入成功日誌
+                        # 3. 出口永遠放行 (need_check_clothes 為 False)
+                        if passed_gate:
                             check_in_out(self.system, success_staff_name, current_class, self.frame_num, self.n_camera, confidence)
-                        z_score = self.system.state.same_zscore[self.frame_num]
-                        width_val = self.system.state.same_width[self.frame_num]
-                        
-                        # [2026-01-24 Fix] 使用原子打包的 success_snapshot，避免 Race Condition
-                        snapshot = self.system.state.success_snapshot[self.frame_num]
-                        if snapshot is not None:
-                            saved_img, meta = snapshot
+                            
+                            z_score = self.system.state.same_zscore[self.frame_num]
+                            width_val = self.system.state.same_width[self.frame_num]
+                            
+                            # [2026-01-24 Fix] 使用原子打包的 success_snapshot，避免 Race Condition
+                            snapshot = self.system.state.success_snapshot[self.frame_num]
+                            if snapshot is not None:
+                                saved_img, meta = snapshot
+                            else:
+                                # Fallback to old method (for backwards compatibility)
+                                saved_img = self.system.state.success_frame[self.frame_num]
+                                meta = self.system.state.success_metadata[self.frame_num]
+                            
+                            if saved_img is not None: self.save_img(saved_img, "face", success_staff_name, confidence, z_score, width_val, metadata=meta)
+                            else: self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score, width_val, metadata=meta)
                         else:
-                            # Fallback to old method (for backwards compatibility)
-                            saved_img = self.system.state.success_frame[self.frame_num]
-                            meta = self.system.state.success_metadata[self.frame_num]
-                        
-                        if saved_img is not None: self.save_img(saved_img, "face", success_staff_name, confidence, z_score, width_val, metadata=meta)
-                        else: self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score, width_val, metadata=meta)
+                            # [2026-02-03 Fix] 衣著檢查未通過的回饋
+                            # 1. 語音提示
+                            self.system.speaker.say(CONFIG["say"]["clothes"], "hint_clothes", priority=2)
+                            # 2. 畫面提示 (這裡設定僅供下次循環參考，即時繪圖已在上方處理)
+                            self.system.state.hint_text[self.frame_num] = "請正確著裝"
+                            
+                            # 3. [2026-02-03 Fix] 存入 potential_miss 供稽核
+                            # 即使未放行，也要記錄是「誰」因為「什麼原因」被擋下
+                            snapshot = self.system.state.success_snapshot[self.frame_num]
+                            if snapshot is not None:
+                                saved_img, meta = snapshot
+                            else:
+                                saved_img = self.system.state.frame_high_res[self.frame_num]
+                                meta = self.system.state.success_metadata[self.frame_num]
+                            
+                            z_score = self.system.state.same_zscore[self.frame_num]
+                            width_val = self.system.state.same_width[self.frame_num]
+                            
+                            # 在檔名中標註失敗原因
+                            log_name = f"{success_staff_name}_ClothesFail"
+                            
+                            if saved_img is not None: 
+                                self.save_img(saved_img, "potential_miss", log_name, confidence, z_score, width_val, metadata=meta)
+                            
                     self.system.state.same_people[self.frame_num] = 0.0
             
             self.show_frame = now_frame
@@ -170,15 +265,33 @@ class CameraSystem:
         time.sleep(0.5)
         self.win.my_thread.signal_update_img.connect(self.win.update_img)
         self.win.my_thread.signal_update_hint.connect(self.win.update_hint)
-        if self.clothes_de: self.win.my_thread.signal_update_bgcolor.connect(self.win.update_bgcolor)
+        if self.clothes_de: 
+            self.win.my_thread.signal_update_bgcolor.connect(self.win.update_bgcolor)
+            self.win.my_thread.signal_update_visibility.connect(self.win.update_visibility)
+            
         while not self.stop_threads:
             if self.show_frame.shape[0] == 0: continue
             try:
                 self.win.my_thread.signal_update_img.emit(self.win.img1, self.show_main())
                 self.win.my_thread.signal_update_img.emit(self.win.img2, self.shwo_head())
+                
+                # [2026-02-03 Fix] 僅在入口模式且開啟顯示時，才更新服裝圖示
                 if self.clothes_de:
-                    img3, img4 = self.show_save()
-                    self.win.my_thread.signal_update_img.emit(self.win.img3, img3); self.win.my_thread.signal_update_img.emit(self.win.img4, img4)
+                    bg_objs = [self.win.img3, self.win.img4]
+                    if self._is_entry_active():
+                        # 入口模式：顯示 + 更新圖片 + 恢復背景
+                        img3, img4 = self.show_save()
+                        # 注意：如果原本邏輯就是紅色底，這裡只是確保切回來時恢復
+                        bg_colors = ["background-color: rgba(255,0,0,255);", "background-color: rgba(255,0,0,255);"]
+                        
+                        self.win.my_thread.signal_update_visibility.emit(bg_objs, True) # Show
+                        self.win.my_thread.signal_update_img.emit(self.win.img3, img3)
+                        self.win.my_thread.signal_update_img.emit(self.win.img4, img4)
+                        self.win.my_thread.signal_update_bgcolor.emit(bg_objs, bg_colors)
+                    else:
+                        # 出口模式：直接隱藏元件 (解決白框殘留問題)
+                        self.win.my_thread.signal_update_visibility.emit(bg_objs, False) # Hide
+                
                 color, txt = self.show_hint()
                 self.win.my_thread.signal_update_hint.emit(self.win.hint, color, txt)
             except Exception: pass
@@ -195,6 +308,17 @@ class CameraSystem:
     def shwo_head(self):
         path = f'{main_path}/other/clear_img.png'
         current_class = self.system.state.same_class[self.frame_num]
+        
+        # [2026-02-03 Fix] 入口衣著不合格時，強制隱藏大頭貼
+        # 修正：改用 _is_entry_active() 以支援單鏡頭排程切換
+        need_check_clothes = (self._is_entry_active() and CONFIG["Clothes_detection"])
+        is_clothes_pass = (self.system.state.clothes[0] and self.system.state.clothes[2])
+        if need_check_clothes and not is_clothes_pass:
+            # 若為辨識成功狀態但沒穿衣服，暫時視為 None 以隱藏照片
+            # 但若原本就是 VISITOR 或 None，則保持原樣 (交給下方邏輯處理)
+            if current_class not in ["__VISITOR__", "None"]:
+                current_class = "None"
+
         if current_class == "__VISITOR__":
             if self.last_visitor_face_img is not None and self.last_visitor_face_img.size > 0:
                 try:
@@ -215,11 +339,25 @@ class CameraSystem:
 
     def show_hint(self):
         current_class = self.system.state.same_class[self.frame_num]
+        
+        # [2026-02-03 Fix] 顯示邏輯：若被衣著檢查攔截，UI 提示也應改為 "請正確著裝"
+        # 修正：只有在 "偵測到人" (current_class != None) 時才檢查衣著並攔截
+        # 修正 (User Feedback): 左側欄位空間不足，"請正確著裝" 會被切掉。改回顯示 "辨識中" 即可 (主畫面已有提示)。
+        need_check_clothes = (self._is_entry_active() and CONFIG["Clothes_detection"])
+        is_clothes_pass = (self.system.state.clothes[0] and self.system.state.clothes[2])
+        
         if current_class == "__VISITOR__":
             return 'color: rgb(0, 0, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "訪客"
         elif current_class != "None":
+            # 檢查是否被攔截
+            if need_check_clothes and not is_clothes_pass:
+                # 攔截時，隱藏名字，顯示 "辨識中" (避免字數過長被切掉)
+                # 主畫面已有 "請正確著裝" 的大字提示，這裡只需不顯示名字即可。
+                return 'color: rgb(255, 85, 0); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "辨識中"
+                
             name = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
             return 'color: rgb(0, 170, 0); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', name
+            
         return 'color: rgb(0, 85, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "辨識中"
 
     def save_img(self, img, path, staffname="", conf=0.0, z_score=0.0, width=0, metadata=None):

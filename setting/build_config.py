@@ -52,6 +52,7 @@ default_config = {
     "auto_open": False,
     "full_screen": False,
     "excel_api_enabled": False,
+    "qrcode_mode": False,
     "theme": "dark"
 }
 

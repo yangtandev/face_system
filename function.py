@@ -177,6 +177,131 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
 
     return leave
 
+def check_in_out_qrcode(system, verification, staff_id, camera_num):
+    """
+    處理 QR Code 刷入刷出邏輯。
+    
+    :param system: 系統物件
+    :param verification: 6碼驗證碼
+    :param staff_id: 人員 ID
+    :param camera_num: 攝影機編號 (0=In, 1=Out)
+    """
+    # [2026-02-05 Fix] 確保人員狀態已初始化 (用於單鏡頭自動切換)
+    if not staff_id in system.state.check_time.keys():
+        system.state.check_time[staff_id] = [True, 0] # [True=可進, LastTime]
+
+    # 判斷是否為單鏡頭模式
+    ips = [CONFIG["cameraIP"]["in_camera"], CONFIG["cameraIP"]["out_camera"]]
+    is_single_cam = (ips[0] == ips[1])
+
+    # 判斷進出方向
+    direction = "exit"
+    
+    # 1. 排程優先 (Schedule)
+    schedule_conf = CONFIG.get("Schedule", {})
+    is_scheduled_mode = False
+    
+    if schedule_conf.get("enabled", False):
+        try:
+            now_time = datetime.datetime.now().time()
+            periods = schedule_conf.get("in_periods", [])
+            if not periods:
+                start_str = schedule_conf.get("in_start", "06:00")
+                end_str = schedule_conf.get("in_end", "17:00")
+                periods = [{"start": start_str, "end": end_str}]
+            
+            is_in_period = False
+            for period in periods:
+                start_time = datetime.datetime.strptime(period.get("start", "00:00"), "%H:%M").time()
+                end_time = datetime.datetime.strptime(period.get("end", "00:00"), "%H:%M").time()
+                if start_time <= end_time:
+                    if start_time <= now_time <= end_time: is_in_period = True; break
+                else:
+                    if start_time <= now_time or now_time <= end_time: is_in_period = True; break
+            
+            if is_in_period: direction = "enter"
+            else: direction = "exit"
+            is_scheduled_mode = True
+        except: pass
+    
+    # 2. 自動切換 / 鏡頭判斷
+    if not is_scheduled_mode:
+        if is_single_cam:
+            # 單鏡頭自動切換 (Auto Toggle)
+            # check_time[0] == True 表示 "在外面/可進" -> Enter
+            # check_time[0] == False 表示 "在裡面/可出" -> Exit
+            if system.state.check_time[staff_id][0]:
+                direction = "enter"
+            else:
+                direction = "exit"
+        else:
+            # 雙鏡頭固定位
+            if camera_num == 0: direction = "enter"
+            elif camera_num == 1: direction = "exit"
+
+    # 準備 API 資料
+    data = {
+        "verification": verification,
+        "staff_id": staff_id,
+        "location": int(CONFIG["Server"]["location_ID"]),
+        "direction": direction
+    }
+    
+    LOGGER.info(f"[QRCode] 掃描到 {staff_id} ({verification}), 方向: {direction} (SingleCam:{is_single_cam})")
+    
+    # 非同步呼叫 API
+    def api_task():
+        url = f"{CONFIG['Server']['API_url']}/accesses/qrcode_logs/"
+        try:
+            # 這裡不使用 async_api_call 因為它綁定了很多臉辨的 callback
+            # 我們直接用 requests
+            res = requests.post(url, json=data, timeout=5)
+            if res.status_code in [200, 201, 202]:
+                LOGGER.info(f"[QRCode] 上傳成功: {res.status_code}")
+                
+                # [2026-02-05 Fix] 成功後更新人員狀態 (Check Time)
+                # 這對於單鏡頭自動切換至關重要
+                now = time.time()
+                try:
+                    if direction == 'enter':
+                        system.state.check_time[staff_id] = [False, now] # 設為 "已在內"
+                    elif direction == 'exit':
+                        system.state.check_time[staff_id][1] = now
+                        # 延遲重置 (模擬離開)
+                        threading.Timer(5, clear_leave_employee, (system, staff_id)).start()
+                    LOGGER.info(f"[QRCode] 更新人員 {staff_id} 狀態為 {direction}")
+                    
+                    # [2026-02-05 Feature] 觸發 UI 顯示 (顯示大頭貼與姓名)
+                    # 需找到對應的 CameraSystem 並更新其 Comparison 狀態
+                    if hasattr(system, 'cameras'):
+                        for cam in system.cameras:
+                            if cam.frame_num == camera_num:
+                                # 呼叫 _update_display_state 以顯示人員資訊並設定 2秒自動清除
+                                if hasattr(cam, 'compar'):
+                                    cam.compar._update_display_state(staff_id)
+                                break
+                                
+                except Exception as e:
+                    LOGGER.error(f"[QRCode] 更新狀態失敗: {e}")
+
+                # 取得人員姓名 (從 features_dict)
+                staff_name = system.state.features_dict.get("id_name", {}).get(staff_id, staff_id)
+                
+                # 語音播報
+                if direction == "enter":
+                    system.speaker.say(f"{staff_name}{CONFIG['say']['in']}", f"qr_{staff_id}_in", priority=1)
+                else:
+                    system.speaker.say(f"{staff_name}{CONFIG['say']['out']}", f"qr_{staff_id}_out", priority=1)
+            else:
+                LOGGER.error(f"[QRCode] 上傳失敗: {res.status_code} - {res.text}")
+                system.speaker.say("驗證失敗", "qr_fail", priority=1)
+                
+        except Exception as e:
+            LOGGER.error(f"[QRCode] API 錯誤: {e}")
+            system.speaker.say("連線失敗", "qr_error", priority=1)
+
+    threading.Thread(target=api_task).start()
+
 def check_in_out_excel(staff_name):
     """
     發送 HTTP POST 請求至 Excel attendance API 用於 demo 匯入。

@@ -132,6 +132,10 @@ class MainWindow(QWidget, Ui_Form):
         for i in range(len(obj)):
             obj[i].setStyleSheet(color[i])
 
+    def update_visibility(self, obj, visible):
+        for i in range(len(obj)):
+            obj[i].setVisible(visible)
+
     def update_hint(self, obj, color, txt):
         obj.setStyleSheet(color)
         obj.setText(txt)
@@ -213,6 +217,7 @@ class MainWindow(QWidget, Ui_Form):
 class MyThread(QThread):
     signal_update_img = pyqtSignal(QLabel, QPixmap)
     signal_update_bgcolor = pyqtSignal(list, list)
+    signal_update_visibility = pyqtSignal(list, bool)
     signal_update_hint = pyqtSignal(QLabel, str, str)
 
     def __init__(self):

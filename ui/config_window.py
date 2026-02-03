@@ -121,11 +121,13 @@ class ConfigWindow(QWidget):
         group_feat, form_feat = self.create_form_group("功能開關")
         self.chk_clothes = QCheckBox("啟用服裝/安全帽偵測 (Clothes Detection)")
         self.chk_clothes_show = QCheckBox("顯示服裝偵測框 (Show Clothes Box)")
+        self.chk_qrcode = QCheckBox("啟用 QR Code 掃描 (QR Code Mode)") # [2026-02-04 Feature]
         self.chk_full_screen = QCheckBox("全螢幕模式 (Full Screen)")
         self.chk_auto_open = QCheckBox("開機自動啟動 (Auto Open)")
         
         form_feat.addRow(self.chk_clothes)
         form_feat.addRow(self.chk_clothes_show)
+        form_feat.addRow(self.chk_qrcode)
         form_feat.addRow(self.chk_full_screen)
         form_feat.addRow(self.chk_auto_open)
         layout.addWidget(group_feat)
@@ -300,6 +302,7 @@ class ConfigWindow(QWidget):
             
             self.chk_clothes.setChecked(cfg.get("Clothes_detection", False))
             self.chk_clothes_show.setChecked(cfg.get("Clothes_show", False))
+            self.chk_qrcode.setChecked(cfg.get("qrcode_mode", False)) # [2026-02-04 Feature]
             self.chk_full_screen.setChecked(cfg.get("full_screen", False))
             self.chk_auto_open.setChecked(cfg.get("auto_open", False))
             
@@ -367,6 +370,7 @@ class ConfigWindow(QWidget):
             
             cfg["Clothes_detection"] = self.chk_clothes.isChecked()
             cfg["Clothes_show"] = self.chk_clothes_show.isChecked()
+            cfg["qrcode_mode"] = self.chk_qrcode.isChecked() # [2026-02-04 Feature]
             cfg["full_screen"] = self.chk_full_screen.isChecked()
             cfg["auto_open"] = self.chk_auto_open.isChecked()
             

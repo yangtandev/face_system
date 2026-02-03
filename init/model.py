@@ -68,6 +68,13 @@ class Detector:
         # 初始化 MediaPipe 處理器
         self.mp_handler = MediaPipeHandler()
         
+        # [2026-02-04 Feature] QR Code Detector
+        self.qr_detector = cv2.QRCodeDetector()
+        self.last_qr_time = 0
+        self.last_qr_data = ""
+        self.qr_scan_interval = 1.0 # 1 FPS limit
+        self.last_qr_scan_time = 0
+        
         # [2026-02-03 Fix] 初始化衣著偵測旗標
         # 僅在入口攝影機 (frame_num == 0) 且設定開啟時執行
         self.do_clothes = (self.frame_num == 0 and CONFIG.get("Clothes_show", False))
@@ -93,15 +100,60 @@ class Detector:
                     new_frame = self.system.state.frame[self.frame_num].copy()
                     
                     # [2026-02-03 Fix] 執行衣著偵測
-                    # 必須在每一幀重置狀態，否則會殘留上一幀的結果
+                    # 使用局部變數暫存結果，偵測完成後再一次性更新全域狀態，避免 Race Condition
                     if self.do_clothes:
-                        self.system.state.clothes = [False, False, False] # Reset
+                        local_clothes_state = [False, False, False]
                         self.mask_frame, x_offset = self.apply_mask(new_frame)
                         try:
-                            self.clothes_detector(x_offset)
+                            self.clothes_detector(x_offset, local_clothes_state)
                         except Exception as e:
                             LOGGER.error(f"衣著偵測失敗: {e}")
+                        
+                        # [2026-02-03 Fix] 引入 Debounce 機制 (1.0秒)
+                        # 若當前幀未偵測到，但 1 秒內曾偵測到，則保持 True，防止 UI 閃爍
+                        now = time.time()
+                        for i in range(3):
+                            if not local_clothes_state[i]:
+                                if (now - self.clothe_time[i]) < 1.0:
+                                    local_clothes_state[i] = True
+                        
+                        # 原子性更新全域狀態
+                        self.system.state.clothes = local_clothes_state
                     
+                    # [2026-02-04 Feature] QR Code Detection
+                    # 與臉辨同時進行，但限制頻率 (1 FPS)
+                    if CONFIG.get("qrcode_mode", False) and (now - self.last_qr_scan_time > self.qr_scan_interval):
+                        self.last_qr_scan_time = now
+                        # LOGGER.info("[DEBUG] Scanning for QR Code...") # Uncomment for debugging
+                        try:
+                            # 使用原始影像偵測，避免縮放導致無法讀取
+                            # 嘗試轉灰階以提升偵測率
+                            gray_frame = cv2.cvtColor(new_frame, cv2.COLOR_BGR2GRAY)
+                            
+                            qr_data, points, _ = self.qr_detector.detectAndDecode(gray_frame)
+                            
+                            if qr_data:
+                                LOGGER.info(f"[QR Debug] Raw Data: {qr_data}") # Log raw data
+                                
+                                if qr_data != self.last_qr_data or (now - self.last_qr_time > 3.0):
+                                    # Format: 111111G06 (Verification 6 digits + Staff ID)
+                                    if len(qr_data) > 6 and qr_data[:6].isdigit():
+                                        verification = qr_data[:6]
+                                        staff_id = qr_data[6:]
+                                        
+                                        LOGGER.info(f"QR Code Detected: {qr_data} -> V:{verification}, ID:{staff_id}")
+                                        self.last_qr_time = now
+                                        self.last_qr_data = qr_data
+                                        
+                                        # Trigger Check-in/out
+                                        from function import check_in_out_qrcode
+                                        check_in_out_qrcode(self.system, verification, staff_id, self.frame_num)
+                                    else:
+                                        LOGGER.warning(f"[QR Debug] Invalid Format: {qr_data}")
+                        except Exception as e:
+                            LOGGER.error(f"QR Scan Error: {e}") 
+                            pass
+
                     new_high_res = None
                     if self.system.state.frame_high_res is not None and self.system.state.frame_high_res[self.frame_num] is not None:
                          new_high_res = self.system.state.frame_high_res[self.frame_num].copy()
@@ -167,12 +219,13 @@ class Detector:
 
             time.sleep(0.01)
 
-    def clothes_detector(self, X_offset):
+    def clothes_detector(self, X_offset, state_buffer=None):
         """
         使用 YOLO 模型進行衣著偵測，標記安全帽與反光衣是否存在。
 
         Parameters:
         X_offset (int): 圖像遮罩偏移量，用來還原原始座標。
+        state_buffer (list): 用於寫入結果的暫存列表，若為 None 則寫入全域狀態 (不建議)。
         """
         # 偵測衣著（反光衣、安全帽）
         results = self.system.model_clothes(
@@ -192,7 +245,13 @@ class Detector:
                 box_xy[0] + X_offset + box_xy[2],
                 box_xy[0] + box_xy[3]
             ]
-            self.system.state.clothes[class_id] = True
+            
+            # [2026-02-03 Fix] 優先寫入 buffer，避免直接操作全域狀態造成閃爍
+            if state_buffer is not None:
+                state_buffer[class_id] = True
+            else:
+                self.system.state.clothes[class_id] = True
+            
             self.clothe_time[class_id] = time.time()
 
     def apply_mask(self, frame):
