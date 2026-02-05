@@ -77,9 +77,47 @@ class Detector:
         
         # [2026-02-03 Fix] 初始化衣著偵測旗標
         # 僅在入口攝影機 (frame_num == 0) 且設定開啟時執行
-        self.do_clothes = (self.frame_num == 0 and CONFIG.get("Clothes_show", False))
+        # [2026-02-06 Fix] 若開啟 "Detection" (攔截)，即使 "Show" (顯示框) 關閉，也必須執行偵測，否則會因狀態全 False 而永久攔截
+        self.do_clothes = (self.frame_num == 0 and (CONFIG.get("Clothes_show", False) or CONFIG.get("Clothes_detection", False)))
         
         threading.Thread(target=self.face_detector, daemon=True).start()
+
+    def _is_entry_active(self):
+        """
+        [2026-02-06 Fix] 判斷當前是否為入口模式 (複製自 face_main.py 邏輯，供 Detector 使用)
+        解決單鏡頭模式下，出口時段誤執行衣著偵測與阻斷的問題。
+        """
+        # 1. 判斷是否為單鏡頭
+        ips = [CONFIG["cameraIP"]["in_camera"], CONFIG["cameraIP"]["out_camera"]]
+        is_single_cam = (ips[0] == ips[1])
+        
+        # 雙鏡頭模式：看 frame_num
+        if not is_single_cam:
+            return self.frame_num == 0
+            
+        # 單鏡頭模式：看排程
+        schedule_conf = CONFIG.get("Schedule", {})
+        if not schedule_conf.get("enabled", False):
+            return True # 無排程預設為入口 (從嚴)
+            
+        try:
+            now_time = datetime.now().time()
+            periods = schedule_conf.get("in_periods", [])
+            if not periods:
+                start_str = schedule_conf.get("in_start", "06:00")
+                end_str = schedule_conf.get("in_end", "17:00")
+                periods = [{"start": start_str, "end": end_str}]
+            
+            for period in periods:
+                start_time = datetime.strptime(period.get("start", "00:00"), "%H:%M").time()
+                end_time = datetime.strptime(period.get("end", "00:00"), "%H:%M").time()
+                if start_time <= end_time:
+                    if start_time <= now_time <= end_time: return True
+                else:
+                    if start_time <= now_time or now_time <= end_time: return True
+            return False
+        except:
+            return True
 
     def face_detector(self):
         last_box = None
@@ -101,11 +139,20 @@ class Detector:
                     
                     # [2026-02-03 Fix] 執行衣著偵測
                     # 使用局部變數暫存結果，偵測完成後再一次性更新全域狀態，避免 Race Condition
-                    if self.do_clothes:
+                    
+                    # [2026-02-06 Fix] 動態判斷是否需要跑衣著偵測 (考慮單鏡頭排程)
+                    # 必須同時滿足: 1. 初始化允許(do_clothes) 2. 當前是入口時段(_is_entry_active)
+                    is_entry_now = self._is_entry_active()
+                    should_detect_clothes = self.do_clothes and is_entry_now
+                    
+                    # [Fix] 確保變數始終初始化，避免 UnboundLocalError
+                    current_clothes_detections = []
+                    
+                    if should_detect_clothes:
                         local_clothes_state = [False, False, False]
                         self.mask_frame, x_offset = self.apply_mask(new_frame)
                         try:
-                            self.clothes_detector(x_offset, local_clothes_state)
+                            current_clothes_detections = self.clothes_detector(x_offset, local_clothes_state)
                         except Exception as e:
                             LOGGER.error(f"衣著偵測失敗: {e}")
                         
@@ -119,6 +166,14 @@ class Detector:
                         
                         # 原子性更新全域狀態
                         self.system.state.clothes = local_clothes_state
+                    else:
+                        # 若不偵測，是否該重置狀態？
+                        # 為了避免殘留，如果不偵測，應該視為 [False, False, False] (或者保持不變?)
+                        # 建議重置，以免 UI 殘留綠框
+                        # 但 Detector 是獨立的，如果切換瞬間重置，可能會閃一下。
+                        # 考慮到 UI 已經有 _is_entry_active 保護 (隱藏圖示)，這裡重置是安全的。
+                        if self.do_clothes: # 只有原本有開的才需要重置
+                             self.system.state.clothes = [False, False, False]
                     
                     # [2026-02-04 Feature] QR Code Detection
                     # 與臉辨同時進行，但限制頻率 (1 FPS)
@@ -186,6 +241,43 @@ class Detector:
                                 box = None
                             else:
                                 box = [x1, y1, x2, y2]
+                                
+                                # [2026-02-06 Fix] 語音優先級控制 (阻斷邏輯) + 水平匹配驗證
+                                # 若衣著不合格 (基於人臉位置的匹配)，阻斷後續品質檢查與辨識
+                                # 防止 "請抬頭" (Comparison) 蓋過 "請著裝"
+                                # [Fix] 只有在 "Clothes_detection" (攔截功能) 開啟時才執行阻斷
+                                # [Fix] 且必須在入口時段 (is_entry_now)，避免出口被阻斷 (因為出口沒跑偵測，list為空)
+                                if self.do_clothes and CONFIG.get("Clothes_detection", False) and is_entry_now:
+                                    # 使用水平匹配檢查 (比全域檢查更準，比垂直檢查更穩)
+                                    has_vest, has_helmet = self._match_clothes_to_face_horizontal(box, current_clothes_detections)
+                                    
+                                    if not (has_vest and has_helmet):
+                                        # 1. 播放語音 (Priority 1)
+                                        # 限流 2.0 秒，避免洗版
+                                        if time.time() - self.last_no_face_log_time > 2.0:
+                                            self.system.speaker.say("請正確著裝", "hint_clothes_block", priority=1)
+                                            self.last_no_face_log_time = time.time()
+                                        
+                                        # 2. UI 提示
+                                        self.system.state.hint_text[self.frame_num] = "請正確著裝"
+                                        
+                                        # 3. 關鍵阻斷：清除 frame_data，讓 Comparison 執行緒因無資料而閒置
+                                        # 這樣它就不會執行 check_face_quality，自然不會發出 "請抬頭"
+                                        self.system.state.frame_data[self.frame_num] = None
+                                        
+                                        # 4. 更新 UI 框 (顯示紅框/提示)
+                                        self.system.state.max_box[self.frame_num] = box
+                                        self.system.state.max_points[self.frame_num] = points
+                                        self.system.state.gaze_status[self.frame_num] = None
+                                        
+                                        # 更新時間以免被視為 idle
+                                        last_box = box
+                                        last_points = points
+                                        last_time = time.time()
+                                        
+                                        # 5. 跳過本幀後續處理
+                                        continue
+
                                 # [2026-01-11 Fix] 強制同步計算 Gaze，避免 Comparison 線程讀到舊的 State
                                 # 在此時計算，mp_handler.last_results 必然對應當前這幀 new_frame
                                 g_pass, g_msg, g_pose, g_ear = self.mp_handler.check_gaze(0)
@@ -222,10 +314,14 @@ class Detector:
     def clothes_detector(self, X_offset, state_buffer=None):
         """
         使用 YOLO 模型進行衣著偵測，標記安全帽與反光衣是否存在。
+        [2026-02-06] Modified to return detection boxes for matching.
 
         Parameters:
         X_offset (int): 圖像遮罩偏移量，用來還原原始座標。
         state_buffer (list): 用於寫入結果的暫存列表，若為 None 則寫入全域狀態 (不建議)。
+
+        Returns:
+        detections (list): [(class_id, box_xyxy), ...]
         """
         # 偵測衣著（反光衣、安全帽）
         results = self.system.model_clothes(
@@ -235,16 +331,21 @@ class Detector:
             verbose=False
         )[0]
 
+        detections = []
         cp_re = [0, 0, 0]
         for i, det in enumerate(results.boxes):
             class_id = int(det.cls)  # class_id: 0=反光衣, 2=安全帽
             box_xy = det.xywh[0]
-            cp_re[class_id] = [
-                box_xy[0] + X_offset,
-                box_xy[1],
-                box_xy[0] + X_offset + box_xy[2],
-                box_xy[0] + box_xy[3]
-            ]
+            
+            # Convert to absolute xyxy for matching
+            x1 = int(box_xy[0] - box_xy[2]/2) + X_offset
+            y1 = int(box_xy[1] - box_xy[3]/2)
+            x2 = int(box_xy[0] + box_xy[2]/2) + X_offset
+            y2 = int(box_xy[1] + box_xy[3]/2)
+            
+            detections.append((class_id, [x1, y1, x2, y2]))
+            
+            cp_re[class_id] = [x1, y1, x2, y2] # Legacy format just in case
             
             # [2026-02-03 Fix] 優先寫入 buffer，避免直接操作全域狀態造成閃爍
             if state_buffer is not None:
@@ -253,6 +354,35 @@ class Detector:
                 self.system.state.clothes[class_id] = True
             
             self.clothe_time[class_id] = time.time()
+            
+        return detections
+
+    def _match_clothes_to_face_horizontal(self, face_box, clothes_detections):
+        """
+        [2026-02-06 Feature] Face-Centric Clothes Verification (Horizontal Only)
+        驗證偵測到的裝備是否在人臉的水平範圍內 (排除路人)。
+        放棄垂直檢查以避免誤判 (如低頭、高帽)，改採寬鬆的水平鄰近檢查。
+        """
+        has_vest = False
+        has_helmet = False
+        
+        fx1, fy1, fx2, fy2 = face_box
+        face_cx = (fx1 + fx2) / 2
+        face_w = fx2 - fx1
+        
+        # 允許偏差範圍：臉寬的 1.5 倍 (左右各 0.75)
+        # 這足以涵蓋身體寬度，但能排除明顯在旁邊的路人
+        threshold = face_w * 1.5
+        
+        for cls, box in clothes_detections:
+            bx1, by1, bx2, by2 = box
+            box_cx = (bx1 + bx2) / 2
+            
+            if abs(box_cx - face_cx) < threshold:
+                if cls == 2: has_helmet = True
+                elif cls == 0: has_vest = True
+                        
+        return has_vest, has_helmet
 
     def apply_mask(self, frame):
         """
