@@ -13,7 +13,7 @@ from datetime import datetime
 import pytz
 import json
 from PIL import Image
-from function import crop_face_without_forehead
+from function import crop_face_without_forehead, check_in_out_qrcode # [2026-02-06 Fix] Top-level import
 from init.mediapipe_handler import MediaPipeHandler # 新增
 
 @nb.jit
@@ -201,7 +201,6 @@ class Detector:
                                         self.last_qr_data = qr_data
                                         
                                         # Trigger Check-in/out
-                                        from function import check_in_out_qrcode
                                         check_in_out_qrcode(self.system, verification, staff_id, self.frame_num)
                                     else:
                                         LOGGER.warning(f"[QR Debug] Invalid Format: {qr_data}")
