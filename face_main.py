@@ -21,6 +21,7 @@ from py_ssh import ssh
 from init.say import Say_
 import datetime
 from init.camera import VideoCapture
+import init.model # [2026-02-06 Fix] Import module for config syncing
 from init.model import Detector, Comparison
 from function import *
 from PyQt5.QtCore import QLibraryInfo, QTimer, QSocketNotifier
@@ -948,7 +949,12 @@ class FaceRecognitionSystem:
             # We must explicitly update it.
             import function
             function.CONFIG = CONFIG
-            LOGGER.info("Synced configuration to function module.")
+            
+            # [2026-02-06 Fix] Sync init.model CONFIG global variable
+            # Detector logic in init/model.py relies on its own CONFIG copy.
+            init.model.CONFIG = CONFIG
+            
+            LOGGER.info("Synced configuration to function and init.model modules.")
 
         except Exception as e:
             LOGGER.error(f"Failed to reload config.json: {e}")
