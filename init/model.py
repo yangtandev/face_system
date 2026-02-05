@@ -386,6 +386,7 @@ class Detector:
     def apply_mask(self, frame):
         """
         對輸入圖像應用水平遮罩（只保留中間區域）。
+        [2026-02-06 Fix] 改用 35% 比例以對齊 UI 視覺遮罩，排除路人干擾。
 
         Parameters:
         frame (np.ndarray): 原始 BGR 圖像
@@ -397,23 +398,33 @@ class Detector:
         # 遮罩處理，保留畫面中間的區域進行臉部偵測
         height, width, _ = frame.shape
         mask = np.zeros_like(frame)
-        close_N = 6 # 預設保留中間 4/6 (約 66%)，原為 3 (保留 33%)
+        
+        # [Fix] 使用 35% 比例 (左右各 17.5%)
+        ratio = 0.35
         if CONFIG[CAMERA[self.frame_num]]["close"]:
-            close_N = 8 # 近距離模式保留中間 6/8 (約 75%)，原為 4 (保留 50%)
+            # 近距離模式可能需要寬一點? 先維持 50% 以防萬一，或者也設為 35%
+            # 根據之前設定 (8 -> 75%)，這裡保守設為 0.5 (50%)
+            ratio = 0.5
+            
+        center = width // 2
+        half_w = int(width * ratio / 2)
+        x1 = max(0, center - half_w)
+        x2 = min(width, center + half_w)
 
         # 產生白色矩形遮罩
         cv2.rectangle(
             mask,
-            (width // close_N, 0),
-            ((close_N - 1) * width // close_N, height),
+            (x1, 0),
+            (x2, height),
             (255, 255, 255), -1
         )
 
         # 套用遮罩後回傳遮罩區域與偏移量
         masked_frame = cv2.bitwise_and(frame, mask)
-        masked_frame = frame[0:, width //
-                             close_N: (close_N - 1) * width // close_N]
-        return masked_frame, width // close_N
+        # 裁切出有效區域 (減少 YOLO 運算量)
+        masked_frame = masked_frame[0:, x1:x2]
+        
+        return masked_frame, x1
 
     def equalize(self, img):
         """
