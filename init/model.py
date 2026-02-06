@@ -326,7 +326,7 @@ class Detector:
         results = self.system.model_clothes(
             source=self.mask_frame,
             iou=0.45,
-            conf=0.2,
+            conf=0.7,
             verbose=False
         )[0]
 
