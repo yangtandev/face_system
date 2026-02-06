@@ -479,7 +479,10 @@ class FaceRecognitionSystem:
         self.state.head_pose = [None] * self.n_camera
         self.mp_detectors = {} 
         self.resnet = inception_resnet_v1.InceptionResnetV1(pretrained='vggface2').eval()
-        if CONFIG["Clothes_show"]:
+        
+        # [2026-02-06 Fix] 模型載入條件修正
+        # 若開啟 "Detection" (攔截)，即使 "Show" (顯示框) 關閉，也必須載入模型，否則 Detector 會崩潰
+        if CONFIG.get("Clothes_show", False) or CONFIG.get("Clothes_detection", False):
             models_dir = Path(f'{os.path.dirname(__file__)}/models')
             model_name = 'best_cloth2'
             int8_model_det_path = models_dir/'int8'/f'{model_name}_openvino_model/{model_name}.xml'
