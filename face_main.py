@@ -866,6 +866,7 @@ class FaceRecognitionSystem:
     def setup_cameras(self):
         ips = [CONFIG["cameraIP"]["in_camera"], CONFIG["cameraIP"]["out_camera"]]
         n = 2 if ips[0] != ips[1] else 1
+        self.n_camera = n
         
         # [2026-01-30 Fix] Ensure only ONE CameraSystem is created if n=1 (Same IP)
         if n == 1:

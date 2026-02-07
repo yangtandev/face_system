@@ -13,7 +13,7 @@ from datetime import datetime
 import pytz
 import json
 from PIL import Image
-from function import crop_face_without_forehead, check_in_out_qrcode
+from function import crop_face_without_forehead, check_in_out_qrcode, check_in_out
 from init.mediapipe_handler import MediaPipeHandler
 
 @nb.jit
@@ -1036,7 +1036,7 @@ class Comparison:
                     # [2026-01-08 Refactor] 統一使用新的打卡邏輯
                     # 傳入 check_in_out 進行防抖與方向判斷
                     # [2026-01-20 Fix] 傳入 confidence 供日誌記錄
-                    check_in_out(self.system, staff_name, predicted_id, self.frame_num, self.system.n, confidence)
+                    check_in_out(self.system, staff_name, predicted_id, self.frame_num, self.system.n_camera < 2, confidence)
                     
             elif predicted_id != "None" and confidence >= self.VISITOR_CONF_THRESHOLD:
                 # 訪客邏輯 (分數介於 0.5 ~ 0.7)
@@ -1050,3 +1050,6 @@ class Comparison:
             else:
                 # Low Confidence or None
                 pass
+
+    def terminate(self):
+        self.stop_threads = True
