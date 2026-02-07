@@ -13,8 +13,8 @@ from datetime import datetime
 import pytz
 import json
 from PIL import Image
-from function import crop_face_without_forehead, check_in_out_qrcode # [2026-02-06 Fix] Top-level import
-from init.mediapipe_handler import MediaPipeHandler # 新增
+from function import crop_face_without_forehead, check_in_out_qrcode
+from init.mediapipe_handler import MediaPipeHandler
 
 @nb.jit
 def cosine_similarity(vec1, vec2):
@@ -168,10 +168,6 @@ class Detector:
                         self.system.state.clothes = local_clothes_state
                     else:
                         # 若不偵測，是否該重置狀態？
-                        # 為了避免殘留，如果不偵測，應該視為 [False, False, False] (或者保持不變?)
-                        # 建議重置，以免 UI 殘留綠框
-                        # 但 Detector 是獨立的，如果切換瞬間重置，可能會閃一下。
-                        # 考慮到 UI 已經有 _is_entry_active 保護 (隱藏圖示)，這裡重置是安全的。
                         if self.do_clothes: # 只有原本有開的才需要重置
                              self.system.state.clothes = [False, False, False]
                     
@@ -583,10 +579,22 @@ class Comparison:
                  return 0.0, f"特徵點被切除/遮擋 (點{i}座標 {p} 超出邊界)", metrics
 
         # ---------------------------------------------------------
+        # 2.5 夕陽/強光檢查 (Sunset/Overexposure) - [2026-02-07 Feature]
+        # ---------------------------------------------------------
+        from function import is_sunset_condition # Local import to avoid circular dependency
+        
+        # 由於此檢查需要 crop ROI，為了效能，只在人臉足夠大時執行
+        face_w = max(10, box[2] - box[0])
+        if face_w > 100:
+            frame_to_use = self.system.state.frame_mtcnn[self.frame_num]
+            if frame_to_use is not None:
+                if is_sunset_condition(frame_to_use, box, points):
+                    return 0.0, "光線直射 (Sunset Mode)", metrics
+
+        # ---------------------------------------------------------
         # 3. 3D 姿態與視線檢查 (Gaze & Pose Check) - 核心邏輯
         # ---------------------------------------------------------
         # [2026-01-11 Fix] 直接使用傳入的同步狀態，解決影像與判定錯位問題
-        face_w = max(10, box[2] - box[0])
         if face_w > 100:
             if gaze_status:
                 # [2026-01-26 Fix] 兼容擴充後的 gaze_status (4 elements: pass, msg, pose, ear)
@@ -849,6 +857,9 @@ class Comparison:
                  elif "斜視" in quality_msg or "未正視" in quality_msg or "側臉" in quality_msg or "影像模糊" in quality_msg:
                      self.system.state.hint_text[self.frame_num] = "請正視鏡頭"
                      self.system.speaker.say("請正視鏡頭", "hint_look_straight", priority=2)
+                 elif "光線直射" in quality_msg:
+                     self.system.state.hint_text[self.frame_num] = "光線直射 請遮擋"
+                     self.system.speaker.say("光線直射請遮擋", "hint_sunset", priority=2)
                  else:
                      self.system.state.hint_text[self.frame_num] = "請對準鏡頭"
                      self.system.speaker.say("請對準鏡頭", "hint_occlusion", priority=2)
@@ -923,7 +934,6 @@ class Comparison:
                         
                         # [2026-02-01 Feature] Gap Check for Ambiguity Rejection
                         # 攔截高分誤判 (High Confidence False Positive)
-                        # 測試驗證：Test誤判組 Gap < 0.016，Correct組 Gap > 0.05
                         gap = 0.0
                         if len(distances) > 1:
                             gap = float(distances[0]) - float(distances[1])
@@ -935,10 +945,6 @@ class Comparison:
                         
                         if gap < gap_threshold:
                              LOGGER.info(f"[{camera_name}][Gap過濾] 分數過於接近 (Gap: {gap:.4f} < {gap_threshold}) - 拒絕辨識")
-                             # 視為模糊辨識，不予放行
-                             # 為了不讓它變成 "Unknown" (低分)，我們可以直接 continue 
-                             # 這樣它就不會進入 candidates 列表，最終會因為 candidates 空而判為 None
-                             # 或者我們可以將其標記為 Ambiguous，但在這裡過濾掉最乾淨。
                              
                              # [2026-01-30 Feature] 潛在失敗數據收集 (Gap Fail)
                              if face_width >= min_face_threshold and now - self.last_potential_miss_log_time > 1.0:
@@ -1011,68 +1017,36 @@ class Comparison:
             staff_name = self.system.state.features_dict.get("id_name", {}).get(predicted_id, "未知")
             
             # [2026-01-11 Fix] 補回遺漏的 Log 訊息定義
-            is_reliable = confidence >= self.CONFIDENCE_THRESHOLD and z_score >= Z_SCORE_THRESHOLD
-            is_visitor = confidence < self.VISITOR_CONF_THRESHOLD
+            quality_rating = "Low Confidence"
+            if confidence >= self.CONFIDENCE_THRESHOLD:
+                if z_score >= Z_SCORE_THRESHOLD:
+                    quality_rating = "Reliable"
+                else:
+                    quality_rating = "Ambiguous (Low Z)"
             
-            rating_str = "模糊 (Ambiguous)"
-            if is_reliable:
-                rating_str = "可靠 (Reliable)"
-            elif is_visitor:
-                rating_str = "訪客 (Visitor)"
-            
-            quality_info = ""
-            if quality_score < 1.0:
-                quality_info = f" (原:{raw_confidence:.2%}, 品質:{quality_score:.2f} {quality_msg})"
-            
-            log_message = (
-                f"{log_time} [辨識事件][{camera_name}] 偵測到 {staff_name} (ID: {predicted_id}), "
-                f"信賴度: {confidence:.2%}{quality_info}, Z-Score: {z_score:.2f}, Width: {face_width} px [評級: {rating_str}]"
-            )
-            
-            # [2026-01-23 Fix] 統一記錄所有辨識事件 (包含可靠/訪客/模糊)，解決報表數據遺失問題
-            LOGGER.info(log_message)
-            
-            if is_reliable:
-                person_id = predicted_id
-                self.system.state.hint_text[self.frame_num] = "" # 畫面優先
-                
-                # [2026-01-24 Fix] 原子打包 success_snapshot = (frame, metadata)
-                # 確保 CameraSystem 讀取時，frame 和 metadata 一定來自同一次辨識
-                try:
-                    snapshot_frame = _frame.copy()
-                    snapshot_meta = self.system.state.success_metadata[self.frame_num]
-                    self.system.state.success_snapshot[self.frame_num] = (snapshot_frame, snapshot_meta)
-                    # 保留舊欄位以相容其他程式碼
-                    self.system.state.success_frame[self.frame_num] = snapshot_frame
-                except:
-                    pass
+            # Log output to file
+            log_msg = f"[{camera_name}] ID: {predicted_id} ({staff_name}), Score: {confidence:.2f} (Raw:{raw_confidence:.2f}), Z: {z_score:.2f}, Q: {quality_score:.2f} [{quality_rating}]{part_msg}"
+            LOGGER.info(log_msg)
 
-                speaker = self.system.speaker
-                # [2026-01-20 Logic] 移除 10s/2s 冷卻，改由 Speaker 類別統一控管播放狀態
-                # 只要 Speaker 空閒，就會播放；若 Speaker 忙碌 (P1)，則此次觸發會被 Speaker 丟棄。
-                if True:
-                    self.system.state.same_people[self.frame_num] = confidence
-                    self.system.state.same_zscore[self.frame_num] = z_score
-                    self.system.state.same_width[self.frame_num] = face_width
-
-                self._update_display_state(person_id)
-                self.last_recognition_time = now
-            elif is_visitor:
-                 # LOGGER.info(log_message) # 已統一移至上方
-                 # 標記為訪客，但不觸發打卡
-                 self.system.state.same_people[self.frame_num] = 0.0
-                 self._update_display_state("__VISITOR__")
+            if predicted_id != "None" and confidence >= self.CONFIDENCE_THRESHOLD and z_score >= Z_SCORE_THRESHOLD:
+                if self.system.state.same_class[self.frame_num] != predicted_id:
+                    self._update_display_state(predicted_id)
+                    
+                    # 辨識成功，播放音效與打卡
+                    # [2026-01-08 Refactor] 統一使用新的打卡邏輯
+                    # 傳入 check_in_out 進行防抖與方向判斷
+                    # [2026-01-20 Fix] 傳入 confidence 供日誌記錄
+                    check_in_out(self.system, staff_name, predicted_id, self.frame_num, self.system.n, confidence)
+                    
+            elif predicted_id != "None" and confidence >= self.VISITOR_CONF_THRESHOLD:
+                # 訪客邏輯 (分數介於 0.5 ~ 0.7)
+                # 為了避免員工側臉被誤判為訪客，這裡可以加一些限制，或者直接顯示訪客
+                # 目前設定: 只要不是 Low Confidence 且沒過員工門檻，就視為訪客
+                # [2026-01-29 Fix] 擴大模糊區間: 0.5 ~ 0.7 視為 Ambiguous/Ignore，不顯示訪客
+                # 除非有特殊需求，否則不輕易跳出訪客，以免干擾員工
+                pass
+                # if self.system.state.same_class[self.frame_num] != '__VISITOR__':
+                #     self._update_display_state('__VISITOR__')
             else:
-                 # Ambiguous Case: 信賴度不足 (0.5~0.7)，記錄 Log 以供除錯
-                 # LOGGER.info(log_message) # 已統一移至上方
-                 pass
-
-            if time.time() - last_warmup_time > 10 and self.frame_num == 0:
-                try:
-                    _ = self.system.resnet(dummy_input)
-                    last_warmup_time = time.time()
-                except:
-                    pass
-
-    def terminate(self):
-        self.stop_threads = True
+                # Low Confidence or None
+                pass

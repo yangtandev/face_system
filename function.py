@@ -574,3 +574,54 @@ def _process_part_tensor(img_pil):
     face_tensor = torch.from_numpy(np.array(img_pil)).permute(2, 0, 1).float()
     processed_tensor = (face_tensor - 127.5) / 128.0
     return processed_tensor
+
+def is_sunset_condition(frame, box, points):
+    """
+    Check if the image exhibits 'sunset' characteristics (Overexposure + Redness).
+    
+    Logic:
+    1. Overexposure Ratio: > 7% pixels with V > 240 (Using Center 60% Crop)
+    2. Red/Blue Ratio: > 1.3 (Red dominance)
+    
+    Returns:
+    is_sunset (bool): True if both conditions met.
+    """
+    try:
+        x1, y1, x2, y2 = map(int, box)
+        h, w, _ = frame.shape
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w, x2), min(h, y2)
+        
+        roi = frame[y1:y2, x1:x2]
+        if roi.size == 0:
+            return False
+            
+        # [2026-02-07 Fix] Use Center 60% Crop to ignore background overexposure
+        roi_h, roi_w, _ = roi.shape
+        margin_x = int(roi_w * 0.2)
+        margin_y = int(roi_h * 0.2)
+        
+        center_roi = roi[margin_y:roi_h-margin_y, margin_x:roi_w-margin_x]
+        
+        # Fallback if center crop is too small
+        if center_roi.size == 0: center_roi = roi
+            
+        # 1. Overexposure (Saturation)
+        hsv_roi = cv2.cvtColor(center_roi, cv2.COLOR_BGR2HSV)
+        v_channel = hsv_roi[:, :, 2]
+        overexposed_ratio = np.sum(v_channel > 240) / v_channel.size
+        
+        # 2. Color Temperature (Red/Blue Ratio)
+        b_mean = np.mean(center_roi[:, :, 0])
+        r_mean = np.mean(center_roi[:, :, 2])
+        rb_ratio = r_mean / (b_mean + 1e-6)
+        
+        # Thresholds derived from 'tools/analyze_lighting.py' analysis
+        # [2026-02-07 Fix] Adjusted overexposure from 0.05 to 0.07 AND used Center Crop
+        if overexposed_ratio > 0.07 and rb_ratio > 1.3:
+            return True
+            
+        return False
+    except Exception as e:
+        LOGGER.error(f"Sunset check failed: {e}")
+        return False
