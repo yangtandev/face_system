@@ -586,6 +586,22 @@ def is_sunset_condition(frame, box, points):
     Returns:
     is_sunset (bool): True if both conditions met.
     """
+
+    # Calculate Entropy if needed (for extreme overexposure)
+    def calculate_entropy(img_roi):
+        try:
+            gray = cv2.cvtColor(img_roi, cv2.COLOR_BGR2GRAY)
+            # Calculate Histogram
+            hist = cv2.calcHist([gray], [0], None, [256], [0, 256])
+            # Normalize
+            prob = hist / (hist.sum() + 1e-6)
+            # Entropy: -sum(p * log2(p))
+            # Remove zeros for log calculation
+            prob = prob[prob > 0]
+            ent = -np.sum(prob * np.log2(prob))
+            return ent
+        except: return 0.0
+
     try:
         x1, y1, x2, y2 = map(int, box)
         h, w, _ = frame.shape
@@ -611,15 +627,42 @@ def is_sunset_condition(frame, box, points):
         v_channel = hsv_roi[:, :, 2]
         overexposed_ratio = np.sum(v_channel > 240) / v_channel.size
         
-        # 2. Color Temperature (Red/Blue Ratio)
+        # 2. R/B Ratio
         b_mean = np.mean(center_roi[:, :, 0])
         r_mean = np.mean(center_roi[:, :, 2])
         rb_ratio = r_mean / (b_mean + 1e-6)
         
-        # Thresholds derived from 'tools/analyze_lighting.py' analysis
-        # [2026-02-07 Fix] Adjusted overexposure from 0.05 to 0.07 AND used Center Crop
-        if overexposed_ratio > 0.07 and rb_ratio > 1.3:
-            return True
+        # 3. Horizontal Ratio (Left vs Right Face) - Only Horizontal!
+        # Map nose point to center roi coordinates
+        nose_x_frame = int(points[2][0])
+        
+        nose_x_center = nose_x_frame - (x1 + margin_x)
+        c_h, c_w = v_channel.shape
+        h_ratio = 1.0
+        
+        if 0 < nose_x_center < c_w:
+            left = v_channel[:, :nose_x_center]
+            right = v_channel[:, nose_x_center:]
+            l_br = np.mean(left)
+            r_br = np.mean(right)
+            h_ratio = max(l_br, r_br) / (min(l_br, r_br) + 1e-6)
+        
+        # Thresholds:
+        # 1. Extreme Overexposure (Conditional Killer)
+        if overexposed_ratio > 0.15:
+            # [2026-02-07 Fix] Check Entropy to save valid detailed images
+            # Threshold lowered to 7.2 to save 00:00 batch (Ent ~7.4), while killing bad ones (Ent ~7.0)
+            ent = calculate_entropy(center_roi)
+            if ent > 7.2:
+                return False # SAVE (High detail)
+            return True # KILL (Low detail / Washed out)
+            
+        # 2. Moderate Overexposure (Conditional Killer)
+        if overexposed_ratio > 0.07:
+            # Only kill if Horizontal lighting is uneven (Side Shadow)
+            # Ignore Vertical Shadow (to save Huang Shi-Yu)
+            if h_ratio > 1.5:
+                return True
             
         return False
     except Exception as e:
