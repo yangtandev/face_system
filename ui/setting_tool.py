@@ -1,5 +1,12 @@
 import sys
 import os
+
+# [Fix] Add project root to sys.path to allow imports from 'ui' package
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, '../'))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtCore import QLockFile, QDir
 import ui.config_window # Import module to access IS_RESTARTING
@@ -51,7 +58,7 @@ def main():
     # [2026-01-30 Feature] Apply Theme
     theme = "dark"
     try:
-        config_path = os.path.join(os.path.dirname(__file__), "config.json")
+        config_path = os.path.join(os.path.dirname(__file__), "../config.json")
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = json.load(f)
             theme = cfg.get("theme", "dark")

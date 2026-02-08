@@ -152,7 +152,7 @@ sudo apt-get update && sudo apt-get install -y mosquitto mosquitto-clients && su
 1.  **從主畫面啟動**：在人臉辨識主視窗的左上角，點擊 **齒輪圖示 (⚙)**。輸入管理員密碼（預設：`admin`）即可開啟。
 2.  **獨立啟動**：
     ```bash
-    python setting_tool.py
+    python ui/setting_tool.py
     ```
 
 **功能特色：**

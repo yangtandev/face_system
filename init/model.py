@@ -13,7 +13,7 @@ from datetime import datetime
 import pytz
 import json
 from PIL import Image
-from function import crop_face_without_forehead, check_in_out_qrcode, check_in_out
+from init.function import crop_face_without_forehead, check_in_out_qrcode, check_in_out
 from init.mediapipe_handler import MediaPipeHandler
 
 @nb.jit
@@ -581,7 +581,7 @@ class Comparison:
         # ---------------------------------------------------------
         # 2.5 夕陽/強光檢查 (Sunset/Overexposure) - [2026-02-07 Feature]
         # ---------------------------------------------------------
-        from function import is_sunset_condition # Local import to avoid circular dependency
+        from init.function import is_sunset_condition # Local import to avoid circular dependency
         
         # 由於此檢查需要 crop ROI，為了效能，只在人臉足夠大時執行
         face_w = max(10, box[2] - box[0])

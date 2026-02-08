@@ -106,7 +106,9 @@ class MainWindow(QWidget, Ui_Form):
             if text == 'admin':
                 try:
                     # Launch setting_tool.py as a separate process
-                    tool_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "setting_tool.py")
+                    # [2026-02-09 Fix] setting_tool.py moved to ui/ directory
+                    # user_show.py is in ui/, so setting_tool.py is in the same directory
+                    tool_path = os.path.join(os.path.dirname(__file__), "setting_tool.py")
                     
                     # [2026-01-30 Fix] Calculate global geometry for correct centering (even in fullscreen)
                     global_pos = self.mapToGlobal(QtCore.QPoint(0, 0))

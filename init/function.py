@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageEnhance
 
 from init.log import LOGGER
 
-with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding="utf-8") as json_file:
+with open(os.path.join(os.path.dirname(__file__), "../config.json"), "r", encoding="utf-8") as json_file:
     CONFIG = json.load(json_file)
 
 API = config.API(str(CONFIG["Server"]["API_url"]), int(CONFIG["Server"]["location_ID"]))

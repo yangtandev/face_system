@@ -23,7 +23,7 @@ import datetime
 from init.camera import VideoCapture
 import init.model # [2026-02-06 Fix] Import module for config syncing
 from init.model import Detector, Comparison
-from function import *
+from init.function import *
 from PyQt5.QtCore import QLibraryInfo, QTimer, QSocketNotifier
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import QApplication
@@ -951,7 +951,7 @@ class FaceRecognitionSystem:
             # [2026-01-30 Fix] Sync function.py CONFIG global variable
             # function.py loads its own CONFIG copy on import, which becomes stale on reload.
             # We must explicitly update it.
-            import function
+            import init.function as function
             function.CONFIG = CONFIG
             
             # [2026-02-06 Fix] Sync init.model CONFIG global variable
