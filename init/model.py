@@ -238,13 +238,26 @@ class Detector:
                                         # [Safety] Re-fetch min_face from state to avoid UnboundLocalError
                                         safe_min_face = self.system.state.min_face[self.frame_num]
                                         
-                                        self.system.compar._save_potential_miss_image(
-                                            new_frame, 
-                                            face_width, 
-                                            safe_min_face, 
-                                            CAM_NAME_MAP.get(self.frame_num, f"Cam {self.frame_num}"), 
-                                            reason="ClothesFail"
-                                        )
+                                        # [Critical Fix] Find Comparison instance in CameraSystem (not FaceRecognitionSystem)
+                                        # FaceRecognitionSystem -> cameras list -> CameraSystem -> compar
+                                        compar_instance = None
+                                        if hasattr(self.system, 'cameras'):
+                                            for cam in self.system.cameras:
+                                                if cam.frame_num == self.frame_num:
+                                                    compar_instance = cam.compar
+                                                    break
+                                        
+                                        if compar_instance:
+                                            compar_instance._save_potential_miss_image(
+                                                new_frame, 
+                                                face_width, 
+                                                safe_min_face, 
+                                                CAM_NAME_MAP.get(self.frame_num, f"Cam {self.frame_num}"), 
+                                                reason="ClothesFail"
+                                            )
+                                        else:
+                                            LOGGER.error(f"Cannot find Comparison instance for Cam {self.frame_num}")
+
                                     except Exception as e:
                                         LOGGER.error(f"Save ClothesFail image failed: {e}")
 
