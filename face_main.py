@@ -368,9 +368,9 @@ class CameraSystem:
         elif current_class != "None":
             # 檢查是否被攔截
             if need_check_clothes and not is_clothes_pass:
-                # 攔截時，隱藏名字，顯示 "辨識中" (避免字數過長被切掉)
-                # 主畫面已有 "請正確著裝" 的大字提示，這裡只需不顯示名字即可。
-                return 'color: rgb(255, 85, 0); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "辨識中"
+                # 攔截時，隱藏文字 (回傳空白)
+                # User Request: 不顯示 "辨識中"，也不顯示 "請正確著裝" (Side Panel 保持乾淨)
+                return 'background-color: transparent;', ""
                 
             name = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
             return 'color: rgb(0, 170, 0); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', name

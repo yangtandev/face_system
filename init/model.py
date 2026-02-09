@@ -183,7 +183,12 @@ class Detector:
                         face_width = x2 - x1
                         min_face_val = self.system.state.min_face[self.frame_num]
                         
-                        if center_x < roi_x1 or center_x > roi_x2 or face_width < (min_face_val * POTENTIAL_MISS_RATIO):
+                        # [2026-02-10 UX] Dynamic Detection Threshold based on Clothes Mode
+                        # Clothes ON -> 1.0 (Strict: Ignore small faces completely)
+                        # Clothes OFF -> 0.8 (Standard: Allow "Please come closer" hint)
+                        det_ratio = 1.0 if CONFIG.get("Clothes_detection", False) else POTENTIAL_MISS_RATIO
+                        
+                        if center_x < roi_x1 or center_x > roi_x2 or face_width < (min_face_val * det_ratio):
                             box = None
                             points = None # 被過濾掉視為無效
                         else:
