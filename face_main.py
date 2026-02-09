@@ -67,7 +67,7 @@ class CameraSystem:
             width = self.image.shape[1]
             self.image = self.image[0:, width // 5 : 4 * width // 5]
         self.speak_time = 0
-        self.save_img_time = [0, 0]
+        self.save_img_time = {}
         self.save_name_last = ""
         self.clothes_de = (CONFIG["Clothes_show"] and self.frame_num == 0)
         self.last_visitor_face_img = None
@@ -368,11 +368,12 @@ class CameraSystem:
 
     def _save_img_task(self, img, path, staffname, conf, z_score, width, metadata=None):
         try:
-            dict_={"face":0, "clothes":1}
             dt = datetime.datetime.today()
             d_str, t_str = dt.strftime("%Y_%m_%d"), dt.strftime("%H;%M;%S")
             os.makedirs(f"{main_path}/img_log/{path}/{d_str}", exist_ok=True)
-            if time.time()-self.save_img_time[dict_[path]] > 5 or (self.save_name_last != staffname and staffname != ""):
+            
+            last_time = self.save_img_time.get(path, 0)
+            if time.time() - last_time > 5 or (self.save_name_last != staffname and staffname != ""):
                 fname_base = f"{t_str}_{staffname}_C{int(conf*100)}_Z{z_score:.2f}_W{width}" if staffname else f"{t_str}"
                 fname = f"{fname_base}.jpg"
                 cv2.imwrite(f"{main_path}/img_log/{path}/{d_str}/{fname}", img)
@@ -393,7 +394,7 @@ class CameraSystem:
                     except Exception as je:
                         LOGGER.error(f"Failed to save metadata JSON: {je}")
 
-                self.save_img_time[dict_[path]] = time.time()
+                self.save_img_time[path] = time.time()
                 if staffname: self.save_name_last = staffname
         except Exception as e:
             LOGGER.error(f"Async save_img failed: {e}")

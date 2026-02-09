@@ -1090,6 +1090,14 @@ class Comparison:
                     # [2026-01-20 Fix] 傳入 confidence 供日誌記錄
                     check_in_out(self.system, staff_name, predicted_id, self.frame_num, self.system.n_camera < 2, confidence)
                     
+                    # [2026-02-09 Fix] Sync state to trigger save_img in face_main.py
+                    self.system.state.same_people[self.frame_num] = float(confidence)
+                    self.system.state.same_zscore[self.frame_num] = float(z_score)
+                    self.system.state.same_width[self.frame_num] = int(face_width)
+                    # [2026-01-24 Fix] Atomic snapshot for saving
+                    if self.system.state.success_metadata[self.frame_num]:
+                        self.system.state.success_snapshot[self.frame_num] = (frame_curr.copy(), self.system.state.success_metadata[self.frame_num])
+                    
             elif predicted_id != "None" and confidence >= self.VISITOR_CONF_THRESHOLD:
                 # 訪客邏輯 (分數介於 0.5 ~ 0.7)
                 # 為了避免員工側臉被誤判為訪客，這裡可以加一些限制，或者直接顯示訪客
