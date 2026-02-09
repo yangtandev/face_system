@@ -355,15 +355,11 @@ class CameraSystem:
         else:
             return 'background-color: transparent;', ""
 
-        # [2026-02-10 Fix] Priority Check for Clothes Blocking Hint
-        # If Detector has set "請正確著裝" in hint_text, suppress Side Panel immediately.
+        # [2026-02-10 Fix] Priority Check for ANY Hint
+        # If there is any hint text (e.g., "請正確著裝", "請靠近", "請站到中間"), 
+        # suppress the Side Panel status to avoid misleading "Identifying" state.
         current_hint = self.system.state.hint_text[self.frame_num]
-        if "請正確著裝" in current_hint:
-            return 'background-color: transparent;', ""
-            
-        # [2026-02-10 Fix] Also suppress Side Panel for "Please come closer" hint
-        # User request: Side panel should be empty when approaching (80%~100%), only Overlay shows text.
-        if "請靠近" in current_hint:
+        if current_hint:
             return 'background-color: transparent;', ""
 
         current_class = self.system.state.same_class[self.frame_num]
