@@ -137,7 +137,9 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
     if is_check_in_action:
         log_metrics(staff_name, 0, confidence) # Log as check-in with confidence
         # [2026-02-10 Feature] Sync direction to GlobalState for file saving
-        if system.state.last_direction: system.state.last_direction[camera_num] = "In"
+        if system.state.last_direction: 
+            system.state.last_direction[camera_num] = "In"
+            LOGGER.info(f"DEBUG: Setting last_direction[{camera_num}] to In")
         
         async_api_call(
             func=API.face_recognition_in,
@@ -154,7 +156,9 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
     elif is_check_out_action:
         log_metrics(staff_name, 1, confidence) # Log as check-out with confidence
         # [2026-02-10 Feature] Sync direction to GlobalState for file saving
-        if system.state.last_direction: system.state.last_direction[camera_num] = "Out"
+        if system.state.last_direction: 
+            system.state.last_direction[camera_num] = "Out"
+            LOGGER.info(f"DEBUG: Setting last_direction[{camera_num}] to Out")
 
         async_api_call(
             func=API.face_recognition_out,

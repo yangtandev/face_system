@@ -367,6 +367,8 @@ class CameraSystem:
         # [2026-02-10 Feature] Pass camera tag (In/Out) to filename
         # Priority: 1. check_in_out result (last_direction), 2. _is_entry_active() fallback
         camera_tag = self.system.state.last_direction[self.frame_num]
+        LOGGER.info(f"DEBUG: save_img reading last_direction[{self.frame_num}] = {camera_tag}")
+        
         if not camera_tag:
              is_entry = self._is_entry_active()
              camera_tag = "In" if is_entry else "Out"
