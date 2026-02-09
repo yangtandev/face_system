@@ -235,10 +235,13 @@ class Detector:
                                     # [2026-02-09 Fix] 主動存檔 ClothesFail (Unknown User)
                                     # 由於阻斷發生在識別前，無法得知身分，僅存截圖供稽核
                                     try:
+                                        # [Safety] Re-fetch min_face from state to avoid UnboundLocalError
+                                        safe_min_face = self.system.state.min_face[self.frame_num]
+                                        
                                         self.system.compar._save_potential_miss_image(
                                             new_frame, 
                                             face_width, 
-                                            min_face_val, 
+                                            safe_min_face, 
                                             CAM_NAME_MAP.get(self.frame_num, f"Cam {self.frame_num}"), 
                                             reason="ClothesFail"
                                         )
