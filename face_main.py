@@ -480,20 +480,17 @@ class FaceRecognitionSystem:
         self.mp_detectors = {} 
         self.resnet = inception_resnet_v1.InceptionResnetV1(pretrained='vggface2').eval()
         
-        # [2026-02-06 Fix] 模型載入條件修正
-        # 若開啟 "Detection" (攔截)，即使 "Show" (顯示框) 關閉，也必須載入模型，否則 Detector 會崩潰
+        # [2026-02-09 Fix] 使用動態載入方法，支援熱更新
         if CONFIG.get("Clothes_show", False) or CONFIG.get("Clothes_detection", False):
-            models_dir = Path(f'{os.path.dirname(__file__)}/models')
-            model_name = 'best_cloth2'
-            int8_model_det_path = models_dir/'int8'/f'{model_name}_openvino_model/{model_name}.xml'
-            self.model_clothes = YOLOv10(int8_model_det_path.parent, task='detect')
+            self.load_clothes_model()
+            
         self.speaker = Say_()
         self.local_media_path = os.path.join(os.path.dirname(__file__), "media")
+        
         for d in ["descriptors", "pic_bak", "profile_pictures"]: os.makedirs(os.path.join(self.local_media_path, d), exist_ok=True)
         self.update_lock = threading.Lock()
         
         # [2026-01-13 Perf] Thread pool for non-blocking I/O (e.g., image saving)
-        # Prevents main loop from stalling during disk writes.
         self.io_pool = ThreadPoolExecutor(max_workers=2)
         
         # Blocking asset rebuild on startup (Voice -> Descriptors)
@@ -504,6 +501,29 @@ class FaceRecognitionSystem:
         
         # [Perf] Enable auto-tune to maximize runtime FPS based on hardware capability
         self._auto_tune_performance()
+
+    def load_clothes_model(self):
+        """
+        Dynamically load the YOLOv10 clothes detection model.
+        Safe to call multiple times (idempotent).
+        """
+        if hasattr(self, 'model_clothes') and self.model_clothes is not None:
+            return
+
+        try:
+            LOGGER.info("正在載入衣著辨識模型 (YOLOv10 OpenVINO)...")
+            models_dir = Path(f'{os.path.dirname(__file__)}/models')
+            model_name = 'best_cloth2'
+            int8_model_det_path = models_dir/'int8'/f'{model_name}_openvino_model/{model_name}.xml'
+            
+            if not int8_model_det_path.exists():
+                LOGGER.error(f"模型檔案不存在: {int8_model_det_path}")
+                return
+
+            self.model_clothes = YOLOv10(int8_model_det_path.parent, task='detect')
+            LOGGER.info("衣著辨識模型載入成功。")
+        except Exception as e:
+            LOGGER.error(f"載入衣著模型失敗: {e}")
 
     def _rebuild_assets(self):
         LOGGER.info("Starting mandatory asset rebuild...")

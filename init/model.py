@@ -78,7 +78,11 @@ class Detector:
         # [2026-02-03 Fix] 初始化衣著偵測旗標
         # 僅在入口攝影機 (frame_num == 0) 且設定開啟時執行
         # [2026-02-06 Fix] 若開啟 "Detection" (攔截)，即使 "Show" (顯示框) 關閉，也必須執行偵測，否則會因狀態全 False 而永久攔截
-        self.do_clothes = (self.frame_num == 0 and (CONFIG.get("Clothes_show", False) or CONFIG.get("Clothes_detection", False)))
+        clothes_show = CONFIG.get("Clothes_show", False)
+        clothes_det = CONFIG.get("Clothes_detection", False)
+        self.do_clothes = (self.frame_num == 0 and (clothes_show or clothes_det))
+        
+        LOGGER.info(f"[Detector Init] Frame: {self.frame_num}, Clothes_Show: {clothes_show}, Clothes_Det: {clothes_det} -> Do_Clothes: {self.do_clothes}")
         
         threading.Thread(target=self.face_detector, daemon=True).start()
 
@@ -318,6 +322,20 @@ class Detector:
         Returns:
         detections (list): [(class_id, box_xyxy), ...]
         """
+        # [2026-02-09 Fix] 支援熱更新：主動請求載入模型
+        # 若 Config 開啟但模型未載入 (例如啟動時關閉，後來透過 UI 開啟)，此處會觸發載入
+        if not hasattr(self.system, 'model_clothes') or self.system.model_clothes is None:
+            if hasattr(self.system, 'load_clothes_model'):
+                self.system.load_clothes_model()
+            
+            # 再次檢查是否載入成功
+            if not hasattr(self.system, 'model_clothes') or self.system.model_clothes is None:
+                # 限流 Log，避免洗版
+                if time.time() - self.last_no_face_log_time > 10:
+                    LOGGER.warning("衣著偵測被觸發，但無法載入 'model_clothes'。跳過偵測。")
+                    self.last_no_face_log_time = time.time()
+                return []
+
         # 偵測衣著（反光衣、安全帽）
         results = self.system.model_clothes(
             source=self.mask_frame,

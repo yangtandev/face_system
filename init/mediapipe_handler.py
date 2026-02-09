@@ -157,7 +157,7 @@ class MediaPipeHandler:
 
     def check_gaze(self, index=0):
         if not hasattr(self, 'last_results') or not self.last_results.multi_face_landmarks:
-            return True, "No Data", (0, 0, 0)
+            return True, "No Data", (0, 0, 0), 0.0
         landmarks = self.last_results.multi_face_landmarks[index]
         w, h = self.last_w, self.last_h
         
