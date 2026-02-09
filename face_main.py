@@ -345,6 +345,13 @@ class CameraSystem:
         # [2026-02-10 UX] Global Visibility Rule for Side Panel
         # Clothes ON: Strict 100%, Clothes OFF: 80% (Standard)
         box = self.system.state.max_box[self.frame_num]
+        
+        # [DEBUG LOG] Trace Side Panel decision
+        w_debug = box[2] - box[0] if box else 0
+        min_debug = self.system.state.min_face[self.frame_num]
+        hint_debug = self.system.state.hint_text[self.frame_num]
+        LOGGER.info(f"[DEBUG][SidePanel] w={w_debug}, min={min_debug}, hint='{hint_debug}'")
+
         if box is not None:
             w = box[2] - box[0]
             target_min = self.system.state.min_face[self.frame_num]
@@ -382,7 +389,20 @@ class CameraSystem:
             name = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
             return 'color: rgb(0, 170, 0); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', name
             
-        return 'color: rgb(0, 85, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "辨識中"
+        # [2026-02-10 UX] Hide status text if face is too small/distant
+        # Default state (No recognition yet)
+        box = self.system.state.max_box[self.frame_num]
+        if box is not None:
+            # box is [x1, y1, x2, y2] in original resolution (from Detector)
+            w = box[2] - box[0]
+            target_min = self.system.state.min_face[self.frame_num]
+            
+            # [Refinement] Add 10% buffer to Side Panel as well
+            if w >= (target_min * 1.1):
+                return 'color: rgb(0, 85, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "辨識中"
+        
+        # Too small or no box -> Show empty
+        return 'background-color: transparent;', ""
 
     def save_img(self, img, path, staffname="", conf=0.0, z_score=0.0, width=0, metadata=None):
         # [2026-01-13 Perf] Offload disk I/O to background thread
