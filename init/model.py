@@ -163,9 +163,21 @@ class Detector:
                         
                         # 基礎過濾 (ROI/Size)
                         w_source = new_frame.shape[1]
-                        close_N = 8 if CONFIG[CAMERA[self.frame_num]]["close"] else 6
-                        roi_x1 = w_source // close_N
-                        roi_x2 = (close_N - 1) * w_source // close_N
+                        
+                        # [2026-02-09 Fix] Align Face ROI with UI/Clothes Mask (35% Width)
+                        # Previous logic (1/6 ~ 5/6 = 66% width) was too wide, causing "SmallFace" 
+                        # warnings when users were visually outside the UI mask.
+                        target_ratio = 0.35 
+                        if CONFIG[CAMERA[self.frame_num]]["close"]:
+                            # Matches apply_mask logic (0.5 for close mode)
+                            target_ratio = 0.5
+
+                        center = w_source // 2
+                        half_w = int(w_source * target_ratio / 2)
+                        
+                        roi_x1 = max(0, center - half_w)
+                        roi_x2 = min(w_source, center + half_w)
+                        
                         center_x = (x1 + x2) / 2
                         
                         face_width = x2 - x1
