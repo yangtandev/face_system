@@ -168,54 +168,42 @@ class CameraSystem:
                 hint_msg = self.system.state.hint_text[self.frame_num]
                 text_y = y1 - int(55*scale) if y1 - int(55*scale) > 10 else y2 + 10
                 
-                # [2026-02-03 Fix] 衣著檢查邏輯：需考慮單鏡頭排程切換
-                is_entry = self._is_entry_active()
-                need_check_clothes = (is_entry and CONFIG["Clothes_detection"])
+                # [2026-02-10 UX] Global Visibility Rule: Only show text if face >= min_face
+                current_width = (x2 - x1) / scale 
+                target_min = self.system.state.min_face[self.frame_num]
                 
-                # 若不在檢查時段(出口模式)，也應關閉 Detector 的偵測以節省資源 (這裡只能做顯示層的忽略)
-                # 理想上應該去控制 init/model.py 的 self.do_clothes，但那是 Thread，很難動態改。
-                # 所以我們在這裡忽略結果即可。
-                
-                is_clothes_pass = (self.system.state.clothes[0] and self.system.state.clothes[2])
-                passed_gate = (not need_check_clothes) or is_clothes_pass
-                
-                staff_name_display = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
+                if current_width >= target_min:
+                    # [2026-02-03 Fix] 衣著檢查邏輯：需考慮單鏡頭排程切換
+                    is_entry = self._is_entry_active()
+                    need_check_clothes = (is_entry and CONFIG["Clothes_detection"])
+                    
+                    is_clothes_pass = (self.system.state.clothes[0] and self.system.state.clothes[2])
+                    passed_gate = (not need_check_clothes) or is_clothes_pass
+                    
+                    staff_name_display = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
 
-                # [2026-02-03 Fix] 顯示邏輯重構：採用巢狀結構確保互斥
-                # 若被衣著檢查攔截，絕對優先顯示提示，並跳過後續所有名字/訪客顯示邏輯
-                # 修正：只有在有人臉 (current_class != "None") 時才顯示 "請正確著裝"
-                # 若無人臉，應繼續執行下方的 else 顯示 "辨識中"
-                blocked_by_clothes = (not passed_gate) and (current_class != "None" and current_class != "__VISITOR__")
-                
-                if blocked_by_clothes:
-                    now_frame = put_chinese_text(now_frame, "請正確著裝", (x1, text_y), font_path, font_size, (255, 85, 0))
-                else:
-                    # 通過檢查 (或無需檢查) 後，才執行原本的顯示邏輯
-                    if hint_msg:
-                        now_frame = put_chinese_text(now_frame, hint_msg, (x1, text_y), font_path, font_size, (255, 85, 0))
-                    elif current_class == "__VISITOR__":
-                        now_frame = put_chinese_text(now_frame, "訪客", (x1, text_y), font_path, font_size, (0, 0, 255))
-                        try:
-                            # 訪客頭像截取仍需使用原圖 (保持解析度)
-                            if oy2 > oy1 and ox2 > ox1: 
-                                 self.last_visitor_face_img = original_frame[max(0,oy1):min(h,oy2), max(0,ox1):min(w,ox2)].copy()
-                        except Exception: pass
-                    elif current_class != "None" and staff_name_display:
-                        self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img to avoid showing previous person
-                        now_frame = put_chinese_text(now_frame, staff_name_display, (x1, text_y), font_path, font_size, (205, 0, 0))
+                    # [2026-02-03 Fix] 顯示邏輯重構：採用巢狀結構確保互斥
+                    blocked_by_clothes = (not passed_gate) and (current_class != "None" and current_class != "__VISITOR__")
+                    
+                    if blocked_by_clothes:
+                        now_frame = put_chinese_text(now_frame, "請正確著裝", (x1, text_y), font_path, font_size, (255, 85, 0))
                     else:
-                        self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img
-                        
-                        # [2026-02-10 UX] Only show "辨識中" if face is large enough (>= 80% of min_face)
-                        # Avoids showing text for faces that are too far/small to even trigger "Please come closer".
-                        current_width = (x2 - x1) / scale 
-                        target_min = self.system.state.min_face[self.frame_num]
-                        
-                        # Check threshold (matches model.py logic: POTENTIAL_MISS_RATIO ~ 0.8)
-                        if current_width >= (target_min * 0.8):
-                            now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0))
+                        # 通過檢查 (或無需檢查) 後，才執行原本的顯示邏輯
+                        if hint_msg:
+                            now_frame = put_chinese_text(now_frame, hint_msg, (x1, text_y), font_path, font_size, (255, 85, 0))
+                        elif current_class == "__VISITOR__":
+                            now_frame = put_chinese_text(now_frame, "訪客", (x1, text_y), font_path, font_size, (0, 0, 255))
+                            try:
+                                # 訪客頭像截取仍需使用原圖 (保持解析度)
+                                if oy2 > oy1 and ox2 > ox1: 
+                                     self.last_visitor_face_img = original_frame[max(0,oy1):min(h,oy2), max(0,ox1):min(w,ox2)].copy()
+                            except Exception: pass
+                        elif current_class != "None" and staff_name_display:
+                            self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img to avoid showing previous person
+                            now_frame = put_chinese_text(now_frame, staff_name_display, (x1, text_y), font_path, font_size, (205, 0, 0))
                         else:
-                            pass # Too small, show nothing (keep clean)
+                            self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img
+                            now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0))
                 
                 # 辨識後處理邏輯 (保持不變)
                 if self.system.state.same_people[self.frame_num] > 0:
@@ -350,6 +338,17 @@ class CameraSystem:
         return QPixmap(f'{main_path}/other/{h}'), QPixmap(f'{main_path}/other/{v}')
 
     def show_hint(self):
+        # [2026-02-10 UX] Global Visibility Rule for Side Panel
+        # Hide ALL status text if face is too small/distant
+        box = self.system.state.max_box[self.frame_num]
+        if box is not None:
+            w = box[2] - box[0]
+            target_min = self.system.state.min_face[self.frame_num]
+            if w < target_min:
+                return 'background-color: transparent;', ""
+        else:
+            return 'background-color: transparent;', ""
+
         current_class = self.system.state.same_class[self.frame_num]
         
         # [2026-02-03 Fix] 顯示邏輯：若被衣著檢查攔截，UI 提示也應改為 "請正確著裝"
