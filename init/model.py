@@ -603,14 +603,28 @@ class Comparison:
                 
                 # 預先提取 EAR，優先使用原子打包數據
                 current_ear = 1.0
+                pose_tuple = (0, 0, 0)
                 if len(gaze_status) >= 4:
                     current_ear = gaze_status[3]
+                    pose_tuple = gaze_status[2]
                 elif hasattr(self.system.state, 'face_ear'): # Fallback for backward compatibility
                     current_ear = self.system.state.face_ear.get(self.frame_num, 1.0)
 
                 metrics['gaze_passed'] = is_looking
                 metrics['gaze_msg'] = gaze_msg
                 metrics['ear'] = float(current_ear)
+                
+                # [2026-02-09 V5 Logic] Extract Pose Data for Dynamic Thresholding
+                pitch, yaw, roll = pose_tuple
+                metrics['pitch'] = float(pitch)
+                metrics['yaw'] = float(yaw)
+                metrics['roll_angle'] = float(roll)
+                
+                # Detect Bad Pose (Compound Deviation)
+                # 1. Yaw > 15 AND Pitch > 10 (Both distinct deviations) -> Dangerous
+                # 2. Roll > 15 (Tilt) -> Dangerous
+                is_bad_pose = (abs(yaw) > 15 and abs(pitch) > 10) or abs(roll) > 15
+                metrics['is_bad_pose'] = is_bad_pose
 
                 if not is_looking:
                     return 0.0, f"{gaze_msg}", metrics
@@ -916,8 +930,15 @@ class Comparison:
                             
                             z = (s_raw - mean_score) / std_dev_score if std_dev_score > 0 else 0
                             
+                            # [2026-02-09 V5 Logic] Dynamic Threshold based on Pose & Z-Score
+                            # Rescue Mechanism: If Z-Score is high (>=2.5), use moderate penalty (0.75)
+                            # Otherwise (Z < 2.5), use strict penalty (0.85) to kill false positives
+                            required_conf = self.CONFIDENCE_THRESHOLD
+                            if quality_metrics.get('is_bad_pose', False):
+                                required_conf = 0.75 if z >= 2.5 else 0.85
+                            
                             # Strict Filter: Must pass BOTH thresholds
-                            if s_final >= self.CONFIDENCE_THRESHOLD and z >= Z_SCORE_THRESHOLD:
+                            if s_final >= required_conf and z >= Z_SCORE_THRESHOLD:
                                 candidates.append({
                                     'id': pid, 
                                     'raw': s_raw, 
@@ -1016,19 +1037,24 @@ class Comparison:
 
             staff_name = self.system.state.features_dict.get("id_name", {}).get(predicted_id, "未知")
             
+            # [2026-02-09 V5 Logic] Recalculate dynamic threshold for final decision & logging
+            final_required_conf = self.CONFIDENCE_THRESHOLD
+            if quality_metrics.get('is_bad_pose', False):
+                final_required_conf = 0.75 if z_score >= 2.5 else 0.85
+            
             # [2026-01-11 Fix] 補回遺漏的 Log 訊息定義
             quality_rating = "Low Confidence"
-            if confidence >= self.CONFIDENCE_THRESHOLD:
+            if confidence >= final_required_conf:
                 if z_score >= Z_SCORE_THRESHOLD:
                     quality_rating = "Reliable"
                 else:
                     quality_rating = "Ambiguous (Low Z)"
             
             # Log output to file
-            log_msg = f"[{camera_name}] ID: {predicted_id} ({staff_name}), Score: {confidence:.2f} (Raw:{raw_confidence:.2f}), Z: {z_score:.2f}, Q: {quality_score:.2f} [{quality_rating}]{part_msg}"
+            log_msg = f"[{camera_name}] ID: {predicted_id} ({staff_name}), Score: {confidence:.2f}/{final_required_conf:.2f} (Raw:{raw_confidence:.2f}), Z: {z_score:.2f}, Q: {quality_score:.2f} [{quality_rating}]{part_msg}"
             LOGGER.info(log_msg)
 
-            if predicted_id != "None" and confidence >= self.CONFIDENCE_THRESHOLD and z_score >= Z_SCORE_THRESHOLD:
+            if predicted_id != "None" and confidence >= final_required_conf and z_score >= Z_SCORE_THRESHOLD:
                 if self.system.state.same_class[self.frame_num] != predicted_id:
                     self._update_display_state(predicted_id)
                     
