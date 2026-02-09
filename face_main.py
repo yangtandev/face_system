@@ -32,6 +32,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 from typing import List, Dict, Any
 from init.ann_index import AnnIndex
+from init.ppe_classifier import PPEClassifier # [2026-02-09 Fix] Import PPE Classifier
 
 main_path = os.path.dirname(__file__)
 def check_empty_string_in_dict(data):
@@ -522,6 +523,10 @@ class FaceRecognitionSystem:
 
             self.model_clothes = YOLOv10(int8_model_det_path.parent, task='detect')
             LOGGER.info("衣著辨識模型載入成功。")
+            
+            # [2026-02-09 Fix] 同步載入 PPE 細節分類器 (扣環/背心狀態)
+            self.classifier_ppe = PPEClassifier()
+            
         except Exception as e:
             LOGGER.error(f"載入衣著模型失敗: {e}")
 
