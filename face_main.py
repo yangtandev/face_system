@@ -205,7 +205,17 @@ class CameraSystem:
                         now_frame = put_chinese_text(now_frame, staff_name_display, (x1, text_y), font_path, font_size, (205, 0, 0))
                     else:
                         self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img
-                        now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0))
+                        
+                        # [2026-02-10 UX] Only show "辨識中" if face is large enough (>= 80% of min_face)
+                        # Avoids showing text for faces that are too far/small to even trigger "Please come closer".
+                        current_width = (x2 - x1) / scale 
+                        target_min = self.system.state.min_face[self.frame_num]
+                        
+                        # Check threshold (matches model.py logic: POTENTIAL_MISS_RATIO ~ 0.8)
+                        if current_width >= (target_min * 0.8):
+                            now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0))
+                        else:
+                            pass # Too small, show nothing (keep clean)
                 
                 # 辨識後處理邏輯 (保持不變)
                 if self.system.state.same_people[self.frame_num] > 0:
