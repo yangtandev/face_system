@@ -796,6 +796,14 @@ class Comparison:
             time.sleep(self.system.state.comparison_interval)
             now = time.time()
             
+            # [2026-01-11 Fix] 原子讀取打包數據
+            # 確保 影像(frame), 狀態(gaze), 位置(box) 來自同一時間點 (Snapshot)
+            data_package = self.system.state.frame_data[self.frame_num]
+            if data_package is None:
+                continue # 如果沒資料 (例如 Detector 阻斷中)，就繼續睡，別動 Hint！
+                
+            # [2026-02-10 Fix] Move hint clearing logic AFTER data check
+            # This prevents Race Condition where Comparison clears the hint while Detector is blocking.
             # 清除過期的 UI 提示
             if now > self.hint_clear_time:
                 self.system.state.hint_text[self.frame_num] = ""
@@ -805,12 +813,6 @@ class Comparison:
                now - self.display_state['last_update'] > self.DISPLAY_STATE_HOLD_SECONDS:
                 self._update_display_state('None')
 
-            # [2026-01-11 Fix] 原子讀取打包數據
-            # 確保 影像(frame), 狀態(gaze), 位置(box) 來自同一時間點 (Snapshot)
-            data_package = self.system.state.frame_data[self.frame_num]
-            if data_package is None:
-                continue
-                
             _frame, _gaze_status, _box, _points = data_package
             
             # 使用解包出來的 frame，而不是去讀可能已經被覆蓋的 system.state.frame_mtcnn
