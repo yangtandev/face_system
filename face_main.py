@@ -381,10 +381,13 @@ class CameraSystem:
             d_str, t_str = dt.strftime("%Y_%m_%d"), dt.strftime("%H;%M;%S")
             os.makedirs(f"{main_path}/img_log/{path}/{d_str}", exist_ok=True)
             
-            last_time = self.save_img_time.get(path, 0)
+            tag_str = f"_{camera_tag}" if camera_tag else ""
+            
+            # [2026-02-10 Fix] Split debounce timer by direction (face_In vs face_Out)
+            debounce_key = f"{path}{tag_str}" 
+            
+            last_time = self.save_img_time.get(debounce_key, 0)
             if time.time() - last_time > 5 or (self.save_name_last != staffname and staffname != ""):
-                # [2026-02-10 Feature] Add camera_tag to filename
-                tag_str = f"_{camera_tag}" if camera_tag else ""
                 fname_base = f"{t_str}{tag_str}_{staffname}_C{int(conf*100)}_Z{z_score:.2f}_W{width}" if staffname else f"{t_str}{tag_str}"
                 fname = f"{fname_base}.jpg"
                 cv2.imwrite(f"{main_path}/img_log/{path}/{d_str}/{fname}", img)
@@ -405,8 +408,10 @@ class CameraSystem:
                     except Exception as je:
                         LOGGER.error(f"Failed to save metadata JSON: {je}")
 
-                self.save_img_time[path] = time.time()
+                self.save_img_time[debounce_key] = time.time()
                 if staffname: self.save_name_last = staffname
+
+
         except Exception as e:
             LOGGER.error(f"Async save_img failed: {e}")
 
