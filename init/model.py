@@ -231,6 +231,20 @@ class Detector:
                                 if time.time() - self.last_no_face_log_time > 2.0:
                                     self.system.speaker.say("請正確著裝", "hint_clothes_block", priority=1)
                                     self.last_no_face_log_time = time.time()
+                                    
+                                    # [2026-02-09 Fix] 主動存檔 ClothesFail (Unknown User)
+                                    # 由於阻斷發生在識別前，無法得知身分，僅存截圖供稽核
+                                    try:
+                                        self.system.compar._save_potential_miss_image(
+                                            new_frame, 
+                                            face_width, 
+                                            min_face_val, 
+                                            CAM_NAME_MAP.get(self.frame_num, f"Cam {self.frame_num}"), 
+                                            reason="ClothesFail"
+                                        )
+                                    except Exception as e:
+                                        LOGGER.error(f"Save ClothesFail image failed: {e}")
+
                                 self.system.state.hint_text[self.frame_num] = "請正確著裝"
                                 self.system.state.frame_data[self.frame_num] = None
                                 self.system.state.max_box[self.frame_num] = box
