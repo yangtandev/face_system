@@ -357,9 +357,13 @@ class CameraSystem:
 
         # [2026-02-10 Fix] Priority Check for Clothes Blocking Hint
         # If Detector has set "請正確著裝" in hint_text, suppress Side Panel immediately.
-        # This prevents falling through to "辨識中" when current_class is None.
         current_hint = self.system.state.hint_text[self.frame_num]
         if "請正確著裝" in current_hint:
+            return 'background-color: transparent;', ""
+            
+        # [2026-02-10 Fix] Also suppress Side Panel for "Please come closer" hint
+        # User request: Side panel should be empty when approaching (80%~100%), only Overlay shows text.
+        if "請靠近" in current_hint:
             return 'background-color: transparent;', ""
 
         current_class = self.system.state.same_class[self.frame_num]
