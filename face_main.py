@@ -397,8 +397,8 @@ class CameraSystem:
             w = box[2] - box[0]
             target_min = self.system.state.min_face[self.frame_num]
             
-            # [Refinement] Add 10% buffer to Side Panel as well
-            if w >= (target_min * 1.1):
+            # [Refinement] Revert buffer to 1.0 as per user request
+            if w >= target_min:
                 return 'color: rgb(0, 85, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "辨識中"
         
         # Too small or no box -> Show empty
