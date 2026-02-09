@@ -240,6 +240,7 @@ class Detector:
                     else:
                         self.system.state.gaze_status[self.frame_num] = None
                         self.system.state.head_pose[self.frame_num] = None
+                        self.system.state.frame_data[self.frame_num] = None
                         
                         # 這裡要處理 "沒人臉" 時的衣著狀態重置嗎？
                         # 不，衣著狀態已經在上面更新過了 (Line 167)
