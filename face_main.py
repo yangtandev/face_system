@@ -168,11 +168,15 @@ class CameraSystem:
                 hint_msg = self.system.state.hint_text[self.frame_num]
                 text_y = y1 - int(55*scale) if y1 - int(55*scale) > 10 else y2 + 10
                 
-                # [2026-02-10 UX] Global Visibility Rule: Only show text if face >= min_face
+                # [2026-02-10 UX] Global Visibility Rule
+                # If Clothes Detection is ON: Strict 100% threshold (User Request)
+                # If Clothes Detection is OFF: Standard 80% threshold (Allow "Please come closer" hint)
                 current_width = (x2 - x1) / scale 
                 target_min = self.system.state.min_face[self.frame_num]
                 
-                if current_width >= target_min:
+                vis_ratio = 1.0 if CONFIG.get("Clothes_detection", False) else 0.8
+                
+                if current_width >= (target_min * vis_ratio):
                     # [2026-02-03 Fix] 衣著檢查邏輯：需考慮單鏡頭排程切換
                     is_entry = self._is_entry_active()
                     need_check_clothes = (is_entry and CONFIG["Clothes_detection"])
@@ -339,12 +343,14 @@ class CameraSystem:
 
     def show_hint(self):
         # [2026-02-10 UX] Global Visibility Rule for Side Panel
-        # Hide ALL status text if face is too small/distant
+        # Clothes ON: Strict 100%, Clothes OFF: 80% (Standard)
         box = self.system.state.max_box[self.frame_num]
         if box is not None:
             w = box[2] - box[0]
             target_min = self.system.state.min_face[self.frame_num]
-            if w < target_min:
+            vis_ratio = 1.0 if CONFIG.get("Clothes_detection", False) else 0.8
+            
+            if w < (target_min * vis_ratio):
                 return 'background-color: transparent;', ""
         else:
             return 'background-color: transparent;', ""
