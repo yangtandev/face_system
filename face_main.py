@@ -365,8 +365,12 @@ class CameraSystem:
     def save_img(self, img, path, staffname="", conf=0.0, z_score=0.0, width=0, metadata=None):
         # [2026-01-13 Perf] Offload disk I/O to background thread
         # [2026-02-10 Feature] Pass camera tag (In/Out) to filename
-        is_entry = self._is_entry_active()
-        camera_tag = "In" if is_entry else "Out"
+        # Priority: 1. check_in_out result (last_direction), 2. _is_entry_active() fallback
+        camera_tag = self.system.state.last_direction[self.frame_num]
+        if not camera_tag:
+             is_entry = self._is_entry_active()
+             camera_tag = "In" if is_entry else "Out"
+             
         self.system.io_pool.submit(self._save_img_task, img.copy(), path, staffname, conf, z_score, width, metadata, camera_tag)
 
     def _save_img_task(self, img, path, staffname, conf, z_score, width, metadata=None, camera_tag=""):
@@ -439,6 +443,7 @@ class GlobalState:
     success_frame: List[Any] = None
     success_metadata: List[Any] = None # [2026-01-19 Feature] Snapshot metadata for debugging
     success_snapshot: List[Any] = None # [2026-01-24 Fix] 原子打包 (frame, metadata)，避免 Race Condition
+    last_direction: List[str] = None # [2026-02-10 Feature] Sync In/Out direction from check_in_out
     clothes: List[bool] = None
     check_time: Dict[str, List[Any]] = None
     features_dict: Dict[str, Any] = None
@@ -471,6 +476,7 @@ class FaceRecognitionSystem:
         self.state.success_frame = [None, None]
         self.state.success_metadata = [None, None] # Initialize
         self.state.success_snapshot = [None, None] # [2026-01-24 Fix] 原子打包 (frame, metadata)
+        self.state.last_direction = ["In", "Out"] # Default directions
         self.state.clothes = [False, False, False]
         self.state.check_time, self.state.features_dict, self.state.profile_dict = {}, {}, {}
         self.state.part_features = {} # Initialize empty

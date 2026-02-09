@@ -136,6 +136,9 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
     # 執行簽到
     if is_check_in_action:
         log_metrics(staff_name, 0, confidence) # Log as check-in with confidence
+        # [2026-02-10 Feature] Sync direction to GlobalState for file saving
+        if system.state.last_direction: system.state.last_direction[camera_num] = "In"
+        
         async_api_call(
             func=API.face_recognition_in,
             args=(staff_id,),
@@ -150,6 +153,9 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
     # 執行簽離
     elif is_check_out_action:
         log_metrics(staff_name, 1, confidence) # Log as check-out with confidence
+        # [2026-02-10 Feature] Sync direction to GlobalState for file saving
+        if system.state.last_direction: system.state.last_direction[camera_num] = "Out"
+
         async_api_call(
             func=API.face_recognition_out,
             args=(staff_id,),
@@ -259,17 +265,20 @@ def check_in_out_qrcode(system, verification, staff_id, camera_num):
             if res.status_code in [200, 201, 202]:
                 LOGGER.info(f"[QRCode] 上傳成功: {res.status_code}")
                 
-                # [2026-02-05 Fix] 成功後更新人員狀態 (Check Time)
+                    # [2026-02-05 Fix] 成功後更新人員狀態 (Check Time)
                 # 這對於單鏡頭自動切換至關重要
                 now = time.time()
                 try:
                     if direction == 'enter':
                         system.state.check_time[staff_id] = [False, now] # 設為 "已在內"
+                        if system.state.last_direction: system.state.last_direction[camera_num] = "In"
                     elif direction == 'exit':
                         system.state.check_time[staff_id][1] = now
+                        if system.state.last_direction: system.state.last_direction[camera_num] = "Out"
                         # 延遲重置 (模擬離開)
                         threading.Timer(5, clear_leave_employee, (system, staff_id)).start()
                     LOGGER.info(f"[QRCode] 更新人員 {staff_id} 狀態為 {direction}")
+
                     
                     # [2026-02-05 Feature] 觸發 UI 顯示 (顯示大頭貼與姓名)
                     # 需找到對應的 CameraSystem 並更新其 Comparison 狀態
