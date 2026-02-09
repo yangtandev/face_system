@@ -364,9 +364,12 @@ class CameraSystem:
 
     def save_img(self, img, path, staffname="", conf=0.0, z_score=0.0, width=0, metadata=None):
         # [2026-01-13 Perf] Offload disk I/O to background thread
-        self.system.io_pool.submit(self._save_img_task, img.copy(), path, staffname, conf, z_score, width, metadata)
+        # [2026-02-10 Feature] Pass camera tag (In/Out) to filename
+        is_entry = self._is_entry_active()
+        camera_tag = "In" if is_entry else "Out"
+        self.system.io_pool.submit(self._save_img_task, img.copy(), path, staffname, conf, z_score, width, metadata, camera_tag)
 
-    def _save_img_task(self, img, path, staffname, conf, z_score, width, metadata=None):
+    def _save_img_task(self, img, path, staffname, conf, z_score, width, metadata=None, camera_tag=""):
         try:
             dt = datetime.datetime.today()
             d_str, t_str = dt.strftime("%Y_%m_%d"), dt.strftime("%H;%M;%S")
@@ -374,7 +377,9 @@ class CameraSystem:
             
             last_time = self.save_img_time.get(path, 0)
             if time.time() - last_time > 5 or (self.save_name_last != staffname and staffname != ""):
-                fname_base = f"{t_str}_{staffname}_C{int(conf*100)}_Z{z_score:.2f}_W{width}" if staffname else f"{t_str}"
+                # [2026-02-10 Feature] Add camera_tag to filename
+                tag_str = f"_{camera_tag}" if camera_tag else ""
+                fname_base = f"{t_str}{tag_str}_{staffname}_C{int(conf*100)}_Z{z_score:.2f}_W{width}" if staffname else f"{t_str}{tag_str}"
                 fname = f"{fname_base}.jpg"
                 cv2.imwrite(f"{main_path}/img_log/{path}/{d_str}/{fname}", img)
                 
