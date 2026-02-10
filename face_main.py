@@ -346,12 +346,6 @@ class CameraSystem:
         # Clothes ON: Strict 100%, Clothes OFF: 80% (Standard)
         box = self.system.state.max_box[self.frame_num]
         
-        # [DEBUG LOG] Trace Side Panel decision
-        w_debug = box[2] - box[0] if box else 0
-        min_debug = self.system.state.min_face[self.frame_num]
-        hint_debug = self.system.state.hint_text[self.frame_num]
-        LOGGER.info(f"[DEBUG][SidePanel] w={w_debug}, min={min_debug}, hint='{hint_debug}'")
-
         if box is not None:
             w = box[2] - box[0]
             target_min = self.system.state.min_face[self.frame_num]

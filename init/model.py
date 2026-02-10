@@ -307,7 +307,7 @@ class Detector:
             time.sleep(0.01)
 
     def _detect_vest_lines(self, img):
-        """
+        r"""
         [2026-02-10 Feature] Detect reflective strips angle to validate vest status.
         Returns: status ("V-Shape(\/)", "Parallel(||)", "NoLines")
         """
