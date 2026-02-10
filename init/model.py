@@ -2,6 +2,7 @@ import json
 import os
 import threading
 import time
+import math
 from collections import defaultdict
 
 import cv2
@@ -305,6 +306,38 @@ class Detector:
 
             time.sleep(0.01)
 
+    def _detect_vest_lines(self, img):
+        """
+        [2026-02-10 Feature] Detect reflective strips angle to validate vest status.
+        Returns: status ("V-Shape(\/)", "Parallel(||)", "NoLines")
+        """
+        if img is None or img.size == 0: return "NoLines"
+        
+        try:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            gray = cv2.equalizeHist(gray) 
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            edges = cv2.Canny(blurred, 50, 150, apertureSize=3)
+            lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=40, maxLineGap=10)
+            
+            angles = []
+            if lines is not None:
+                for line in lines:
+                    x1, y1, x2, y2 = line[0]
+                    angle = math.degrees(math.atan2(y2 - y1, x2 - x1))
+                    if abs(angle) > 30 and abs(angle) < 150:
+                        angles.append(angle)
+            
+            if len(angles) > 0:
+                avg_abs_angle = np.mean([abs(a) for a in angles])
+                if avg_abs_angle > 80: 
+                    return "Parallel" 
+                else:
+                    return "V-Shape"
+            return "NoLines"
+        except Exception as e:
+            return "Error"
+
     def clothes_detector(self, X_offset, state_buffer=None, landmarks=None):
         """
         使用 YOLO 模型進行衣著偵測，並結合 PPE Classifier 驗證穿戴正確性。
@@ -356,7 +389,6 @@ class Detector:
             # [2026-02-09 Feature] 安全帽扣環檢查 (Buckle Check)
             if class_id == 2 and has_ppe_classifier and landmarks is not None:
                 # 定位下巴區域 (Chin ROI)
-                # landmarks: 0=LE, 1=RE, 2=Nose, 3=LM, 4=RM
                 nose = landmarks[2]
                 mouth_l = landmarks[3]
                 mouth_r = landmarks[4]
@@ -365,17 +397,9 @@ class Detector:
                 mouth_cy = (mouth_l[1] + mouth_r[1]) / 2
                 nm_dist = mouth_cy - nose[1] # 鼻嘴距
                 
-                # ROI: 嘴巴中心往下延伸 2.5 倍鼻嘴距，寬度為 2 倍鼻嘴距
-                roi_w = int(nm_dist * 2.5)
+                # ROI: 嘴巴中心往下延伸 2.5 倍鼻嘴距，寬度為 3.4 倍鼻嘴距 (Wide ROI)
+                roi_w = int(nm_dist * 3.4)
                 roi_h = int(nm_dist * 2.5)
-                rx1 = int(mouth_cx - roi_w/2) + X_offset # 注意: landmarks 座標是在 mask 內的相對座標嗎？
-                # 不，Detector.face_detector 傳入的是原始 new_frame 偵測出的 landmarks (絕對座標)
-                # 但 self.mask_frame 是裁切過的。
-                # 這裡需要特別小心座標系。
-                
-                # 修正：傳入的 landmarks 是 Detector.face_detector 裡的 `points`，它是基於 `new_frame` (原圖) 的。
-                # 而 `self.mask_frame` 是 `apply_mask` 出來的。
-                # 我們應該直接從 `self.system.state.frame[self.frame_num]` (原圖) 裁切 ROI。
                 
                 rx1 = int(mouth_cx - roi_w/2)
                 ry1 = int(mouth_cy + nm_dist * 0.5) # 從嘴巴下方開始
@@ -393,29 +417,88 @@ class Detector:
                     
                     if label == "FAIL":
                         is_valid = False
-                        # LOGGER.info(f"安全帽未扣好 (Score: {score:.2f})")
             
             # [2026-02-09 Feature] 背心魔鬼沾檢查 (Vest Check)
             elif class_id == 0 and has_ppe_classifier:
-                # 直接使用 YOLO 偵測到的背心框進行裁切與判定
-                # 假設 vest_net 是針對整件背心或其核心區域訓練的
                 frame_h, frame_w = self.system.state.frame[self.frame_num].shape[:2]
                 
-                # 邊界檢查
-                vx1, vy1, vx2, vy2 = max(0, x1), max(0, y1), min(frame_w, x2), min(frame_h, y2)
+                # 1. Pose-Based Dynamic ROI
+                # 使用 MediaPipe Pose (需傳入 RGB 格式)
+                # self.system.state.frame 是 BGR
+                rgb_frame = cv2.cvtColor(self.system.state.frame[self.frame_num], cv2.COLOR_BGR2RGB)
+                pose_results = self.mp_handler.detect_pose(rgb_frame)
                 
-                if vy2 > vy1 and vx2 > vx1:
-                    # 裁切背心區域
-                    vest_roi = self.system.state.frame[self.frame_num][vy1:vy2, vx1:vx2]
+                vest_roi = None
+                
+                if pose_results.pose_landmarks:
+                    lm = pose_results.pose_landmarks.landmark
+                    def get_xy(idx): return int(lm[idx].x * frame_w), int(lm[idx].y * frame_h)
                     
-                    # 為了提高準確度，我們也可以只取上半部 (胸口)，視模型訓練方式而定
-                    # 暫時使用全框，因為 YOLO 框通常已經很貼合
+                    # Shoulders & Hips
+                    ls_x, ls_y = get_xy(11); rs_x, rs_y = get_xy(12)
+                    lh_x, lh_y = get_xy(23); rh_x, rh_y = get_xy(24)
+                    
+                    # X Range: Shoulders + Hips + Elbows (if visible)
+                    x_coords = [ls_x, rs_x, lh_x, rh_x]
+                    # Elbows (13, 14) check visibility > 0.5
+                    if lm[13].visibility > 0.5: x_coords.append(get_xy(13)[0])
+                    if lm[14].visibility > 0.5: x_coords.append(get_xy(14)[0])
+                    
+                    min_x, max_x = min(x_coords), max(x_coords)
+                    min_y, max_y = min(ls_y, rs_y), max(lh_y, rh_y)
+                    
+                    w_body = max_x - min_x
+                    h_body = max_y - min_y
+                    
+                    # Padding: 15% side, 10% top/bottom
+                    pad_x = int(w_body * 0.15)
+                    pad_y_top = int(h_body * 0.1)
+                    pad_y_bot = int(h_body * 0.1)
+                    
+                    px1 = max(0, min_x - pad_x)
+                    py1 = max(0, min_y - pad_y_top)
+                    px2 = min(frame_w, max_x + pad_x)
+                    py2 = min(frame_h, max_y + pad_y_bot)
+                    
+                    if py2 > py1 and px2 > px1:
+                        vest_roi = self.system.state.frame[self.frame_num][py1:py2, px1:px2]
+                
+                # Fallback: YOLO-Expanded ROI
+                if vest_roi is None:
+                    vx1, vy1, vx2, vy2 = max(0, x1), max(0, y1), min(frame_w, x2), min(frame_h, y2)
+                    
+                    # Chest-to-Waist + 20% Width Expansion
+                    h_box = vy2 - vy1
+                    w_box = vx2 - vx1
+                    
+                    vy1_adj = vy1 + int(h_box * 0.25)
+                    vy2_adj = vy2
+                    pad_x = int(w_box * 0.20)
+                    vx1_adj = max(0, vx1 - pad_x)
+                    vx2_adj = min(frame_w, vx2 + pad_x)
+                    
+                    if vy2_adj > vy1_adj and vx2_adj > vx1_adj:
+                        vest_roi = self.system.state.frame[self.frame_num][vy1_adj:vy2_adj, vx1_adj:vx2_adj]
+                
+                # Prediction & Validation
+                if vest_roi is not None and vest_roi.size > 0:
                     label, score = self.system.classifier_ppe.predict_vest(vest_roi)
+                    line_status = self._detect_vest_lines(vest_roi)
+                    
+                    # Logic Override:
+                    # 1. FAIL but V-Shape -> PASS (Rescue)
+                    if label == "FAIL" and line_status == "V-Shape":
+                        label = "PASS"
+                        # LOGGER.info(f"背心 AI FAIL -> V-Shape Rescue PASS")
+                        
+                    # 2. PASS but Parallel -> FAIL (Safety)
+                    if label == "PASS" and line_status == "Parallel":
+                        label = "FAIL"
+                        # LOGGER.info(f"背心 AI PASS -> Parallel Safety FAIL")
                     
                     if label == "FAIL":
                         is_valid = False
-                        # LOGGER.info(f"背心未穿好/魔鬼沾未黏 (Score: {score:.2f})")
-
+            
             if is_valid:
                 if state_buffer is not None:
                     state_buffer[class_id] = True

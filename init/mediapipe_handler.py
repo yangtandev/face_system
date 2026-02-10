@@ -29,6 +29,14 @@ class MediaPipeHandler:
             min_tracking_confidence=0.5
         )
         
+        # [2026-02-10 Feature] Pose Estimation for Vest ROI
+        self.mp_pose = mp_solutions.pose
+        self.pose_detector = self.mp_pose.Pose(
+            static_image_mode=True, 
+            model_complexity=1, 
+            min_detection_confidence=0.5
+        )
+        
         # 關鍵點 Index 定義
         self.IDX_LEFT_EYE_IRIS = 468
         self.IDX_RIGHT_EYE_IRIS = 473
@@ -51,6 +59,32 @@ class MediaPipeHandler:
         if hasattr(self, 'face_mesh') and self.face_mesh:
             self.face_mesh.close()
             self.face_mesh = None
+        if hasattr(self, 'pose_detector') and self.pose_detector:
+            self.pose_detector.close()
+            self.pose_detector = None
+
+    def detect_pose(self, image):
+        """
+        Detect full body pose landmarks.
+        Returns: pose_results object (access .pose_landmarks)
+        """
+        if not isinstance(image, np.ndarray):
+            image = np.array(image)
+        
+        # Ensure RGB
+        if image.shape[2] == 3: # Check channels
+             # Assuming input might be BGR if from OpenCV, MP needs RGB
+             # However, main loop usually passes BGR to .detect() which converts it?
+             # wait, detect() converts image? 
+             # No, face_detector passes rgb_frame to detect().
+             # So we assume input is ALREADY RGB if consistent with detect().
+             pass
+             
+        # Actually, let's be safe. MediaPipe needs RGB.
+        # But we don't know if input is RGB or BGR here easily without context.
+        # Standardize: Assume input is RGB (like detect method).
+        
+        return self.pose_detector.process(image)
 
     def detect(self, image, landmarks=True):
         if not isinstance(image, np.ndarray):
