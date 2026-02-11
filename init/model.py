@@ -65,7 +65,7 @@ class Detector:
         self.stop_threads = False
         self.last_face_time = 0
         self.last_no_face_log_time = 0
-        self.clothe_time = [0, 0, 0]
+        self.clothe_time = [0.0, 0.0, 0.0]
         # 初始化 MediaPipe 處理器
         self.mp_handler = MediaPipeHandler()
         
@@ -879,6 +879,12 @@ class Comparison:
             time.sleep(self.system.state.comparison_interval)
             now = time.time()
             
+            # [2026-02-11 Fix] Ensure display state is cleared even if no face is detected (frame_data is None)
+            # This solves the issue where the sidebar avatar persists until the next detection event.
+            if self.display_state['person_id'] != 'None' and \
+               now - self.display_state['last_update'] > self.DISPLAY_STATE_HOLD_SECONDS:
+                self._update_display_state('None')
+
             # [2026-01-11 Fix] 原子讀取打包數據
             # 確保 影像(frame), 狀態(gaze), 位置(box) 來自同一時間點 (Snapshot)
             data_package = self.system.state.frame_data[self.frame_num]
@@ -890,11 +896,6 @@ class Comparison:
             # 清除過期的 UI 提示
             if now > self.hint_clear_time:
                 self.system.state.hint_text[self.frame_num] = ""
-
-            # 清除畫面上的人員名稱（如果超過顯示時間）
-            if self.display_state['person_id'] != 'None' and \
-               now - self.display_state['last_update'] > self.DISPLAY_STATE_HOLD_SECONDS:
-                self._update_display_state('None')
 
             _frame, _gaze_status, _box, _points = data_package
             
