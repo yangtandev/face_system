@@ -42,3 +42,6 @@ sim_rescue*.txt
 
 # --- Testing ---
 tests/
+
+# --- Training ---
+train/
