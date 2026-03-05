@@ -34,3 +34,5 @@ test_results*.json
 sim_rescue*.txt
 *.swp
 
+# --- Cline ---
+.clinerules
