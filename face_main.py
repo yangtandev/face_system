@@ -32,7 +32,6 @@ from dataclasses import dataclass
 from collections import defaultdict
 from typing import List, Dict, Any
 from init.ann_index import AnnIndex
-from init.ppe_classifier import PPEClassifier # [2026-02-09 Fix] Import PPE Classifier
 
 main_path = os.path.dirname(__file__)
 def check_empty_string_in_dict(data):
@@ -99,7 +98,7 @@ class CameraSystem:
         # 注意: self.n_camera 在 __init__ 中定義為 n < 2，這變數命名有點反直覺
         # n < 2 (True) -> 單鏡頭
         # n >= 2 (False) -> 雙鏡頭
-        if not self.n_camera: 
+        if not self.n_camera:
             return self.frame_num == 0
 
         # 2. 單鏡頭模式 (self.n_camera == True)
@@ -108,7 +107,7 @@ class CameraSystem:
             # 若無排程，單鏡頭預設為入口 (或者根據 check_time 狀態自動切換，但衣著檢查通常只在入口)
             # 根據 function.py 的邏輯，如果沒排程，單鏡頭是自動切換。
             # 但為了安全起見，衣著檢查應從嚴：預設檢查 (視為入口)，除非明確知道是出口。
-            return True 
+            return True
 
         # 3. 檢查排程
         try:
@@ -118,7 +117,7 @@ class CameraSystem:
                 start_str = schedule_conf.get("in_start", "06:00")
                 end_str = schedule_conf.get("in_end", "17:00")
                 periods = [{"start": start_str, "end": end_str}]
-            
+
             for period in periods:
                 start_time = datetime.datetime.strptime(period.get("start", "00:00"), "%H:%M").time()
                 end_time = datetime.datetime.strptime(period.get("end", "00:00"), "%H:%M").time()
@@ -126,7 +125,7 @@ class CameraSystem:
                     if start_time <= now_time <= end_time: return True
                 else:
                     if start_time <= now_time or now_time <= end_time: return True
-            
+
             return False # 不在入口時段 -> 出口
         except:
             return True # 發生錯誤，從嚴認定
@@ -137,18 +136,18 @@ class CameraSystem:
             original_frame = self.camera.read()
             if original_frame is None or original_frame.size == 0:
                 time.sleep(0.01); continue
-            
+
             # 更新 AI 與存檔用的原圖
             self.system.state.frame[self.frame_num] = original_frame
             self.system.state.frame_high_res[self.frame_num] = original_frame
-            
+
             # [效能優化] 先縮圖，再繪圖 (Process Small, Display Small, Save Big)
             # 原本在 1080p 上做 PIL 中文繪圖太慢，導致延遲。
             # 改為縮小到 960px 寬 (1/2 尺寸, 1/4 像素量)，速度提升 4 倍。
             h, w = original_frame.shape[:2]
             target_w = 960
             scale = target_w / w if w > target_w else 1.0
-            
+
             if scale < 1.0:
                 target_h = int(h * scale)
                 now_frame = cv2.resize(original_frame, (target_w, target_h))
@@ -162,33 +161,33 @@ class CameraSystem:
                 # 座標轉換: 原圖 -> 小圖
                 ox1, oy1, ox2, oy2 = self.system.state.max_box[self.frame_num]
                 x1, y1, x2, y2 = int(ox1*scale), int(oy1*scale), int(ox2*scale), int(oy2*scale)
-                
+
                 cv2.rectangle(now_frame, (x1, y1), (x2, y2), (255, 0, 0), max(2, int(6*scale)))
                 current_class = self.system.state.same_class[self.frame_num]
                 hint_msg = self.system.state.hint_text[self.frame_num]
                 text_y = y1 - int(55*scale) if y1 - int(55*scale) > 10 else y2 + 10
-                
+
                 # [2026-02-10 UX] Global Visibility Rule
                 # If Clothes Detection is ON: Strict 100% threshold (User Request)
                 # If Clothes Detection is OFF: Standard 80% threshold (Allow "Please come closer" hint)
-                current_width = (x2 - x1) / scale 
+                current_width = (x2 - x1) / scale
                 target_min = self.system.state.min_face[self.frame_num]
-                
+
                 vis_ratio = 1.0 if CONFIG.get("Clothes_detection", False) else 0.8
-                
+
                 if current_width >= (target_min * vis_ratio):
                     # [2026-02-03 Fix] 衣著檢查邏輯：需考慮單鏡頭排程切換
                     is_entry = self._is_entry_active()
                     need_check_clothes = (is_entry and CONFIG["Clothes_detection"])
-                    
+
                     is_clothes_pass = (self.system.state.clothes[0] and self.system.state.clothes[2])
                     passed_gate = (not need_check_clothes) or is_clothes_pass
-                    
+
                     staff_name_display = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
 
                     # [2026-02-03 Fix] 顯示邏輯重構：採用巢狀結構確保互斥
                     blocked_by_clothes = (not passed_gate) and (current_class != "None" and current_class != "__VISITOR__")
-                    
+
                     if blocked_by_clothes:
                         now_frame = put_chinese_text(now_frame, "請正確著裝", (x1, text_y), font_path, font_size, (255, 85, 0))
                     else:
@@ -199,7 +198,7 @@ class CameraSystem:
                             now_frame = put_chinese_text(now_frame, "訪客", (x1, text_y), font_path, font_size, (0, 0, 255))
                             try:
                                 # 訪客頭像截取仍需使用原圖 (保持解析度)
-                                if oy2 > oy1 and ox2 > ox1: 
+                                if oy2 > oy1 and ox2 > ox1:
                                      self.last_visitor_face_img = original_frame[max(0,oy1):min(h,oy2), max(0,ox1):min(w,ox2)].copy()
                             except Exception: pass
                         elif current_class != "None" and staff_name_display:
@@ -208,23 +207,23 @@ class CameraSystem:
                         else:
                             self.last_visitor_face_img = None # [2026-01-19 Fix] Reset visitor img
                             now_frame = put_chinese_text(now_frame, "辨識中", (x1, text_y), font_path, font_size, (0, 0, 0))
-                
+
                 # 辨識後處理邏輯 (保持不變)
                 if self.system.state.same_people[self.frame_num] > 0:
                     confidence = self.system.state.same_people[self.frame_num]
                     if current_class not in ["None", "__VISITOR__"]:
                         success_staff_name = self.system.state.features_dict.get("id_name", {}).get(current_class, "未知員工")
-                        
+
                         # [2026-02-03 Fix] 修正存檔與放行邏輯
                         # 1. 只有通過衣著檢查才放行 + 存檔
                         # 2. 未通過則提示請著裝，且不存入成功日誌
                         # 3. 出口永遠放行 (need_check_clothes 為 False)
                         if passed_gate:
                             check_in_out(self.system, success_staff_name, current_class, self.frame_num, self.n_camera, confidence)
-                            
+
                             z_score = self.system.state.same_zscore[self.frame_num]
                             width_val = self.system.state.same_width[self.frame_num]
-                            
+
                             # [2026-01-24 Fix] 使用原子打包的 success_snapshot，避免 Race Condition
                             snapshot = self.system.state.success_snapshot[self.frame_num]
                             if snapshot is not None:
@@ -233,7 +232,7 @@ class CameraSystem:
                                 # Fallback to old method (for backwards compatibility)
                                 saved_img = self.system.state.success_frame[self.frame_num]
                                 meta = self.system.state.success_metadata[self.frame_num]
-                            
+
                             if saved_img is not None: self.save_img(saved_img, "face", success_staff_name, confidence, z_score, width_val, metadata=meta)
                             else: self.save_img(self.system.state.frame_high_res[self.frame_num], "face", success_staff_name, confidence, z_score, width_val, metadata=meta)
                         else:
@@ -242,7 +241,7 @@ class CameraSystem:
                             self.system.speaker.say(CONFIG["say"]["clothes"], "hint_clothes", priority=2)
                             # 2. 畫面提示 (這裡設定僅供下次循環參考，即時繪圖已在上方處理)
                             self.system.state.hint_text[self.frame_num] = "請正確著裝"
-                            
+
                             # 3. [2026-02-03 Fix] 存入 potential_miss 供稽核
                             # 即使未放行，也要記錄是「誰」因為「什麼原因」被擋下
                             snapshot = self.system.state.success_snapshot[self.frame_num]
@@ -251,34 +250,34 @@ class CameraSystem:
                             else:
                                 saved_img = self.system.state.frame_high_res[self.frame_num]
                                 meta = self.system.state.success_metadata[self.frame_num]
-                            
+
                             z_score = self.system.state.same_zscore[self.frame_num]
                             width_val = self.system.state.same_width[self.frame_num]
-                            
+
                             # 在檔名中標註失敗原因
                             log_name = f"{success_staff_name}_ClothesFail"
-                            
-                            if saved_img is not None: 
+
+                            if saved_img is not None:
                                 self.save_img(saved_img, "potential_miss", log_name, confidence, z_score, width_val, metadata=meta)
-                            
+
                     self.system.state.same_people[self.frame_num] = 0.0
-            
+
             self.show_frame = now_frame
 
     def updata_screen(self):
         time.sleep(0.5)
         self.win.my_thread.signal_update_img.connect(self.win.update_img)
         self.win.my_thread.signal_update_hint.connect(self.win.update_hint)
-        if self.clothes_de: 
+        if self.clothes_de:
             self.win.my_thread.signal_update_bgcolor.connect(self.win.update_bgcolor)
             self.win.my_thread.signal_update_visibility.connect(self.win.update_visibility)
-            
+
         while not self.stop_threads:
             if self.show_frame.shape[0] == 0: continue
             try:
                 self.win.my_thread.signal_update_img.emit(self.win.img1, self.show_main())
                 self.win.my_thread.signal_update_img.emit(self.win.img2, self.shwo_head())
-                
+
                 # [2026-02-03 Fix] 僅在入口模式且開啟顯示時，才更新服裝圖示
                 if self.clothes_de:
                     bg_objs = [self.win.img3, self.win.img4]
@@ -287,7 +286,7 @@ class CameraSystem:
                         img3, img4 = self.show_save()
                         # 注意：如果原本邏輯就是紅色底，這裡只是確保切回來時恢復
                         bg_colors = ["background-color: rgba(255,0,0,255);", "background-color: rgba(255,0,0,255);"]
-                        
+
                         self.win.my_thread.signal_update_visibility.emit(bg_objs, True) # Show
                         self.win.my_thread.signal_update_img.emit(self.win.img3, img3)
                         self.win.my_thread.signal_update_img.emit(self.win.img4, img4)
@@ -295,7 +294,7 @@ class CameraSystem:
                     else:
                         # 出口模式：直接隱藏元件 (解決白框殘留問題)
                         self.win.my_thread.signal_update_visibility.emit(bg_objs, False) # Hide
-                
+
                 color, txt = self.show_hint()
                 self.win.my_thread.signal_update_hint.emit(self.win.hint, color, txt)
             except Exception: pass
@@ -312,7 +311,7 @@ class CameraSystem:
     def shwo_head(self):
         path = f'{main_path}/other/clear_img.png'
         current_class = self.system.state.same_class[self.frame_num]
-        
+
         # [2026-02-03 Fix] 入口衣著不合格時，強制隱藏大頭貼
         # 修正：改用 _is_entry_active() 以支援單鏡頭排程切換
         need_check_clothes = (self._is_entry_active() and CONFIG["Clothes_detection"])
@@ -345,32 +344,32 @@ class CameraSystem:
         # [2026-02-10 UX] Global Visibility Rule for Side Panel
         # Clothes ON: Strict 100%, Clothes OFF: 80% (Standard)
         box = self.system.state.max_box[self.frame_num]
-        
+
         if box is not None:
             w = box[2] - box[0]
             target_min = self.system.state.min_face[self.frame_num]
             vis_ratio = 1.0 if CONFIG.get("Clothes_detection", False) else 0.8
-            
+
             if w < (target_min * vis_ratio):
                 return 'background-color: transparent;', ""
         else:
             return 'background-color: transparent;', ""
 
         # [2026-02-10 Fix] Priority Check for ANY Hint
-        # If there is any hint text (e.g., "請正確著裝", "請靠近", "請站到中間"), 
+        # If there is any hint text (e.g., "請正確著裝", "請靠近", "請站到中間"),
         # suppress the Side Panel status to avoid misleading "Identifying" state.
         current_hint = self.system.state.hint_text[self.frame_num]
         if current_hint:
             return 'background-color: transparent;', ""
 
         current_class = self.system.state.same_class[self.frame_num]
-        
+
         # [2026-02-03 Fix] 顯示邏輯：若被衣著檢查攔截，UI 提示也應改為 "請正確著裝"
         # 修正：只有在 "偵測到人" (current_class != None) 時才檢查衣著並攔截
         # 修正 (User Feedback): 左側欄位空間不足，"請正確著裝" 會被切掉。改回顯示 "辨識中" 即可 (主畫面已有提示)。
         need_check_clothes = (self._is_entry_active() and CONFIG["Clothes_detection"])
         is_clothes_pass = (self.system.state.clothes[0] and self.system.state.clothes[2])
-        
+
         if current_class == "__VISITOR__":
             return 'color: rgb(0, 0, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "訪客"
         elif current_class != "None":
@@ -379,10 +378,10 @@ class CameraSystem:
                 # 攔截時，隱藏文字 (回傳空白)
                 # User Request: 不顯示 "辨識中"，也不顯示 "請正確著裝" (Side Panel 保持乾淨)
                 return 'background-color: transparent;', ""
-                
+
             name = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
             return 'color: rgb(0, 170, 0); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', name
-            
+
         # [2026-02-10 UX] Hide status text if face is too small/distant
         # Default state (No recognition yet)
         box = self.system.state.max_box[self.frame_num]
@@ -390,11 +389,11 @@ class CameraSystem:
             # box is [x1, y1, x2, y2] in original resolution (from Detector)
             w = box[2] - box[0]
             target_min = self.system.state.min_face[self.frame_num]
-            
+
             # [Refinement] Revert buffer to 1.0 as per user request
             if w >= target_min:
                 return 'color: rgb(0, 85, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "辨識中"
-        
+
         # Too small or no box -> Show empty
         return 'background-color: transparent;', ""
 
@@ -404,11 +403,11 @@ class CameraSystem:
         # Priority: 1. check_in_out result (last_direction), 2. _is_entry_active() fallback
         camera_tag = self.system.state.last_direction[self.frame_num]
         LOGGER.info(f"DEBUG: save_img reading last_direction[{self.frame_num}] = {camera_tag}")
-        
+
         if not camera_tag:
              is_entry = self._is_entry_active()
              camera_tag = "In" if is_entry else "Out"
-             
+
         self.system.io_pool.submit(self._save_img_task, img.copy(), path, staffname, conf, z_score, width, metadata, camera_tag)
 
     def _save_img_task(self, img, path, staffname, conf, z_score, width, metadata=None, camera_tag=""):
@@ -416,18 +415,18 @@ class CameraSystem:
             dt = datetime.datetime.today()
             d_str, t_str = dt.strftime("%Y_%m_%d"), dt.strftime("%H;%M;%S")
             os.makedirs(f"{main_path}/img_log/{path}/{d_str}", exist_ok=True)
-            
+
             tag_str = f"_{camera_tag}" if camera_tag else ""
-            
+
             # [2026-02-10 Fix] Split debounce timer by direction (face_In vs face_Out)
-            debounce_key = f"{path}{tag_str}" 
-            
+            debounce_key = f"{path}{tag_str}"
+
             last_time = self.save_img_time.get(debounce_key, 0)
             if time.time() - last_time > 5 or (self.save_name_last != staffname and staffname != ""):
                 fname_base = f"{t_str}{tag_str}_{staffname}_C{int(conf*100)}_Z{z_score:.2f}_W{width}" if staffname else f"{t_str}{tag_str}"
                 fname = f"{fname_base}.jpg"
                 cv2.imwrite(f"{main_path}/img_log/{path}/{d_str}/{fname}", img)
-                
+
                 # [2026-01-19 Feature] Save Snapshot Metadata for Replay/Debugging
                 if metadata:
                     json_path = f"{main_path}/img_log/{path}/{d_str}/{fname_base}.json"
@@ -438,7 +437,7 @@ class CameraSystem:
                             elif isinstance(o, np.floating): return float(o)
                             elif isinstance(o, np.ndarray): return o.tolist()
                             return str(o)
-                            
+
                         with open(json_path, 'w', encoding='utf-8') as jf:
                             json.dump(metadata, jf, default=default_converter, indent=2, ensure_ascii=False)
                     except Exception as je:
@@ -454,17 +453,17 @@ class CameraSystem:
     def terminate(self, event):
         print(f"Terminating CameraSystem for window {self.frame_num}...")
         self.stop_threads = True
-        
+
         # [2026-01-19 Fix] Wait for UI thread worker
-        if hasattr(self, 'win') and hasattr(self.win, 'my_thread'): 
+        if hasattr(self, 'win') and hasattr(self.win, 'my_thread'):
              self.win.my_thread.exit()
              self.win.my_thread.wait(100) # Wait max 100ms
 
         # Terminate components
         self.camera.terminate()
-        self.detect.terminate() 
-        self.compar.terminate() 
-        
+        self.detect.terminate()
+        self.compar.terminate()
+
         event.accept()
 
 with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding="utf-8") as f:
@@ -533,28 +532,28 @@ class FaceRecognitionSystem:
         self.state.gaze_status = [None] * self.n_camera
         self.state.frame_data = [None] * self.n_camera
         self.state.head_pose = [None] * self.n_camera
-        self.mp_detectors = {} 
+        self.mp_detectors = {}
         self.resnet = inception_resnet_v1.InceptionResnetV1(pretrained='vggface2').eval()
-        
+
         # [2026-02-09 Fix] 使用動態載入方法，支援熱更新
         if CONFIG.get("Clothes_show", False) or CONFIG.get("Clothes_detection", False):
             self.load_clothes_model()
-            
+
         self.speaker = Say_()
         self.local_media_path = os.path.join(os.path.dirname(__file__), "media")
-        
+
         for d in ["descriptors", "pic_bak", "profile_pictures"]: os.makedirs(os.path.join(self.local_media_path, d), exist_ok=True)
         self.update_lock = threading.Lock()
-        
+
         # [2026-01-13 Perf] Thread pool for non-blocking I/O (e.g., image saving)
         self.io_pool = ThreadPoolExecutor(max_workers=2)
-        
+
         # Blocking asset rebuild on startup (Voice -> Descriptors)
         self._rebuild_assets()
-        
+
         # Load features AFTER rebuild is complete
         self._load_features_and_profiles()
-        
+
         # [Perf] Enable auto-tune to maximize runtime FPS based on hardware capability
         self._auto_tune_performance()
 
@@ -571,17 +570,17 @@ class FaceRecognitionSystem:
             models_dir = Path(f'{os.path.dirname(__file__)}/models')
             model_name = 'best_cloth2'
             int8_model_det_path = models_dir/'int8'/f'{model_name}_openvino_model/{model_name}.xml'
-            
+
             if not int8_model_det_path.exists():
                 LOGGER.error(f"模型檔案不存在: {int8_model_det_path}")
                 return
 
             self.model_clothes = YOLOv10(int8_model_det_path.parent, task='detect')
             LOGGER.info("衣著辨識模型載入成功。")
-            
+
             # [2026-02-09 Fix] 同步載入 PPE 細節分類器 (扣環/背心狀態)
             self.classifier_ppe = PPEClassifier()
-            
+
         except Exception as e:
             LOGGER.error(f"載入衣著模型失敗: {e}")
 
@@ -595,7 +594,7 @@ class FaceRecognitionSystem:
         # 1. Voice (IO Bound) - Run FIRST
         if os.path.exists(vp): shutil.rmtree(vp)
         os.makedirs(vp, exist_ok=True)
-        
+
         if os.path.isdir(pb):
             LOGGER.info("Stage 1/2: Rebuilding voice files...")
             generic_texts = {}
@@ -629,14 +628,14 @@ class FaceRecognitionSystem:
             # [Perf] Maximize IO parallelism (default workers = CPU_count + 4)
             with ThreadPoolExecutor() as executor:
                 futures = [executor.submit(gen_one_voice, fn, txt) for fn, txt in tasks]
-                for f in tqdm(futures, desc="[Voice Gen     ]"): 
+                for f in tqdm(futures, desc="[Voice Gen     ]"):
                     try: f.result()
                     except Exception: pass
 
         # 2. Descriptors (CPU Bound) - Run SECOND
         if os.path.exists(dp): shutil.rmtree(dp)
         os.makedirs(dp, exist_ok=True)
-        
+
         if os.path.isdir(pb):
             pic_files = [f for f in os.listdir(pb) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
             if pic_files:
@@ -656,13 +655,13 @@ class FaceRecognitionSystem:
                         except Exception: pass
                 finally:
                     mp_handler.close()
-            
+
             # [2026-01-24 Fix] Force delete stale index to ensure rebuild from new descriptors
             index_path = os.path.join(self.local_media_path, "faiss.index")
             if os.path.exists(index_path):
                 os.remove(index_path)
                 LOGGER.info(f"Removed stale index: {index_path}")
-        
+
         LOGGER.info("Assets rebuild complete.")
 
     def _auto_tune_performance(self):
@@ -685,11 +684,11 @@ class FaceRecognitionSystem:
         # [2026-01-19 Fix TTY] Backup terminal settings at startup
         try:
             self.original_tty_settings = termios.tcgetattr(sys.stdin)
-        except Exception: 
+        except Exception:
             self.original_tty_settings = None
 
         app = QApplication(sys.argv)
-        
+
         # [2026-01-30 Feature] Apply Global Theme
         try:
             theme = CONFIG.get("theme", "dark")
@@ -702,10 +701,10 @@ class FaceRecognitionSystem:
         signal.signal(signal.SIGINT, signal_handler); signal.signal(signal.SIGTERM, signal_handler)
         self.shutdown_notifier = QSocketNotifier(safe_shutdown_pipe_read, QSocketNotifier.Read)
         self.shutdown_notifier.activated.connect(lambda: (os.read(safe_shutdown_pipe_read, 1), self._safe_shutdown()))
-        
+
         # [2026-01-30 Feature] Soft Reload via SIGHUP
         signal.signal(signal.SIGHUP, self._handle_sighup)
-        
+
         # [2026-02-01 Feature] Start Web Config Server
         try:
             web_port = 5000
@@ -713,13 +712,13 @@ class FaceRecognitionSystem:
             LOGGER.info(f"Web Config Server started on port {web_port}")
         except Exception as e:
             LOGGER.error(f"Failed to start Web Server: {e}")
-        
+
         self._load_features_and_profiles(); self.setup_mqtt_client(); self.update_inout_log(); self.setup_cameras()
         try: ret = app.exec_()
         finally:
             # [2026-01-19 Fix] Force exit to prevent hanging/high-load due to daemon threads spinning
             # or C++ resource cleanup issues (OpenCV/MediaPipe).
-            
+
             # [2026-01-19 Fix TTY] Synchronously restore terminal state BEFORE exit using Python termios
             # This is more reliable than os.system('stty sane')
             if self.original_tty_settings:
@@ -727,7 +726,7 @@ class FaceRecognitionSystem:
                 try:
                     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.original_tty_settings)
                 except Exception: pass
-            
+
             # [2026-01-19 Fix TTY] Launch a detached "rescuer" process.
             # Even if we restore termios above, background C++ threads (OpenCV/FFmpeg)
             # might corrupt the TTY during the final os._exit().
@@ -735,14 +734,14 @@ class FaceRecognitionSystem:
             # start_new_session=True ensures it survives our os._exit().
             try:
                 subprocess.Popen(
-                    "sleep 0.1; stty sane", 
-                    shell=True, 
+                    "sleep 0.1; stty sane",
+                    shell=True,
                     start_new_session=True,
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL
                 )
             except Exception: pass
-            
+
             print("Force exiting system...")
             os._exit(0)
 
@@ -773,7 +772,7 @@ class FaceRecognitionSystem:
             new_files = [pic_map[b] for b in pic_map if b not in local_desc or os.path.getmtime(os.path.join(pb, pic_map[b])) > os.path.getmtime(os.path.join(dp, f"{b}.npy"))]
             deleted = [f"{n}.npy" for n in local_desc - set(pic_map.keys())]
             if new_files or deleted:
-                for f in deleted: 
+                for f in deleted:
                     try: os.remove(os.path.join(dp, f))
                     except Exception: pass
                 self._generate_new_descriptors(new_files, pb, dp)
@@ -830,7 +829,7 @@ class FaceRecognitionSystem:
             f, _, _, _, _ = self._load_features_from_disk()
             self.state.features_dict = f; self._update_profile_pictures(); self._load_or_build_index(force_rebuild=False)
             # [2026-02-01 Optimization] Disable unused Part Feature Generation to speed up startup
-            # self._load_part_features() 
+            # self._load_part_features()
         except Exception: pass
 
     def _load_part_features(self):
@@ -840,44 +839,44 @@ class FaceRecognitionSystem:
         """
         pb = os.path.join(self.local_media_path, "pic_bak")
         if not os.path.isdir(pb): return
-        
+
         from init.mediapipe_handler import MediaPipeHandler
         mp_handler = MediaPipeHandler(max_num_faces=1) # Temporary instance
-        
+
         try:
             pic_files = [f for f in os.listdir(pb) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
             if not pic_files: return
-            
+
             LOGGER.info(f"Loading Part Features for {len(pic_files)} users...")
             part_db = {}
-            
+
             for f in tqdm(pic_files, desc="[Part Feature Gen]"):
                 try:
                     # Filename: G07_..._Name.jpg
                     bn = os.path.splitext(f)[0]
-                    staff_id = bn.split('_')[0] 
-                    
+                    staff_id = bn.split('_')[0]
+
                     img_path = os.path.join(pb, f)
                     img_bgr = cv2.imread(img_path)
                     if img_bgr is None: continue
                     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-                    
+
                     boxes, _, points = mp_handler.detect(img_rgb)
                     if boxes is not None:
                         # Get part crops (Eye, Nose, Mouth)
                         # Note: We convert to PIL inside get_parts_crop if needed, or pass PIL
                         img_pil = Image.fromarray(img_rgb)
                         parts_tensors, _ = get_parts_crop(img_pil, points[0]) # Ignore coords here
-                        
+
                         parts_emb = {}
                         for p_name, p_tensor in parts_tensors.items():
                             emb = self.resnet(p_tensor.unsqueeze(0)).detach().numpy()[0]
                             parts_emb[p_name] = emb
-                        
+
                         part_db[staff_id] = parts_emb
                 except Exception as e:
                     pass
-                    
+
             self.state.part_features = part_db
             LOGGER.info(f"Loaded Part Features for {len(part_db)} users.")
         finally:
@@ -898,12 +897,12 @@ class FaceRecognitionSystem:
 
     def _load_or_build_index(self, force_rebuild=False):
         if not self.state.features_dict or not any(self.state.features_dict.values()): return
-        
+
         # 嘗試載入現有索引
         if not force_rebuild and self.state.ann_index.load():
             # [2026-01-18 Fix] 強化同步檢查：不只檢查數量，還檢查 ID 集合是否一致
             # 避免 "刪一增一" 導致數量相同但內容過期的問題
-            
+
             # 1. 檢查數量
             current_count = sum(len(v) for k, v in self.state.features_dict.items() if k != 'id_name')
             if self.state.ann_index.index and self.state.ann_index.index.ntotal == current_count:
@@ -911,7 +910,7 @@ class FaceRecognitionSystem:
                 # self.state.ann_index.id_map 儲存了索引中每個向量對應的 Person ID
                 cached_ids = set(self.state.ann_index.id_map)
                 current_ids = set(k for k in self.state.features_dict.keys() if k != 'id_name')
-                
+
                 # 如果快取中的 ID 集合與目前的 ID 集合完全一致，才視為有效
                 if cached_ids == current_ids:
                     return
@@ -919,7 +918,7 @@ class FaceRecognitionSystem:
                     LOGGER.warning("索引 ID 與目前檔案不符 (可能是刪除/新增導致數量巧合)，強制重建索引。")
             else:
                  LOGGER.info(f"索引數量不符 (Index: {self.state.ann_index.index.ntotal}, Files: {current_count})，重建索引。")
-        
+
         # 重建索引
         self.state.ann_index.build(self.state.features_dict)
 
@@ -947,7 +946,7 @@ class FaceRecognitionSystem:
         ips = [CONFIG["cameraIP"]["in_camera"], CONFIG["cameraIP"]["out_camera"]]
         n = 2 if ips[0] != ips[1] else 1
         self.n_camera = n
-        
+
         # [2026-01-30 Fix] Ensure only ONE CameraSystem is created if n=1 (Same IP)
         if n == 1:
             # Only process the first IP (index 0)
@@ -955,9 +954,9 @@ class FaceRecognitionSystem:
         else:
             # Process both
             target_source = enumerate(ips)
-            
+
         self.cameras = [CameraSystem(ip, i, n, self, CONFIG) for i, ip in target_source if ip != "0"]
-        
+
         for cam in self.cameras:
             if CONFIG.get("full_screen", False): cam.win.showFullScreen()
             else: cam.win.showNormal()
@@ -972,7 +971,7 @@ class FaceRecognitionSystem:
     def _reload_configuration(self):
         """Reload configuration and restart camera systems."""
         LOGGER.info("Reloading configuration and restarting subsystems...")
-        
+
         # 1. Terminate existing cameras
         if hasattr(self, 'cameras'):
             for cam in self.cameras:
@@ -982,17 +981,17 @@ class FaceRecognitionSystem:
                     cam.win.close() # This triggers cam.terminate
                 except Exception as e:
                     LOGGER.error(f"Error closing camera window: {e}")
-            
+
             # Wait a bit for threads to die?
             # Or just clear the list. CameraSystem.terminate sets stop_threads=True.
             self.cameras = []
-            
+
         # 2. Reload Config
         global CONFIG
         try:
             with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding="utf-8") as f:
                 new_config = json.load(f)
-            
+
             # [2026-01-30 Fix] Check if asset rebuild is needed
             # Rebuild if 'say' (voice content) or 'Server' (staff list source) changed
             need_rebuild = (new_config.get("say") != CONFIG.get("say")) or \
@@ -1002,7 +1001,7 @@ class FaceRecognitionSystem:
             CONFIG.clear()
             CONFIG.update(new_config)
             LOGGER.info("Configuration reloaded from disk.")
-            
+
             # [2026-01-30 Fix] Reload Theme
             try:
                 theme = CONFIG.get("theme", "dark")
@@ -1010,12 +1009,12 @@ class FaceRecognitionSystem:
                 QApplication.instance().setStyleSheet(styles.get_stylesheet(theme))
             except Exception as e:
                 LOGGER.error(f"Failed to reload theme: {e}")
-                
+
             # [2026-01-30 Fix] Reset Speaker
             try:
                 if hasattr(self, 'speaker'):
                     self.speaker.reset()
-                
+
                 # Rebuild assets if needed (Voice & Descriptors)
                 if need_rebuild:
                     LOGGER.info("Config changed (Say/Server), triggering asset rebuild...")
@@ -1024,7 +1023,7 @@ class FaceRecognitionSystem:
                     self._rebuild_assets()
                 else:
                     LOGGER.info("Config changed (Params only), skipping asset rebuild.")
-                    
+
             except Exception as e:
                 LOGGER.error(f"Failed to reset speaker or rebuild assets: {e}")
 
@@ -1033,11 +1032,11 @@ class FaceRecognitionSystem:
             # We must explicitly update it.
             import init.function as function
             function.CONFIG = CONFIG
-            
+
             # [2026-02-06 Fix] Sync init.model CONFIG global variable
             # Detector logic in init/model.py relies on its own CONFIG copy.
             init.model.CONFIG = CONFIG
-            
+
             LOGGER.info("Synced configuration to function and init.model modules.")
 
         except Exception as e:

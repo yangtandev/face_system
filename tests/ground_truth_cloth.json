@@ -1,0 +1,210 @@
+{
+    "11;37;39_蔡準庭_C89_Z2.96_W211": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "11;38;22_蔡準庭_C86_Z3.12_W227": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "11;38;31_蔡準庭_C88_Z2.88_W261": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "11;39;10_蔡準庭_C86_Z2.83_W218": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;30;13_黃邦和_C83_Z3.21_W362": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;30;40_黃邦和_C82_Z3.05_W407": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;30;47_黃邦和_C84_Z3.48_W418": {
+        "buckle": "pass",
+        "vest": "fail"
+    },
+    "16;30;53_黃邦和_C80_Z3.42_W243": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;30;58_黃邦和_C87_Z3.55_W247": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;32;27_黃邦和_C89_Z3.67_W380": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;32;35_黃邦和_C86_Z3.73_W369": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;32;53_黃邦和_C83_Z3.64_W313": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;33;17_黃邦和_C91_Z3.64_W370": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;33;56_黃邦和_C89_Z3.60_W363": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;34;29_黃邦和_C87_Z3.72_W317": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "16;34;38_黃邦和_C90_Z3.78_W217": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "16;35;49_黃邦和_C89_Z3.46_W229": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;36;04_黃邦和_C91_Z3.69_W266": {
+        "buckle": "fail",
+        "vest": "fail"
+    },
+    "16;37;59_黃邦和_C87_Z3.33_W238": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;38;15_黃邦和_C87_Z3.45_W201": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;38;22_黃邦和_C88_Z3.77_W205": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "16;38;47_黃邦和_C77_Z3.07_W264": {
+        "buckle": "fail",
+        "vest": "fail"
+    },
+    "16;54;42_In_W389_Fail_ClothesFail": {
+        "buckle": "pass",
+        "vest": "fail"
+    },
+    "16;54;44_In_W402_Fail_ClothesFail": {
+        "buckle": "pass",
+        "vest": "fail"
+    },
+    "17;01;54_黃邦和_C84_Z3.11_W349": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;01;59_黃邦和_C84_Z3.40_W220": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;02;05_黃邦和_C86_Z3.49_W231": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;02;10_黃邦和_C89_Z3.41_W232": {
+        "buckle": "pass",
+        "vest": "fail"
+    },
+    "17;02;15_黃邦和_C84_Z2.99_W230": {
+        "buckle": "pass",
+        "vest": "fail"
+    },
+    "17;02;25_黃邦和_C87_Z3.72_W224": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "17;02;30_黃邦和_C79_Z3.21_W218": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "17;02;37_黃邦和_C87_Z3.83_W226": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "17;03;15_黃邦和_C86_Z3.91_W241": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "17;03;21_黃邦和_C86_Z3.83_W221": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "17;03;56_黃邦和_C89_Z3.63_W210": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;04;20_黃邦和_C89_Z3.74_W235": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;05;30_黃邦和_C88_Z3.71_W230": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "17;05;34_黃邦和_C84_Z3.57_W248": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "17;06;02_黃邦和_C88_Z3.78_W243": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "17;07;06_黃邦和_C85_Z3.60_W238": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;07;12_黃邦和_C80_Z3.19_W255": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;07;21_黃邦和_C78_Z3.21_W273": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;07;26_黃邦和_C74_Z3.07_W268": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;08;17_黃邦和_C82_Z3.52_W223": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;08;22_黃邦和_C84_Z3.34_W201": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;08;27_黃邦和_C84_Z3.49_W215": {
+        "buckle": "pass",
+        "vest": "pass"
+    },
+    "17;10;15_黃邦和_C87_Z3.58_W227": {
+        "buckle": "fail",
+        "vest": "pass"
+    },
+    "17;12;12_黃邦和_C87_Z3.64_W304": {
+        "buckle": "fail",
+        "vest": "fail"
+    },
+    "17;12;35_黃邦和_C74_Z3.27_W292": {
+        "buckle": "pass",
+        "vest": "fail"
+    },
+    "17;12;39_黃邦和_C72_Z2.75_W271": {
+        "buckle": "pass",
+        "vest": "fail"
+    },
+    "17;12;45_黃邦和_C71_Z2.97_W325": {
+        "buckle": "pass",
+        "vest": "fail"
+    },
+    "17;12;54_黃邦和_C84_Z3.18_W293": {
+        "buckle": "pass",
+        "vest": "fail"
+    }
+}

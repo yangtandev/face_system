@@ -86,6 +86,38 @@ class MediaPipeHandler:
         
         return self.pose_detector.process(image)
 
+    def detect_mesh(self, image):
+        """
+        [2026-02-12 Feature] Returns raw 468-point landmarks for precision cropping.
+        Returns: list of face_landmarks objects (access .landmark[idx].x/y)
+        """
+        if not isinstance(image, np.ndarray):
+            image = np.array(image)
+        
+        # Ensure RGB (FaceMesh needs RGB)
+        # Assuming input is BGR from OpenCV usually
+        # But wait, self.face_mesh.process expects RGB.
+        # Check detect() implementation: it calls self.face_mesh.process(image) directly.
+        # In face_main.py, image passed to detect is typically BGR?
+        # Let's check face_main.py: 
+        # Line 651: img_pil = Image.open(...) -> convert('RGB') -> mp_handler.detect(img_np)
+        # Line 202: original_frame (BGR) is used.
+        # Wait, if detect() doesn't convert BGR->RGB, then face mesh running on BGR might be suboptimal but working?
+        # Actually, MediaPipe documentation strongly says RGB.
+        # Let's add explicit conversion here to be safe and correct.
+        
+        if image.shape[2] == 3:
+            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        else:
+            image_rgb = image
+            
+        results = self.face_mesh.process(image_rgb)
+        
+        if not results.multi_face_landmarks:
+            return None
+            
+        return results.multi_face_landmarks
+
     def detect(self, image, landmarks=True):
         if not isinstance(image, np.ndarray):
             image = np.array(image)
