@@ -36,3 +36,9 @@ sim_rescue*.txt
 
 # --- Cline ---
 .clinerules
+
+# --- Agents ---
+.agents/
+
+# --- Testing ---
+tests/
