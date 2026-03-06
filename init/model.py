@@ -184,10 +184,11 @@ class Detector:
                         face_width = x2 - x1
                         min_face_val = self.system.state.min_face[self.frame_num]
 
-                        # [2026-02-10 UX] Dynamic Detection Threshold based on Clothes Mode
-                        # Clothes ON -> 1.0 (Strict: Ignore small faces completely)
-                        # Clothes OFF -> 0.8 (Standard: Allow "Please come closer" hint)
-                        det_ratio = 1.0 if CONFIG.get("Clothes_detection", False) else POTENTIAL_MISS_RATIO
+                        # [2026-03-06 Revert] Strict threshold when clothes mode is On
+                        # Avoid "請靠近" when clothes detection is on, only start when >= min_face
+                        is_entry_now = self._is_entry_active()
+                        clothes_active = self.do_clothes and is_entry_now
+                        det_ratio = 1.0 if clothes_active else POTENTIAL_MISS_RATIO
 
                         if center_x < roi_x1 or center_x > roi_x2 or face_width < (min_face_val * det_ratio):
                             box = None
@@ -205,8 +206,7 @@ class Detector:
                         if 'face_width' not in locals(): face_width = 0
 
                     # 2. 執行衣著偵測 (依賴 Landmarks 進行 PPE 細節檢查)
-                    is_entry_now = self._is_entry_active()
-                    should_detect_clothes = self.do_clothes and is_entry_now and box is not None
+                    should_detect_clothes = clothes_active and box is not None
                     current_clothes_detections = []
                     current_clothes_details = {} # [2026-02-12 Feature] Store detailed JSON log
 

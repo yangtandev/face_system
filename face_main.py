@@ -173,11 +173,13 @@ class CameraSystem:
                 current_width = (x2 - x1) / scale
                 target_min = self.system.state.min_face[self.frame_num]
 
-                vis_ratio = 1.0 if CONFIG.get("Clothes_detection", False) else 0.8
+                # [2026-03-06 Revert] Require 100% distance to show UI when clothes check is active
+                is_entry = self._is_entry_active()
+                clothes_active = is_entry and (CONFIG.get("Clothes_show", False) or CONFIG.get("Clothes_detection", False))
+                vis_ratio = 1.0 if clothes_active else 0.8
 
                 if current_width >= (target_min * vis_ratio):
                     # [2026-02-03 Fix] 衣著檢查邏輯：需考慮單鏡頭排程切換
-                    is_entry = self._is_entry_active()
                     need_check_clothes = (is_entry and CONFIG["Clothes_detection"])
 
                     is_clothes_pass = (self.system.state.clothes[0] and self.system.state.clothes[2])
@@ -185,8 +187,9 @@ class CameraSystem:
 
                     staff_name_display = self.system.state.features_dict.get("id_name", {}).get(current_class, "辨識中")
 
-                    # [2026-02-03 Fix] 顯示邏輯重構：採用巢狀結構確保互斥
-                    blocked_by_clothes = (not passed_gate) and (current_class != "None" and current_class != "__VISITOR__")
+                    # [2026-03-06 Fix] 顯示邏輯重構：採用巢狀結構確保互斥
+                    # Only block by clothes if they are close enough (>= target_min) to trigger clothes detection
+                    blocked_by_clothes = (not passed_gate) and (current_class != "None" and current_class != "__VISITOR__") and (current_width >= target_min)
 
                     if blocked_by_clothes:
                         now_frame = put_chinese_text(now_frame, "請正確著裝", (x1, text_y), font_path, font_size, (255, 85, 0))
@@ -349,7 +352,9 @@ class CameraSystem:
         if box is not None:
             w = box[2] - box[0]
             target_min = self.system.state.min_face[self.frame_num]
-            vis_ratio = 1.0 if CONFIG.get("Clothes_detection", False) else 0.8
+            is_entry = self._is_entry_active()
+            clothes_active = is_entry and (CONFIG.get("Clothes_show", False) or CONFIG.get("Clothes_detection", False))
+            vis_ratio = 1.0 if clothes_active else 0.8
 
             if w < (target_min * vis_ratio):
                 return 'background-color: transparent;', ""
@@ -375,7 +380,14 @@ class CameraSystem:
             return 'color: rgb(0, 0, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "訪客"
         elif current_class != "None":
             # 檢查是否被攔截
-            if need_check_clothes and not is_clothes_pass:
+            # 只有當人臉大小 >= min_face (target_min) 時才有可能被服裝機制攔截
+            target_min = self.system.state.min_face[self.frame_num]
+            current_w = 0
+            box = self.system.state.max_box[self.frame_num]
+            if box is not None:
+                 current_w = box[2] - box[0]
+            
+            if need_check_clothes and not is_clothes_pass and current_w >= target_min:
                 # 攔截時，隱藏文字 (回傳空白)
                 # User Request: 不顯示 "辨識中"，也不顯示 "請正確著裝" (Side Panel 保持乾淨)
                 return 'background-color: transparent;', ""
