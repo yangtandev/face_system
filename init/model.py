@@ -975,6 +975,9 @@ class Comparison:
         self.display_state['person_id'] = person_id
         self.display_state['last_update'] = time.time()
         self.system.state.same_class[self.frame_num] = person_id
+        # [2026-03-06 Fix] Reset clothes checkmarks when avatar is cleared
+        if person_id == 'None':
+            self.system.state.clothes = [False, False, False]
 
     def face_comparison(self):
         """
