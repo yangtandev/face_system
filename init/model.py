@@ -1009,6 +1009,18 @@ class Comparison:
             if data_package is None:
                 continue # 如果沒資料 (例如 Detector 阻斷中)，就繼續睡，別動 Hint！
 
+            # [2026-03-06] Clothes gate: if Clothes_detection is ON and camera is in entry mode,
+            # skip face recognition entirely until both helmet and vest are detected.
+            if CONFIG.get("Clothes_detection", False):
+                _is_entry = True
+                if hasattr(self.system, 'cameras'):
+                    for _cam in self.system.cameras:
+                        if _cam.frame_num == self.frame_num:
+                            _is_entry = _cam._is_entry_active()
+                            break
+                if _is_entry and not (self.system.state.clothes[0] and self.system.state.clothes[2]):
+                    continue
+
             # [2026-02-10 Fix] Move hint clearing logic AFTER data check
             # This prevents Race Condition where Comparison clears the hint while Detector is blocking.
             # 清除過期的 UI 提示

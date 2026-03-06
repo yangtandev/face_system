@@ -219,8 +219,9 @@ class CameraSystem:
                         # 2. 未通過則提示請著裝，且不存入成功日誌
                         # 3. 出口永遠放行 (need_check_clothes 為 False)
                         if passed_gate:
-                            check_in_out(self.system, success_staff_name, current_class, self.frame_num, self.n_camera, confidence)
-
+                            # [2026-03-06] check_in_out (voice/API/gate) is now handled in
+                            # Comparison.face_comparison after the clothes gate passes.
+                            # Here we only handle image saving.
                             z_score = self.system.state.same_zscore[self.frame_num]
                             width_val = self.system.state.same_width[self.frame_num]
 
