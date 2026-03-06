@@ -464,19 +464,26 @@ class Detector:
 
         # --- Universal Spatial Validators ---
         def is_helmet_valid(bx1, by1, bx2, by2):
-            if target_face_box is None: return True, "No face box, fallback accepted"
+            if target_face_box is None: return False, "No face box detected"
             fx1, fy1, fx2, fy2 = target_face_box
             face_cx = (fx1 + fx2) / 2
             helmet_cx = (bx1 + bx2) / 2
-            horizontal_aligned = abs(face_cx - helmet_cx) < (fx2 - fx1) * 2.0
-            vertical_aligned = by2 > (fy1 - (fy2 - fy1)*1.5) and by1 < fy2
+            face_h = fy2 - fy1
 
-            if not (horizontal_aligned and vertical_aligned):
-                return False, f"Reject: horiz={horizontal_aligned}, vert={vertical_aligned} | face={face_cx:.1f}, helmet={helmet_cx:.1f} | hy1,hy2={by1},{by2} fy1,fy2={fy1},{fy2}"
+            horizontal_aligned = abs(face_cx - helmet_cx) < (fx2 - fx1) * 2.0
+            # Helmet must overlap or be above the face, but not too far above (reject ceiling lights)
+            # by2 (helmet bottom) must be within 1 face-height above the face top
+            not_too_high = by2 >= (fy1 - face_h * 1.0)
+            # Helmet top must be above the face bottom (not below the chin)
+            above_chin = by1 < fy2
+
+            if not (horizontal_aligned and not_too_high and above_chin):
+                return False, f"Reject: horiz={horizontal_aligned}, not_too_high={not_too_high}, above_chin={above_chin} | face_cx={face_cx:.0f}, helmet_cx={helmet_cx:.0f} | hy1,hy2={by1},{by2} fy1,fy2={fy1},{fy2} face_h={face_h}"
             return True, ""
 
+
         def is_vest_valid(bx1, by1, bx2, by2):
-            if target_face_box is None: return True, "No face box, fallback accepted"
+            if target_face_box is None: return False, "No face box detected"
             fx1, fy1, fx2, fy2 = target_face_box
             face_cx = (fx1 + fx2) / 2
             vest_cx = (bx1 + bx2) / 2
