@@ -206,7 +206,7 @@ class Detector:
 
                     # 2. 執行衣著偵測 (依賴 Landmarks 進行 PPE 細節檢查)
                     is_entry_now = self._is_entry_active()
-                    should_detect_clothes = self.do_clothes and is_entry_now
+                    should_detect_clothes = self.do_clothes and is_entry_now and box is not None
                     current_clothes_detections = []
                     current_clothes_details = {} # [2026-02-12 Feature] Store detailed JSON log
 
