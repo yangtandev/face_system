@@ -158,6 +158,9 @@ class Detector:
                     box = None
                     points = None
 
+                    is_entry_now = self._is_entry_active()
+                    clothes_active = self.do_clothes and is_entry_now
+
                     if boxes is not None:
                         x1, y1, x2, y2 = map(int, boxes[0])
                         points = landmarks[0].copy()
@@ -186,8 +189,6 @@ class Detector:
 
                         # [2026-03-06 Revert] Strict threshold when clothes mode is On
                         # Avoid "請靠近" when clothes detection is on, only start when >= min_face
-                        is_entry_now = self._is_entry_active()
-                        clothes_active = self.do_clothes and is_entry_now
                         det_ratio = 1.0 if clothes_active else POTENTIAL_MISS_RATIO
 
                         if center_x < roi_x1 or center_x > roi_x2 or face_width < (min_face_val * det_ratio):
