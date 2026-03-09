@@ -245,7 +245,7 @@ class Detector:
                             if not (has_vest and has_helmet):
                                 # ... (阻斷邏輯) ...
                                 if time.time() - self.last_no_face_log_time > 2.0:
-                                    self.system.speaker.say("請正確著裝", "hint_clothes_block", priority=1)
+                                    self.system.speaker.say("請正確著裝", "hint_clothes_block", priority=2)
                                     self.last_no_face_log_time = time.time()
 
                                     # [2026-02-09 Fix] 主動存檔 ClothesFail (Unknown User)
