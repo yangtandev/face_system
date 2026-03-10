@@ -342,7 +342,7 @@ class CameraSystem:
         h, v = "helmet_R.png", "vest_R.png"
         # [2026-03-10 Fix] Don't show green icons when suppressed
         # (e.g., avatar has disappeared but person is still standing there)
-        if not getattr(self.system.state, 'clothes_display_suppressed', False):
+        if not getattr(self.system.state, 'clothes_display_suppressed', [False, False])[self.frame_num]:
             if self.system.state.clothes[0]: v = "vest_G.png"
             if self.system.state.clothes[2]: h = "helmet_G.png"
         return QPixmap(f'{main_path}/other/{h}'), QPixmap(f'{main_path}/other/{v}')
@@ -536,7 +536,7 @@ class FaceRecognitionSystem:
         self.state.success_snapshot = [None, None] # [2026-01-24 Fix] 原子打包 (frame, metadata)
         self.state.last_direction = ["In", "Out"] # Default directions
         self.state.clothes = [False, False, False]
-        self.state.clothes_display_suppressed = False  # [2026-03-10] Suppress green icons after avatar disappears
+        self.state.clothes_display_suppressed = [False, False]  # [2026-03-10] Per-camera suppression
         self.state.check_time, self.state.features_dict, self.state.profile_dict = {}, {}, {}
         self.state.part_features = {} # Initialize empty
         self.state.display_history = [[], []]

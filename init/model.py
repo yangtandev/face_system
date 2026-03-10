@@ -231,7 +231,7 @@ class Detector:
                     else:
                         if self.do_clothes:
                             self.system.state.clothes = [False, False, False]
-                            self.system.state.clothes_display_suppressed = False
+                            self.system.state.clothes_display_suppressed[self.frame_num] = False
 
                     # 3. QR Code (省略，保持原位)
                     if CONFIG.get("qrcode_mode", False) and (now - self.last_qr_scan_time > self.qr_scan_interval):
@@ -991,12 +991,10 @@ class Comparison:
         # [2026-03-06 Fix] Reset clothes checkmarks when avatar is cleared
         if person_id == 'None':
             self.system.state.clothes = [False, False, False]
-            # [2026-03-10 Fix] Suppress clothes icon display until person leaves,
-            # so Detector re-detection doesn't immediately restore green checkmarks.
-            self.system.state.clothes_display_suppressed = True
+            # [2026-03-10 Fix] Suppress per-camera, avoid cross-camera interference
+            self.system.state.clothes_display_suppressed[self.frame_num] = True
         else:
-            # New recognition starting — lift suppression so green icons can show
-            self.system.state.clothes_display_suppressed = False
+            self.system.state.clothes_display_suppressed[self.frame_num] = False
 
     def face_comparison(self):
         """
