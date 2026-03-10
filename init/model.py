@@ -485,15 +485,31 @@ class Detector:
             fx1, fy1, fx2, fy2 = target_face_box
             face_cx = (fx1 + fx2) / 2
             helmet_cx = (bx1 + bx2) / 2
+            face_w = fx2 - fx1
             face_h = fy2 - fy1
+            helmet_w = bx2 - bx1
+            helmet_h = by2 - by1
 
-            horizontal_aligned = abs(face_cx - helmet_cx) < (fx2 - fx1) * 2.0
-            # Helmet bottom must sit near the forehead/eyes (reject ceiling lights)
-            not_too_high = by2 >= (fy1 - face_h * 0.3)
+            horizontal_aligned = abs(face_cx - helmet_cx) < face_w * 2.0
+            # [2026-03-10 Fix] Tighten vertical: helmet bottom must reach near forehead
+            not_too_high = by2 >= (fy1 - face_h * 0.1)
             above_chin = by1 < fy2
 
-            if not (horizontal_aligned and not_too_high and above_chin):
-                return False, f"Reject: horiz={horizontal_aligned}, not_too_high={not_too_high}, above_chin={above_chin} | face_cx={face_cx:.0f}, helmet_cx={helmet_cx:.0f} | hy1,hy2={by1},{by2} fy1,fy2={fy1},{fy2} face_h={face_h}"
+            # [2026-03-10 Fix] Helmet top must be above eye-line (reject things below forehead)
+            top_above_eyes = by1 < (fy1 + face_h * 0.3)
+
+            # [2026-03-10 Fix] Size ratio: helmet width ~0.5x-2.5x face width (reject ceiling-wide boxes)
+            width_ratio_ok = (helmet_w >= face_w * 0.5) and (helmet_w <= face_w * 2.5)
+
+            # [2026-03-10 Fix] Min height: real helmets have meaningful height (>= 0.3x face height)
+            min_height_ok = helmet_h >= face_h * 0.3
+
+            if not (horizontal_aligned and not_too_high and above_chin and top_above_eyes and width_ratio_ok and min_height_ok):
+                return False, (f"Reject: horiz={horizontal_aligned}, not_too_high={not_too_high}, above_chin={above_chin}, "
+                               f"top_above_eyes={top_above_eyes}, width_ratio_ok={width_ratio_ok}({helmet_w/face_w:.2f}x), "
+                               f"min_height_ok={min_height_ok}({helmet_h/face_h:.2f}x) | "
+                               f"face_cx={face_cx:.0f}, helmet_cx={helmet_cx:.0f} | "
+                               f"hy1,hy2={by1},{by2} fy1,fy2={fy1},{fy2} face_h={face_h}")
 
             return True, ""
 
