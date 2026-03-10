@@ -465,26 +465,37 @@ class Detector:
 
         # --- Universal Spatial Validators ---
         def is_helmet_valid(bx1, by1, bx2, by2):
-            if target_face_box is None: return False, "No face box detected"
+            if target_face_box is None: 
+                # Basic relative check for missing face_box (e.g., looking down)
+                img_h, img_w = full_frame.shape[:2]
+                if by1 < img_h * 0.5 and (bx2 - bx1) > img_w * 0.05:
+                    return True, "Passed (No Face Box, Spatial Fallback)"
+                return False, "No face box detected and not optimal helmet position"
+                
             fx1, fy1, fx2, fy2 = target_face_box
             face_cx = (fx1 + fx2) / 2
             helmet_cx = (bx1 + bx2) / 2
             face_h = fy2 - fy1
 
             horizontal_aligned = abs(face_cx - helmet_cx) < (fx2 - fx1) * 2.0
-            # Helmet must overlap or be above the face, but not too far above (reject ceiling lights)
-            # by2 (helmet bottom) must be within 1 face-height above the face top
-            not_too_high = by2 >= (fy1 - face_h * 1.0)
-            # Helmet top must be above the face bottom (not below the chin)
+            # Helmet bottom must sit near the forehead/eyes (reject ceiling lights)
+            not_too_high = by2 >= (fy1 - face_h * 0.3)
             above_chin = by1 < fy2
 
             if not (horizontal_aligned and not_too_high and above_chin):
                 return False, f"Reject: horiz={horizontal_aligned}, not_too_high={not_too_high}, above_chin={above_chin} | face_cx={face_cx:.0f}, helmet_cx={helmet_cx:.0f} | hy1,hy2={by1},{by2} fy1,fy2={fy1},{fy2} face_h={face_h}"
+
             return True, ""
 
 
         def is_vest_valid(bx1, by1, bx2, by2):
-            if target_face_box is None: return False, "No face box detected"
+            if target_face_box is None: 
+                # Basic relative check for missing face_box
+                img_h, img_w = full_frame.shape[:2]
+                if by1 > img_h * 0.2 and (bx2 - bx1) > img_w * 0.15 and (by2 - by1) > img_h * 0.15:
+                    return True, "Passed (No Face Box, Spatial Fallback)"
+                return False, "No face box detected and invalid vest dimensions"
+                
             fx1, fy1, fx2, fy2 = target_face_box
             face_cx = (fx1 + fx2) / 2
             vest_cx = (bx1 + bx2) / 2
@@ -498,7 +509,6 @@ class Detector:
                 return False, f"Reject: horiz={horizontal_aligned}, below={placed_below}, not_far={not_too_far_down} | vy1,vy2={by1},{by2} fy2={fy2} | face_h={face_h}"
 
             # Height check: a folded/handheld vest has a very small bbox height.
-            # Coefficient 0.5 rejects only extremely small vest detections.
             vest_bbox_h = by2 - by1
             if vest_bbox_h < face_h * 0.5:
                 return False, f"Reject(height): vest_h={vest_bbox_h} < min={face_h*0.5:.0f} (face_h={face_h})"
@@ -577,7 +587,7 @@ class Detector:
 
             if body_crop is not None and body_crop.size > 0:
                 details["vest"]["crop_img"] = body_crop
-                v_results = self.system.model_clothes(source=body_crop, iou=0.45, conf=0.08, verbose=False)[0]
+                v_results = self.system.model_clothes(source=body_crop, iou=0.45, conf=0.05, verbose=False)[0]
                 for det in v_results.boxes:
                     if int(det.cls) == 0:
                         rx1, ry1, rx2, ry2 = det.xyxy[0].cpu().numpy().astype(int)
