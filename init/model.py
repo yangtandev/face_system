@@ -286,9 +286,17 @@ class Detector:
                                                 if not has_vest: status_list.append("Vest Issue")
                                                 current_clothes_details["overall_status"] = "FAIL: " + ", ".join(status_list)
 
+                                                # [2026-03-10 Fix] Strip non-serializable crop_img (numpy arrays) before JSON dump
+                                                json_safe_details = {}
+                                                for k, v in current_clothes_details.items():
+                                                    if isinstance(v, dict):
+                                                        json_safe_details[k] = {dk: dv for dk, dv in v.items() if dk != "crop_img"}
+                                                    else:
+                                                        json_safe_details[k] = v
+
                                                 compar_instance._save_potential_miss_json(
                                                     saved_path,
-                                                    current_clothes_details, # Pass full dict as metrics
+                                                    json_safe_details,
                                                     "ClothesFail"
                                                 )
                                         else:
@@ -812,8 +820,15 @@ class Comparison:
                 "metrics": metrics
             }
 
+            # [2026-03-10 Fix] Add default converter for numpy types to prevent truncation
+            def _default_converter(o):
+                if isinstance(o, (np.integer,)): return int(o)
+                if isinstance(o, (np.floating,)): return float(o)
+                if isinstance(o, np.ndarray): return o.tolist()
+                return str(o)
+
             with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+                json.dump(data, f, ensure_ascii=False, indent=2, default=_default_converter)
 
         except Exception as e:
             LOGGER.error(f"儲存潛在失敗 JSON 時發生錯誤: {e}")
@@ -988,10 +1003,11 @@ class Comparison:
         self.display_state['person_id'] = person_id
         self.display_state['last_update'] = time.time()
         self.system.state.same_class[self.frame_num] = person_id
-        # [2026-03-06 Fix] Reset clothes checkmarks when avatar is cleared
+        # [2026-03-10 Fix] Do NOT reset clothes[] here — it causes a race condition
+        # where Detector sets clothes=True but this timer-based reset clobbers it
+        # before Comparison/main_camera can read it, resulting in perpetual "請正確著裝".
+        # clothes[] is solely managed by Detector. Only control UI display via suppression flag.
         if person_id == 'None':
-            self.system.state.clothes = [False, False, False]
-            # [2026-03-10 Fix] Suppress per-camera, avoid cross-camera interference
             self.system.state.clothes_display_suppressed[self.frame_num] = True
         else:
             self.system.state.clothes_display_suppressed[self.frame_num] = False
