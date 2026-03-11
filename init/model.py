@@ -242,7 +242,9 @@ class Detector:
                     if box is not None:
                         # [2026-02-06 Fix] 語音優先級控制 (阻斷邏輯) + 水平匹配驗證
                         if self.do_clothes and CONFIG.get("Clothes_detection", False) and is_entry_now:
-                            has_vest, has_helmet = self._match_clothes_to_face_horizontal(box, current_clothes_detections)
+                            # [2026-03-12 Fix] Use debounced global state instead of per-frame detections to prevent jitter block
+                            has_vest = self.system.state.clothes[0]
+                            has_helmet = self.system.state.clothes[2]
 
                             if not (has_vest and has_helmet):
                                 # ... (阻斷邏輯) ...
@@ -1411,6 +1413,7 @@ class Comparison:
                     # 傳入 check_in_out 進行防抖與方向判斷
                     # [2026-01-20 Fix] 傳入 confidence 供日誌記錄
                     check_in_out(self.system, staff_name, predicted_id, self.frame_num, self.system.n_camera < 2, confidence)
+                    self.last_api_trigger_time[predicted_id] = now
 
                     # [2026-02-09 Fix] Sync state to trigger save_img in face_main.py
                     self.system.state.same_people[self.frame_num] = float(confidence)
@@ -1419,6 +1422,23 @@ class Comparison:
                     # [2026-01-24 Fix] Atomic snapshot for saving
                     if self.system.state.success_metadata[self.frame_num]:
                         self.system.state.success_snapshot[self.frame_num] = (frame_curr.copy(), self.system.state.success_metadata[self.frame_num])
+                else:
+                    self._update_display_state(predicted_id)
+                    last_trigger = self.last_api_trigger_time.get(predicted_id, 0)
+                    if now - last_trigger > 3.0:
+                        self.last_api_trigger_time[predicted_id] = now
+                        
+                        _is_entry = True
+                        if hasattr(self.system, 'cameras'):
+                            for _cam in self.system.cameras:
+                                if _cam.frame_num == self.frame_num:
+                                    _is_entry = _cam._is_entry_active()
+                                    break
+                        cam_tag = "in" if _is_entry else "out"
+                        try:
+                            self.system.speaker.say(f"{staff_name}{CONFIG['say'][cam_tag]}", staff_name + "_" + cam_tag, priority=1, token=predicted_id)
+                        except Exception:
+                            pass
 
             elif predicted_id != "None" and confidence >= self.VISITOR_CONF_THRESHOLD:
                 # 訪客邏輯 (分數介於 0.5 ~ 0.7)
