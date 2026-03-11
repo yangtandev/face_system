@@ -474,7 +474,7 @@ class Detector:
             return self.system.model_clothes(source=mask_frame, iou=0.45, conf=0.15, verbose=False)[0], mx_offset
 
         # --- Universal Spatial Validators ---
-        def is_helmet_valid(bx1, by1, bx2, by2):
+        def is_helmet_valid(bx1, by1, bx2, by2, det_conf=0.0):
             if target_face_box is None: 
                 # Basic relative check for missing face_box (e.g., looking down)
                 img_h, img_w = full_frame.shape[:2]
@@ -491,23 +491,21 @@ class Detector:
             helmet_h = by2 - by1
 
             horizontal_aligned = abs(face_cx - helmet_cx) < face_w * 2.0
-            # [2026-03-10 Fix] Tighten vertical: helmet bottom must reach near forehead
-            not_too_high = by2 >= (fy1 - face_h * 0.1)
+            not_too_high = by2 >= (fy1 - face_h * 0.3)
             above_chin = by1 < fy2
+            width_ratio_ok = (helmet_w >= face_w * 0.4) and (helmet_w <= face_w * 2.5)
 
-            # [2026-03-10 Fix] Helmet top must be above eye-line (reject things below forehead)
-            top_above_eyes = by1 < (fy1 + face_h * 0.3)
+            # [2026-03-10 Fix] Above-face ratio: what fraction of the helmet bbox is ABOVE fy1?
+            # Conf-dependent threshold: high conf real helmets (>=0.5) get lenient check,
+            # low conf potential FPs get strict check.
+            above_face_px = max(0, fy1 - by1)
+            above_face_ratio = above_face_px / helmet_h if helmet_h > 0 else 0
+            ratio_threshold = 0.25 if det_conf >= 0.5 else 0.35
+            helmet_above_face = above_face_ratio >= ratio_threshold
 
-            # [2026-03-10 Fix] Size ratio: helmet width ~0.5x-2.5x face width (reject ceiling-wide boxes)
-            width_ratio_ok = (helmet_w >= face_w * 0.5) and (helmet_w <= face_w * 2.5)
-
-            # [2026-03-10 Fix] Min height: real helmets have meaningful height (>= 0.3x face height)
-            min_height_ok = helmet_h >= face_h * 0.3
-
-            if not (horizontal_aligned and not_too_high and above_chin and top_above_eyes and width_ratio_ok and min_height_ok):
+            if not (horizontal_aligned and not_too_high and above_chin and width_ratio_ok and helmet_above_face):
                 return False, (f"Reject: horiz={horizontal_aligned}, not_too_high={not_too_high}, above_chin={above_chin}, "
-                               f"top_above_eyes={top_above_eyes}, width_ratio_ok={width_ratio_ok}({helmet_w/face_w:.2f}x), "
-                               f"min_height_ok={min_height_ok}({helmet_h/face_h:.2f}x) | "
+                               f"width_ratio={helmet_w/face_w:.2f}x, above_face_ratio={above_face_ratio:.2f}(thr={ratio_threshold}) | "
                                f"face_cx={face_cx:.0f}, helmet_cx={helmet_cx:.0f} | "
                                f"hy1,hy2={by1},{by2} fy1,fy2={fy1},{fy2} face_h={face_h}")
 
@@ -544,46 +542,54 @@ class Detector:
         # --- Stage 1: Helmet Detection ---
         helmet_found = False
 
-        # 1.1 Precision Crop
+        # 1.1 Precision Crop (full head_crop + face_coverage filter)
         mesh_results = self.mp_handler.detect_mesh(full_frame)
         if mesh_results:
             head_crop, cx, cy = self._crop_head_mesh(full_frame, mesh_results[0].landmark)
             if head_crop is not None and head_crop.size > 0:
                 details["helmet"]["crop_img"] = head_crop
-                h_results = self.system.model_clothes(source=head_crop, iou=0.45, conf=0.08, verbose=False)[0]
+                h_results = self.system.model_clothes(source=head_crop, iou=0.45, conf=0.15, verbose=False)[0]
                 for det in h_results.boxes:
                     if int(det.cls) == 2:
+                        det_conf = float(det.conf[0])
                         rx1, ry1, rx2, ry2 = det.xyxy[0].cpu().numpy().astype(int)
                         gx1, gy1, gx2, gy2 = rx1 + cx, ry1 + cy, rx2 + cx, ry2 + cy
 
-                        valid, reason = is_helmet_valid(gx1, gy1, gx2, gy2)
+                        valid, reason = is_helmet_valid(gx1, gy1, gx2, gy2, det_conf=det_conf)
                         details["helmet"]["crop_boxes"].append([rx1, ry1, rx2, ry2])
+                        details["helmet"]["conf"] = det_conf
 
                         if valid:
                             details["helmet"]["detected"] = True
                             detections.append((2, [gx1, gy1, gx2, gy2]))
                             helmet_found = True
+                            print(f"[DEBUG-HELMET-CROP] PASS conf={det_conf:.3f}")
                             break
                         else:
-                            print(f"[DEBUG-HELMET-CROP] {reason}")
+                            print(f"[DEBUG-HELMET-CROP] {reason} conf={det_conf:.3f}")
 
         # 1.2 Fallback YOLO + Spatial Overlap
         if not helmet_found:
             if fallback_results is None: fallback_results, fallback_offset = get_fallback_results()
             for det in fallback_results.boxes:
                 if int(det.cls) == 2:
+                    det_conf = float(det.conf[0])
+                    if det_conf < 0.20:
+                        continue
                     rx1, ry1, rx2, ry2 = det.xyxy[0].cpu().numpy().astype(int)
                     gx1, gy1, gx2, gy2 = rx1 + fallback_offset, ry1, rx2 + fallback_offset, ry2
 
-                    valid, reason = is_helmet_valid(gx1, gy1, gx2, gy2)
+                    valid, reason = is_helmet_valid(gx1, gy1, gx2, gy2, det_conf=det_conf)
 
                     if valid:
                         details["helmet"]["detected"] = True
                         details["helmet"]["fallback_box"] = [gx1, gy1, gx2, gy2]
+                        details["helmet"]["conf"] = det_conf
                         detections.append((2, [gx1, gy1, gx2, gy2]))
+                        print(f"[DEBUG-HELMET-FALLBACK] PASS conf={det_conf:.3f}")
                         break
                     else:
-                        print(f"[DEBUG-HELMET-FALLBACK] {reason}")
+                        print(f"[DEBUG-HELMET-FALLBACK] {reason} conf={det_conf:.3f}")
 
 
 
@@ -635,6 +641,9 @@ class Detector:
             if fallback_results is None: fallback_results, fallback_offset = get_fallback_results()
             for det in fallback_results.boxes:
                 if int(det.cls) == 0:
+                    det_conf = float(det.conf[0])
+                    if det_conf < 0.20:
+                        continue
                     rx1, ry1, rx2, ry2 = det.xyxy[0].cpu().numpy().astype(int)
                     gx1, gy1, gx2, gy2 = rx1 + fallback_offset, ry1, rx2 + fallback_offset, ry2
 
