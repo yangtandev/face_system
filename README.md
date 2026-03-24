@@ -24,9 +24,6 @@ sudo apt-get update && sudo apt-get install -y git-lfs
 
 # 初始化 Git LFS (每個系統使用者只需執行一次)
 git lfs install
-
-# 如果您已經克隆了專案，請執行以下指令下載實際的模型檔案
-git lfs pull
 ```
 
 #### 安裝 FFmpeg
@@ -44,6 +41,8 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
     ```bash
     git clone https://github.com/yangtandev/face_system.git
     cd face_system
+    # 如果您已經克隆了專案，請執行以下指令下載實際的模型檔案
+    git lfs pull
     ```
 
 2.  **安裝依賴套件**：

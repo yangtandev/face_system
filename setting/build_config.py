@@ -30,11 +30,11 @@ default_config = {
     },
     "inCamera": {
         "close": False,
-        "min_face": 450
+        "min_face": 300
     },
     "outCamera": {
         "close": False,
-        "min_face": 450
+        "min_face": 300
     },
     "door": "0",
     "Schedule": {
