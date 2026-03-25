@@ -32,12 +32,28 @@ IN_CAMERA=${INPUT_IN_CAMERA:-"rtsp://127.0.0.1/in"}
 read -p "請輸入 OUT Camera RTSP 網址 [預設: rtsp://127.0.0.1/out]: " INPUT_OUT_CAMERA
 OUT_CAMERA=${INPUT_OUT_CAMERA:-"rtsp://127.0.0.1/out"}
 
+read -p "請輸入遠端媒體路徑 (face_data_dir) [預設: /home/ubuntu/pvms-api/media]: " INPUT_FACE_DATA_DIR
+FACE_DATA_DIR=${INPUT_FACE_DATA_DIR:-"/home/ubuntu/pvms-api/media"}
+
+read -p "請輸入 API 網址 (API_url) [預設: https://demosite.api.ginibio.com/api/v1]: " INPUT_API_URL
+API_URL=${INPUT_API_URL:-"https://demosite.api.ginibio.com/api/v1"}
+
+read -p "請輸入部署位置 ID (location_ID) [預設: 1]: " INPUT_LOCATION_ID
+LOCATION_ID=${INPUT_LOCATION_ID:-1}
+
+echo ""
+read -s -p "🔑 請輸入遠端伺服器 ($SERVER_USER@$SERVER_IP) 的登入密碼 (供 sshpass 使用): " SERVER_PASSWORD
+echo ""
+
 echo ""
 echo "▶ 以下為您的設定："
 echo "  - 專案路徑: $PROJECT_DIR"
 echo "  - 執行身份: $CURRENT_USER"
 echo "  - 伺服器 IP: $SERVER_IP"
 echo "  - 伺服器使用者: $SERVER_USER"
+echo "  - 遠端媒體路徑: $FACE_DATA_DIR"
+echo "  - API 網址: $API_URL"
+echo "  - 位置 ID: $LOCATION_ID"
 echo "  - 進入攝影機 (IN): $IN_CAMERA"
 echo "  - 離開攝影機 (OUT): $OUT_CAMERA"
 echo ""
@@ -47,7 +63,7 @@ read -p "請按 Enter 鍵繼續安裝，或按 Ctrl+C 取消..."
 echo "▶ [1/6] 安裝基礎與系統依賴套件 (apt-get)..."
 sudo apt-get update
 sudo apt-get install -y build-essential curl wget git git-lfs software-properties-common \
-    python3 python3-pip python3-venv \
+    sshpass python3 python3-pip python3-venv \
     ffmpeg mosquitto mosquitto-clients \
     libxcb-xinerama0 libxcb-xfixes0 libxcb-shape0 libxkbcommon-x11-0 \
     libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0
@@ -89,9 +105,9 @@ else
     echo "  >> SSH 金鑰已存在 ($SSH_KEY_PATH)"
 fi
 
-echo "  >> 接下來將執行 ssh-copy-id 將公鑰傳送至 $SERVER_USER@$SERVER_IP"
-echo "  >> (可能需要您手動輸入一次遠端伺服器的密碼以完成認證)"
-ssh-copy-id -i "${SSH_KEY_PATH}.pub" "$SERVER_USER@$SERVER_IP" || {
+echo "  >> 接下來將執行 sshpass+ssh-copy-id 將公鑰靜默傳送至 $SERVER_USER@$SERVER_IP"
+echo "  >> (將自動輸入密碼並略過指紋驗證)"
+sshpass -p "$SERVER_PASSWORD" ssh-copy-id -o StrictHostKeyChecking=no -i "${SSH_KEY_PATH}.pub" "$SERVER_USER@$SERVER_IP" || {
     echo "  ⚠️ ssh-copy-id 未完全成功，可能是網路或密碼錯誤。設定檔仍會產生，稍後可手動檢查。"
 }
 
@@ -116,6 +132,12 @@ except ImportError:
 default_config["Server"]["ip"] = "$SERVER_IP"
 default_config["Server"]["username"] = "$SERVER_USER"
 default_config["Server"]["ssh_key_path"] = "$SSH_KEY_PATH"
+default_config["Server"]["face_data_dir"] = "$FACE_DATA_DIR"
+default_config["Server"]["API_url"] = "$API_URL"
+try:
+    default_config["Server"]["location_ID"] = int("$LOCATION_ID")
+except ValueError:
+    default_config["Server"]["location_ID"] = "$LOCATION_ID"
 default_config["cameraIP"]["in_camera"] = "$IN_CAMERA"
 default_config["cameraIP"]["out_camera"] = "$OUT_CAMERA"
 
