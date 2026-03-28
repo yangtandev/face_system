@@ -44,7 +44,7 @@ def main():
     
     # [2026-01-30 Feature] Single Instance Protection
     # Use QLockFile to prevent multiple setting windows
-    lock_file = QLockFile(QDir.temp().filePath("face_system_setting.lock"))
+    lock_file = QLockFile(QDir.temp().filePath("facial_recognition_setting.lock"))
     if not lock_file.tryLock(100): # Try to lock for 100ms
         error_box = QMessageBox()
         error_box.setIcon(QMessageBox.Warning)

@@ -5,7 +5,7 @@ import subprocess
 import signal
 
 app = Flask(__name__)
-app.secret_key = 'face_system_secret_key_2026'
+app.secret_key = 'facial_recognition_secret_key_2026'
 
 # Path to config.json (Relative to this file: ../config.json)
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
@@ -82,7 +82,7 @@ def get_logs():
                     
         elif log_type == 'system':
             # journalctl
-            cmd = ["journalctl", "-u", "face_system.service", "-n", str(lines), "--no-pager"]
+            cmd = ["journalctl", "-u", "facial_recognition.service", "-n", str(lines), "--no-pager"]
             res = subprocess.run(cmd, capture_output=True, text=True)
             if res.returncode != 0:
                 msg = f"讀取失敗 (Code {res.returncode})。\n請確認權限。\n提示: 執行 `sudo usermod -aG systemd-journal $USER` 並重登。"
@@ -97,8 +97,8 @@ def restart_system():
     if not session.get('logged_in'): return jsonify({"error": "Unauthorized"}), 401
     try:
         # Soft Reload via SIGHUP
-        # Target: face_main.py
-        subprocess.run(["pkill", "-HUP", "-f", "face_main.py"])
+        # Target: main.py
+        subprocess.run(["pkill", "-HUP", "-f", "main.py"])
         return jsonify({"success": True, "message": "重啟訊號已發送"})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})
@@ -109,7 +109,7 @@ def hard_restart_system():
     try:
         # Hard Restart via Systemd
         # This kills the web server itself.
-        subprocess.Popen(["sudo", "systemctl", "restart", "face_system.service"])
+        subprocess.Popen(["sudo", "systemctl", "restart", "facial_recognition.service"])
         return jsonify({"success": True, "message": "系統正在強制重啟，網頁將會斷線..."})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)})

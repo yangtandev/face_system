@@ -89,7 +89,7 @@ class Detector:
 
     def _is_entry_active(self):
         """
-        [2026-02-06 Fix] 判斷當前是否為入口模式 (複製自 face_main.py 邏輯，供 Detector 使用)
+        [2026-02-06 Fix] 判斷當前是否為入口模式 (複製自 main.py 邏輯，供 Detector 使用)
         解決單鏡頭模式下，出口時段誤執行衣著偵測與阻斷的問題。
         """
         # 1. 判斷是否為單鏡頭
@@ -1415,7 +1415,7 @@ class Comparison:
                     check_in_out(self.system, staff_name, predicted_id, self.frame_num, self.system.n_camera < 2, confidence)
                     self.last_api_trigger_time[predicted_id] = now
 
-                    # [2026-02-09 Fix] Sync state to trigger save_img in face_main.py
+                    # [2026-02-09 Fix] Sync state to trigger save_img in main.py
                     self.system.state.same_people[self.frame_num] = float(confidence)
                     self.system.state.same_zscore[self.frame_num] = float(z_score)
                     self.system.state.same_width[self.frame_num] = int(face_width)

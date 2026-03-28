@@ -479,12 +479,12 @@ class ConfigWindow(QWidget):
         
         # [2026-01-30 Fix] Soft Reload via SIGHUP
         try:
-            # 使用 pkill 發送 SIGHUP 訊號給 face_main.py
+            # 使用 pkill 發送 SIGHUP 訊號給 main.py
             # -f: match command line
-            res = subprocess.run(["pkill", "-HUP", "-f", "face_main.py"])
+            res = subprocess.run(["pkill", "-HUP", "-f", "main.py"])
             
             if res.returncode != 0:
-                QMessageBox.warning(self, "警告", "找不到正在運行的主程式 (face_main.py)。\n請確認主程式是否已啟動。")
+                QMessageBox.warning(self, "警告", "找不到正在運行的主程式 (main.py)。\n請確認主程式是否已啟動。")
                 
         except Exception as e:
             QMessageBox.critical(self, "錯誤", f"發送訊號失敗: {e}")

@@ -98,8 +98,8 @@ class MediaPipeHandler:
         # Assuming input is BGR from OpenCV usually
         # But wait, self.face_mesh.process expects RGB.
         # Check detect() implementation: it calls self.face_mesh.process(image) directly.
-        # In face_main.py, image passed to detect is typically BGR?
-        # Let's check face_main.py: 
+        # In main.py, image passed to detect is typically BGR?
+        # Let's check main.py: 
         # Line 651: img_pil = Image.open(...) -> convert('RGB') -> mp_handler.detect(img_np)
         # Line 202: original_frame (BGR) is used.
         # Wait, if detect() doesn't convert BGR->RGB, then face mesh running on BGR might be suboptimal but working?

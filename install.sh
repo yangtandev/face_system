@@ -150,13 +150,13 @@ EOF
 
 # --- 8. Web 介面 Sudo 免密權限 ---
 echo "▶ [5/6] 設定 Web 介面重啟服務的免密碼 sudo 權限..."
-SUDOERS_FILE="/etc/sudoers.d/face_system_web_restart"
-echo "$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart face_system.service" | sudo tee "$SUDOERS_FILE" > /dev/null
+SUDOERS_FILE="/etc/sudoers.d/facial_recognition_web_restart"
+echo "$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart facial_recognition.service" | sudo tee "$SUDOERS_FILE" > /dev/null
 sudo chmod 440 "$SUDOERS_FILE"
 
 # --- 9. Systemd 服務註冊 ---
 echo "▶ [6/6] 設定 Systemd 服務..."
-SERVICE_FILE_PATH="/etc/systemd/system/face_system.service"
+SERVICE_FILE_PATH="/etc/systemd/system/facial_recognition.service"
 
 # 確認當前使用者的 XDG_RUNTIME_DIR ID (通常是 1000)
 USER_ID=$(id -u "$CURRENT_USER")
@@ -171,7 +171,7 @@ User=$CURRENT_USER
 Environment=DISPLAY=:0
 Environment="XDG_RUNTIME_DIR=/run/user/$USER_ID"
 WorkingDirectory=$PROJECT_DIR
-ExecStart=$PROJECT_DIR/venv/bin/python -u $PROJECT_DIR/face_main.py
+ExecStart=$PROJECT_DIR/venv/bin/python -u $PROJECT_DIR/main.py
 Restart=always
 RestartSec=10
 
@@ -180,9 +180,9 @@ WantedBy=graphical.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable face_system.service
+sudo systemctl enable facial_recognition.service
 # 立即啟動服務
-sudo systemctl start face_system.service || true
+sudo systemctl start facial_recognition.service || true
 
 # --- 10. Cronjob 排程設定 ---
 echo "▶ 設定自動報表 (analytics_reporter.py) 排程..."
@@ -198,5 +198,5 @@ echo "============================================="
 echo " 🎉 安裝已全部完成！"
 echo "============================================="
 echo "您可以透過以下指令查看服務狀態："
-echo "  sudo systemctl status face_system.service"
+echo "  sudo systemctl status facial_recognition.service"
 echo "============================================="

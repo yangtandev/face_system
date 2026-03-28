@@ -19,8 +19,8 @@
 
 1.  **克隆專案**：
     ```bash
-    git clone https://github.com/yangtandev/face_system.git
-    cd face_system
+    git clone https://github.com/yangtandev/facial_recognition.git
+    cd facial_recognition
     ```
 
 2.  **執行一鍵安裝腳本**：
@@ -47,7 +47,7 @@
 1.  **從主畫面啟動**：在人臉辨識主視窗的左上角，點擊 **齒輪圖示 (⚙)**。輸入管理員密碼（預設：`admin`）即可開啟。
 2.  **獨立啟動**：
     ```bash
-    cd face_system
+    cd facial_recognition
     source venv/bin/activate
     python ui/setting_tool.py
     ```
@@ -77,7 +77,7 @@
 
 ## 📊 系統日誌與每日報告
 
-應用程式的日誌會統一輸出到 `log` 資料夾中，主要日誌檔案為 `log/face_system.log`。
+應用程式的日誌會統一輸出到 `log` 資料夾中，主要日誌檔案為 `log/facial_recognition.log`。
 
 ### 每日辨識成效報告
 
@@ -143,7 +143,7 @@ python setting/build_config.py
 
 1.  **建立服務文件**:
     ```bash
-    sudo nano /etc/systemd/system/face_system.service
+    sudo nano /etc/systemd/system/facial_recognition.service
     ```
 
 2.  **貼入以下內容**（請務必手動替換所有的 `<您的使用者名稱>` 與路徑）：
@@ -156,8 +156,8 @@ python setting/build_config.py
     User=<您的使用者名稱>
     Environment=DISPLAY=:0
     Environment="XDG_RUNTIME_DIR=/run/user/1000"
-    WorkingDirectory=/home/<您的使用者名稱>/face_system
-    ExecStart=/home/<您的使用者名稱>/face_system/venv/bin/python -u /home/<您的使用者名稱>/face_system/face_main.py
+    WorkingDirectory=/home/<您的使用者名稱>/facial_recognition
+    ExecStart=/home/<您的使用者名稱>/facial_recognition/venv/bin/python -u /home/<您的使用者名稱>/facial_recognition/main.py
     Restart=always
     RestartSec=10
 
@@ -168,8 +168,8 @@ python setting/build_config.py
 3.  **重新載入並啟動服務**:
     ```bash
     sudo systemctl daemon-reload
-    sudo systemctl enable face_system.service
-    sudo systemctl start face_system.service
+    sudo systemctl enable facial_recognition.service
+    sudo systemctl start facial_recognition.service
     ```
 
 ### 5. Web 介面強制重啟權限
@@ -177,7 +177,7 @@ python setting/build_config.py
 使 Web 功能支援軟重啟與主機硬重啟：
 執行 `sudo visudo`，在檔案末尾加入以下內容：
 ```bash
-ubuntu ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart face_system.service
+ubuntu ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart facial_recognition.service
 ```
 *(請將 `ubuntu` 替換為您的實際使用者名稱)*
 
