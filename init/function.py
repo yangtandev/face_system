@@ -333,10 +333,20 @@ def check_in_out_excel(staff_name):
 
 def open_door():
     """
-    透過設定的門禁 URL 觸發開門操作，並寫入 log。
+    透過設定的門禁 IP 組成完整 URL，觸發開門操作，並寫入 log。
+    URL 固定格式: http://{門禁裝置IP}:1880/open_door
     """
-    r = requests.get(CONFIG["door"])
-    LOGGER.info(f"{time.time()} : 開門 {r}")
+    door_val = CONFIG["door"]
+    # 向下相容：若使用者存的是完整 URL 就直接用，否則視為 IP 自動組裝
+    if door_val.startswith("http"):
+        url = door_val
+    else:
+        url = f"http://{door_val}:1880/open_door"
+    try:
+        r = requests.get(url, timeout=5)
+        LOGGER.info(f"{time.time()} : 開門 {r} (URL: {url})")
+    except requests.exceptions.RequestException as e:
+        LOGGER.error(f"開門失敗: {e} (URL: {url})")
         
 def clear_leave_employee(system, staff_id):
     """

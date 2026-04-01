@@ -62,6 +62,11 @@
             <div class="form-group"><label><input type="checkbox" name="Clothes_show">顯示服裝框</label></div>
             <div class="form-group"><label><input type="checkbox" name="qrcode_mode">啟用 QR Code 掃描</label></div>
             <div class="form-group"><label><input type="checkbox" name="full_screen">全螢幕模式</label></div>
+            <div class="form-group">
+                <label>開門裝置 IP</label>
+                <input type="text" name="door" placeholder="例: 192.168.0.100 (輸入 0 表示不啟用)">
+                <small style="color: #888;">系統將自動組成 http://{IP}:1880/open_door</small>
+            </div>
         </div>
 
         <!-- Server -->
@@ -155,6 +160,15 @@
             if (el.type === 'checkbox') el.checked = val;
             else el.value = val;
         });
+
+        // 向下相容：若 door 存的是完整 URL，自動擷取 IP 顯示
+        const doorInput = document.querySelector('[name="door"]');
+        if (doorInput && doorInput.value.startsWith('http')) {
+            try {
+                const u = new URL(doorInput.value);
+                doorInput.value = u.hostname || '0';
+            } catch(e) { /* keep original */ }
+        }
 
         // Populate Schedule
         const sched = currentConfig.Schedule || {};

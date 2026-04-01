@@ -274,9 +274,14 @@ class ConfigWindow(QWidget):
         # 進階
         group_adv, form_adv = self.create_form_group("進階整合")
         self.door_api = QLineEdit()
+        self.door_api.setPlaceholderText("例: 192.168.0.100 (輸入 0 表示不啟用)")
         self.chk_excel = QCheckBox("啟用 Excel API")
         
-        form_adv.addRow("開門 API URL:", self.door_api)
+        door_hint = QLabel("系統將自動組成 http://{IP}:1880/open_door")
+        door_hint.setStyleSheet("color: gray; font-size: 10px;")
+        
+        form_adv.addRow("開門裝置 IP:", self.door_api)
+        form_adv.addRow("", door_hint)
         form_adv.addRow(self.chk_excel)
         layout.addWidget(group_adv)
         layout.addStretch(1)
@@ -351,7 +356,16 @@ class ConfigWindow(QWidget):
             self.local_mask.setText(ip_set.get("ip_mask", ""))
             self.local_gateway.setText(ip_set.get("ip_gateway", ""))
             
-            self.door_api.setText(str(cfg.get("door", "0")))
+            door_raw = str(cfg.get("door", "0"))
+            # 向下相容：若存的是完整 URL，自動擷取 IP
+            if door_raw.startswith("http"):
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(door_raw)
+                    door_raw = parsed.hostname or "0"
+                except Exception:
+                    pass
+            self.door_api.setText(door_raw)
             self.chk_excel.setChecked(cfg.get("excel_api_enabled", False))
 
         except Exception as e:
