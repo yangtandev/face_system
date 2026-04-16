@@ -238,9 +238,9 @@ class MediaPipeHandler:
         
         pose_tuple = (pitch, yaw, roll)
 
-        # 取得動態 Pitch 門檻 (預設: 抬頭25, 低頭-10)
+        # 取得動態 Pitch 門檻 (預設: 抬頭25, 低頭-15)
         pitch_up_limit = self.config.get("pitch_threshold", {}).get("up", 25)
-        pitch_down_limit = self.config.get("pitch_threshold", {}).get("down", -10)
+        pitch_down_limit = self.config.get("pitch_threshold", {}).get("down", -15)
 
         # 1. 眼睛異常檢查 (閉眼/特徵崩潰) - 優先攔截
         # 正常張眼時 Avg V 約為 0.2~0.8。若 > 3.0 代表上下眼皮重疊導致數值爆炸。
@@ -261,9 +261,8 @@ class MediaPipeHandler:
             return False, f"低頭 (Pitch:{pitch:.1f} < {pitch_down_limit})", pose_tuple, ear
 
         # 3. 側臉與歪頭判定 (Yaw/Roll)
-        # [2026-01-26 Enable] 恢復側臉過濾 (Yaw > 25, Roll > 20)
-        # 用於攔截因透視變形導致特徵崩壞的側臉照片 (如誤判案 Yaw=-31)
-        if abs(yaw) > 25 or abs(roll) > 20:
+        # [2026-04-14 Enable] 側臉過濾放寬至 28 度，避免誤殺 (Yaw > 28, Roll > 20)
+        if abs(yaw) > 28 or abs(roll) > 20:
             return False, f"未正視鏡頭 (Yaw:{yaw:.1f}, Roll:{roll:.1f})", pose_tuple, ear
 
         gaze_diff = abs(l_h - r_h)
