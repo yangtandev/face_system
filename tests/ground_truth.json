@@ -1,0 +1,1962 @@
+[
+  {
+    "file": "07;57;30_Out_林福欽_C72_Z1.94_W511",
+    "field_name": "林福欽",
+    "field_id": "JY05",
+    "notes": "力安抬頭",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "07;57;38_In_夏有生_C71_Z2.56_W486",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "阿諾",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾"
+  },
+  {
+    "file": "07;57;51_Out_夏有生_C75_Z2.55_W579",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "阿諾",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾"
+  },
+  {
+    "file": "07;57;59_Out_夏有生_C70_Z2.39_W522",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "阿諾",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾"
+  },
+  {
+    "file": "07;59;59_Out_黃瑞華_C75_Z2.78_W617",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;03;21_In_阿諾_C70_Z2.75_W461",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "notes": "阿諾",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾"
+  },
+  {
+    "file": "08;03;23_In_夏有生_C75_Z2.49_W534",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "阿諾"
+  },
+  {
+    "file": "08;03;23_In_阿諾_C71_Z2.93_W529",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;03;31_In_阿諾_C71_Z2.79_W573",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;03;44_In_范文大_C81_Z2.49_W438",
+    "field_name": "范文大",
+    "field_id": "SH09",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "力安"
+  },
+  {
+    "file": "08;05;40_In_黃瑞華_C70_Z2.97_W466",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "notes": "特徵點被切除",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "08;06;01_In_黃瑞華_C70_Z2.80_W486",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "notes": "未建檔",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客"
+  },
+  {
+    "file": "08;06;23_In_蔡志明_C70_Z2.49_W317",
+    "field_name": "蔡志明",
+    "field_id": "JY10",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔"
+  },
+  {
+    "file": "08;06;29_In_夏有生_C70_Z2.47_W677",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "阿諾"
+  },
+  {
+    "file": "08;06;41_In_力安_C76_Z2.17_W620",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;08;31_In_黃瑞華_C70_Z2.82_W423",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "notes": "未建檔",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客"
+  },
+  {
+    "file": "08;09;10_In_王碩賢_C84_Z2.49_W528",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;09;17_In_王碩賢_C81_Z2.51_W488",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;09;28_In_王碩賢_C80_Z2.25_W311",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;09;32_In_鄭明義_C70_Z2.27_W359",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;10;03_In_王碩賢_C77_Z2.43_W321",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;10;04_In_黃士育_C71_Z1.79_W439",
+    "field_name": "黃士育",
+    "field_id": "JY13",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "王碩賢"
+  },
+  {
+    "file": "08;10;07_In_王碩賢_C77_Z1.97_W535",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;19;29_Out_黃瑞華_C77_Z3.20_W647",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;19;32_Out_楊昌裕_C79_Z2.20_W581",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "notes": "斜視",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "08;19;32_Out_黃瑞華_C79_Z2.91_W600",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;19;43_Out_楊昌裕_C71_Z2.31_W369",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "notes": "特徵點被切除",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "08;19;55_Out_楊昌裕_C74_Z2.46_W419",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "notes": "未建檔",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客"
+  },
+  {
+    "file": "08;19;55_Out_黃瑞華_C72_Z2.37_W417",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;19;58_Out_黃瑞華_C72_Z2.15_W394",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;19;59_Out_王碩賢_C73_Z2.48_W371",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "notes": "特徵點被切除",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "08;20;00_Out_黃瑞華_C71_Z2.99_W404",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;23;13_Out_黃瑞華_C72_Z3.09_W436",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;23;14_Out_楊昌裕_C71_Z2.06_W521",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;23;14_Out_黃瑞華_C76_Z3.06_W368",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "notes": "抬頭",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "08;23;55_In_阿諾_C72_Z3.00_W552",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;24;33_In_夏有生_C70_Z2.52_W343",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "阿諾",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾"
+  },
+  {
+    "file": "08;24;50_In_楊昌裕_C77_Z2.36_W549",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "notes": "未置中",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "08;24;51_In_黃瑞華_C73_Z2.64_W576",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;25;15_In_楊昌裕_C71_Z2.42_W426",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;25;15_In_黃瑞華_C71_Z2.67_W423",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;25;16_In_黃瑞華_C73_Z2.58_W416",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "08;29;33_Out_劉堃佑_C70_Z2.45_W623",
+    "field_name": "劉堃佑",
+    "field_id": "JY16",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾",
+    "notes": "戴墨鏡"
+  },
+  {
+    "file": "08;34;38_In_夏有生_C70_Z2.47_W412",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "阿諾低頭",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "08;35;13_In_王碩賢_C87_Z2.89_W353",
+    "field_name": "王碩賢",
+    "field_id": "JY22",
+    "notes": "阿諾低頭",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "08;35;16_Out_王碩賢_C79_Z1.99_W425",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;35;41_In_王碩賢_C89_Z2.78_W312",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;35;46_Out_王碩賢_C83_Z2.25_W445",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;36;22_Out_王碩賢_C89_Z2.58_W449",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;37;11_Out_王碩賢_C75_Z2.02_W548",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;37;26_Out_王碩賢_C86_Z2.56_W478",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;37;56_Out_王碩賢_C74_Z1.99_W436",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;39;13_In_王碩賢_C85_Z2.48_W448",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;39;21_In_王碩賢_C83_Z2.24_W308",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;39;25_Out_王碩賢_C84_Z2.28_W554",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;39;43_Out_王碩賢_C89_Z2.69_W349",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;43;35_Out_王碩賢_C74_Z1.72_W611",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "notes": "王碩賢",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢"
+  },
+  {
+    "file": "08;44;42_Out_王碩賢_C86_Z2.66_W537",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "08;53;59_Out_阿諾_C79_Z2.84_W529",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;06;06_In_鄭明義_C87_Z3.26_W390",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;06;14_In_鄭明義_C75_Z2.62_W552",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;06;33_In_鄭明義_C75_Z2.68_W561",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;06;39_In_劉堃佑_C72_Z3.14_W516",
+    "field_name": "劉堃佑",
+    "field_id": "JY16",
+    "notes": "鄭明義特徵點切除",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "09;06;40_In_鄭明義_C87_Z3.15_W400",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;06;46_In_鄭明義_C88_Z3.67_W314",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;07;11_In_鄭明義_C84_Z3.14_W465",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;18;50_In_力安_C78_Z2.50_W655",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;20;42_In_阿諾_C72_Z2.44_W404",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;22;32_In_力安_C79_Z2.79_W567",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;24;12_In_施輝增_C82_Z2.75_W435",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;24;34_In_阿耿_C80_Z2.35_W652",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;24;40_In_阿耿_C85_Z2.59_W321",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;24;47_In_阿耿_C81_Z2.25_W588",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;25;37_In_阿耿_C80_Z2.24_W408",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;28;22_In_阿耿_C79_Z2.29_W490",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;32;23_Out_力安_C78_Z2.58_W677",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "09;42;06_Out_黃志傑_C79_Z1.82_W414",
+    "field_name": "黃志傑",
+    "field_id": "JY36",
+    "notes": "黃志傑抬頭",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "10;01;14_In_陳建豪_C82_Z2.66_W555",
+    "field_name": "陳建豪",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "陳建豪",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;02;55_In_王碩賢_C71_Z2.70_W332",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;03;01_Out_王碩賢_C79_Z2.72_W539",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;03;06_Out_王碩賢_C84_Z2.99_W426",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;32;29_In_王碩賢_C76_Z2.69_W300",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;32;36_Out_王碩賢_C84_Z3.27_W432",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;32;45_In_王碩賢_C79_Z2.58_W418",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;32;52_Out_王碩賢_C80_Z2.76_W528",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;35;19_In_王碩賢_C76_Z2.46_W494",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;35;42_In_王碩賢_C84_Z3.11_W312",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;35;59_In_王碩賢_C75_Z2.31_W579",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;36;05_In_王碩賢_C76_Z2.40_W495",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;57;40_In_阿耿_C78_Z2.40_W300",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;57;57_In_力安_C77_Z2.85_W608",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "10;58;02_In_施輝增_C82_Z2.78_W401",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "11;04;21_In_黃瑞華_C72_Z3.35_W462",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "11;05;23_Out_黃瑞華_C76_Z3.41_W384",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "11;07;14_In_范文大_C71_Z2.45_W545",
+    "field_name": "范文大",
+    "field_id": "SH09",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "力安"
+  },
+  {
+    "file": "11;07;22_In_范文大_C81_Z2.52_W375",
+    "field_name": "范文大",
+    "field_id": "SH09",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "力安"
+  },
+  {
+    "file": "11;07;27_In_阿耿_C73_Z2.67_W549",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "11;07;37_In_阿耿_C76_Z2.52_W604",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "11;20;43_Out_施輝增_C71_Z2.29_W459",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "notes": "施輝增",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "11;20;49_Out_施輝增_C72_Z2.42_W506",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "11;20;54_Out_楊昌裕_C71_Z2.26_W516",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "施輝增(第二輪)"
+  },
+  {
+    "file": "11;20;57_Out_施輝增_C79_Z2.70_W431",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "notes": "施輝增",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "11;20;58_Out_夏有生_C77_Z2.52_W511",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "施輝增"
+  },
+  {
+    "file": "11;21;01_Out_施輝增_C79_Z2.71_W440",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "11;21;02_Out_夏有生_C78_Z2.39_W429",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "施輝增(誤判夏有生)",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "11;41;26_In_林福欽_C71_Z2.28_W513",
+    "field_name": "林福欽",
+    "field_id": "JY05",
+    "ground_truth": "JY36",
+    "ground_truth_name": "黃志傑",
+    "notes": "黃志傑(第二輪)"
+  },
+  {
+    "file": "12;02;40_Out_團忠城_C72_Z1.83_W462",
+    "field_name": "團忠城",
+    "field_id": "SH23",
+    "ground_truth": "SH23",
+    "ground_truth_name": "團忠城",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;03;19_Out_團忠城_C72_Z1.99_W605",
+    "field_name": "團忠城",
+    "field_id": "SH23",
+    "ground_truth": "SH23",
+    "ground_truth_name": "團忠城",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;03;26_Out_團忠城_C72_Z1.89_W455",
+    "field_name": "團忠城",
+    "field_id": "SH23",
+    "ground_truth": "SH23",
+    "ground_truth_name": "團忠城",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;03;28_Out_團忠城_C73_Z1.87_W487",
+    "field_name": "團忠城",
+    "field_id": "SH23",
+    "ground_truth": "SH23",
+    "ground_truth_name": "團忠城",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;03;28_Out_孫銘宏_C75_Z1.81_W486",
+    "field_name": "孫銘宏",
+    "field_id": "JY35",
+    "notes": "眼睛閉合",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "12;03;57_Out_夏有生_C80_Z2.23_W407",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "施輝增"
+  },
+  {
+    "file": "12;03;57_Out_施輝增_C78_Z2.34_W443",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;04;00_Out_楊昌裕_C79_Z2.36_W369",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "施輝增"
+  },
+  {
+    "file": "12;04;05_Out_施輝增_C78_Z2.52_W371",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "notes": "斜視",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "12;04;07_Out_夏有生_C79_Z2.20_W430",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "施輝增(誤判夏有生)",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "12;04;17_Out_阿諾_C80_Z3.22_W460",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;04;23_Out_阿耿_C78_Z2.74_W551",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;04;31_Out_力安_C77_Z2.65_W545",
+    "field_name": "力安",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;07;19_Out_阿諾_C81_Z3.61_W486",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;07;47_Out_力安_C78_Z2.68_W662",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;14;08_Out_阿諾_C81_Z3.17_W609",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;14;15_Out_阿諾_C82_Z3.39_W430",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;14;22_Out_潘婷厚_C76_Z2.39_W613",
+    "field_name": "潘婷厚",
+    "field_id": "SH34",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "阿耿(第二輪)"
+  },
+  {
+    "file": "12;14;31_Out_潘婷厚_C73_Z2.29_W540",
+    "field_name": "潘婷厚",
+    "field_id": "SH34",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "阿耿(第二輪)"
+  },
+  {
+    "file": "12;14;34_Out_阿耿_C77_Z2.45_W523",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "12;14;50_Out_力安_C71_Z2.39_W663",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;03;05_In_夏有生_C70_Z2.67_W427",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "阿諾",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾"
+  },
+  {
+    "file": "13;03;09_In_夏有生_C75_Z2.62_W350",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "阿諾"
+  },
+  {
+    "file": "13;03;09_In_阿諾_C75_Z2.99_W428",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;03;10_In_夏有生_C70_Z2.57_W589",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "阿諾"
+  },
+  {
+    "file": "13;04;17_In_力安_C72_Z3.10_W450",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;04;23_In_力安_C76_Z2.76_W415",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;04;34_In_力安_C71_Z2.71_W598",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;05;14_In_夏有生_C76_Z3.04_W539",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "阿諾"
+  },
+  {
+    "file": "13;05;25_In_阿耿_C71_Z2.44_W657",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;05;39_In_阿耿_C75_Z2.74_W571",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;06;17_In_施輝增_C74_Z2.60_W501",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;06;52_Out_施輝增_C80_Z2.54_W382",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "notes": "正面可保留",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "13;07;17_In_力安_C71_Z2.53_W404",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;07;36_In_力安_C75_Z2.58_W671",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;07;48_In_施輝增_C76_Z2.52_W443",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;07;54_In_施輝增_C76_Z2.71_W546",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;12;10_In_夏有生_C75_Z3.13_W546",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "阿諾"
+  },
+  {
+    "file": "13;18;25_Out_黃瑞華_C73_Z3.24_W507",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "notes": "抬頭",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "13;18;34_Out_楊昌裕_C72_Z2.38_W591",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "13;18;34_Out_黃瑞華_C71_Z2.77_W560",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "13;18;36_Out_黃瑞華_C73_Z2.63_W521",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "13;19;14_In_黃瑞華_C70_Z2.64_W470",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "13;19;19_In_黃瑞華_C71_Z3.31_W560",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "13;19;36_In_高文勇_C70_Z2.35_W443",
+    "field_name": "高文勇",
+    "field_id": "SH29",
+    "notes": "阿耿",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿"
+  },
+  {
+    "file": "13;36;54_In_施輝增_C82_Z2.63_W304",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;37;01_In_施輝增_C77_Z2.55_W473",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "notes": "未正視鏡頭",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "13;37;12_In_施輝增_C74_Z2.35_W453",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "notes": "施輝增",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "13;37;19_In_施輝增_C73_Z2.50_W487",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;37;30_In_施輝增_C70_Z2.57_W492",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;37;36_In_楊昌裕_C75_Z2.28_W507",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "施輝增(第二輪)"
+  },
+  {
+    "file": "13;37;44_In_施輝增_C72_Z2.54_W526",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;37;57_In_夏有生_C74_Z2.46_W641",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "施輝增(誤判夏有生)",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "13;38;04_In_施輝增_C71_Z2.74_W562",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;38;20_In_施輝增_C74_Z2.57_W519",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;38;30_In_施輝增_C77_Z2.23_W381",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;43;15_In_陳建豪_C80_Z2.53_W554",
+    "field_name": "陳建豪",
+    "field_id": "SH20",
+    "ground_truth": "SH20",
+    "ground_truth_name": "陳建豪",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;43;24_In_陳建豪_C82_Z2.78_W494",
+    "field_name": "陳建豪",
+    "field_id": "SH20",
+    "ground_truth": "SH20",
+    "ground_truth_name": "陳建豪",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;44;28_In_陳建豪_C84_Z2.85_W405",
+    "field_name": "陳建豪",
+    "field_id": "SH20",
+    "ground_truth": "SH20",
+    "ground_truth_name": "陳建豪",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;44;42_Out_潘婷厚_C76_Z2.16_W636",
+    "field_name": "潘婷厚",
+    "field_id": "SH34",
+    "ground_truth": "SH20",
+    "ground_truth_name": "陳建豪",
+    "notes": "陳建豪(第二輪)"
+  },
+  {
+    "file": "13;44;42_Out_黃文生_C76_Z2.36_W601",
+    "field_name": "黃文生",
+    "field_id": "SH32",
+    "ground_truth": "SH20",
+    "ground_truth_name": "陳建豪",
+    "notes": "陳建豪(第二輪)"
+  },
+  {
+    "file": "13;44;46_Out_陳建豪_C76_Z2.24_W542",
+    "field_name": "陳建豪",
+    "field_id": "SH20",
+    "ground_truth": "SH20",
+    "ground_truth_name": "陳建豪",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;47;37_In_施輝增_C78_Z2.47_W437",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;47;56_In_鄭明義_C76_Z3.01_W398",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;48;01_In_鄭明義_C77_Z2.85_W404",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;48;27_In_施輝增_C76_Z2.57_W427",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "notes": "正面可保留",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "13;48;34_In_施輝增_C74_Z2.50_W414",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;48;47_In_施輝增_C70_Z2.40_W416",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;49;04_In_施輝增_C72_Z2.26_W415",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;49;31_In_施輝增_C71_Z2.32_W420",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;49;46_Out_鄭明義_C72_Z2.33_W418",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;51;15_In_鄭明義_C73_Z2.79_W332",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;51;33_In_鄭明義_C71_Z2.82_W481",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;51;55_Out_孫銘宏_C71_Z2.79_W475",
+    "field_name": "孫銘宏",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "孫銘宏",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;51;55_Out_鄭明義_C77_Z3.02_W465",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;51;56_Out_孫銘宏_C70_Z2.75_W397",
+    "field_name": "孫銘宏",
+    "field_id": "JY35",
+    "notes": "特徵點被切除",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "13;51;59_Out_鄭明義_C70_Z2.49_W356",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "notes": "斜視",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "13;52;13_Out_劉堃佑_C70_Z2.91_W391",
+    "field_name": "劉堃佑",
+    "field_id": "JY16",
+    "notes": "鄭明義特徵點切除",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "13;52;13_Out_孫銘宏_C70_Z2.55_W434",
+    "field_name": "孫銘宏",
+    "field_id": "JY35",
+    "notes": "特徵點被切除",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "13;52;13_Out_孫銘宏_C73_Z2.77_W396",
+    "field_name": "孫銘宏",
+    "field_id": "JY35",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾",
+    "notes": "鄭明義特徵點切除(第二輪)"
+  },
+  {
+    "file": "13;52;14_Out_鄭明義_C71_Z2.34_W398",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "notes": "鄭明義",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義"
+  },
+  {
+    "file": "13;52;24_Out_孫銘宏_C76_Z2.70_W511",
+    "field_name": "孫銘宏",
+    "field_id": "JY35",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾",
+    "notes": "鄭明義特徵點切除(第二輪)"
+  },
+  {
+    "file": "13;52;29_Out_孫銘宏_C70_Z2.21_W359",
+    "field_name": "孫銘宏",
+    "field_id": "JY35",
+    "notes": "鄭明義抬頭",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "13;52;29_Out_鄧士決_C70_Z2.12_W389",
+    "field_name": "鄧士決",
+    "field_id": "SH15",
+    "notes": "鄭明義抬頭",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "13;52;29_Out_鄭明義_C70_Z2.48_W385",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;52;31_Out_孫銘宏_C75_Z2.91_W346",
+    "field_name": "孫銘宏",
+    "field_id": "JY35",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾",
+    "notes": "鄭明義特徵點切除(第二輪)"
+  },
+  {
+    "file": "13;52;31_Out_鄭明義_C77_Z2.93_W361",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "13;52;33_Out_鄭明義_C75_Z2.95_W365",
+    "field_name": "鄭明義",
+    "field_id": "JY07",
+    "ground_truth": "JY07",
+    "ground_truth_name": "鄭明義",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;12;27_In_黃瑞華_C70_Z2.90_W322",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "14;12;33_In_黃瑞華_C79_Z3.51_W507",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "14;14;21_In_楊昌裕_C70_Z2.48_W303",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "notes": "未建檔",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客"
+  },
+  {
+    "file": "14;35;54_Out_夏有生_C76_Z2.21_W405",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "施輝增"
+  },
+  {
+    "file": "14;35;57_Out_施輝增_C74_Z2.65_W378",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;35;58_Out_夏有生_C71_Z2.22_W382",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "施輝增",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "14;35;58_Out_施輝增_C70_Z2.34_W374",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "notes": "施輝增",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "14;36;00_Out_夏有生_C72_Z2.22_W386",
+    "field_name": "夏有生",
+    "field_id": "JY22",
+    "notes": "施輝增",
+    "ground_truth": "SH19",
+    "ground_truth_name": "施輝增"
+  },
+  {
+    "file": "14;36;40_In_王碩賢_C82_Z3.14_W417",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;36;56_Out_王碩賢_C80_Z3.03_W501",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;37;18_In_王碩賢_C78_Z2.76_W371",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;37;26_In_王碩賢_C84_Z3.04_W372",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;37;32_In_王碩賢_C83_Z3.11_W405",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "notes": "眼睛閉合",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "14;38;23_In_王碩賢_C74_Z2.44_W451",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;38;33_Out_王碩賢_C89_Z3.56_W439",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;38;35_Out_施輝增_C71_Z2.31_W534",
+    "field_name": "施輝增",
+    "field_id": "SH19",
+    "notes": "未正視",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "14;38;46_Out_王碩賢_C86_Z3.31_W399",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;38;54_Out_王碩賢_C79_Z2.64_W383",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "notes": "王碩賢",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢"
+  },
+  {
+    "file": "14;39;05_In_王碩賢_C78_Z2.74_W366",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;39;14_Out_王碩賢_C78_Z2.55_W485",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;39;23_In_王碩賢_C75_Z2.49_W358",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "notes": "勉強正面可保留",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢"
+  },
+  {
+    "file": "14;39;32_Out_王碩賢_C82_Z3.09_W544",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;39;41_In_王碩賢_C75_Z2.63_W338",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;39;49_Out_王碩賢_C79_Z2.75_W493",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;40;02_Out_王碩賢_C81_Z2.70_W390",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;40;14_In_王碩賢_C80_Z2.68_W375",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;40;21_In_王碩賢_C82_Z2.90_W386",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;40;33_In_王碩賢_C80_Z3.03_W477",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;40;41_In_王碩賢_C82_Z2.93_W475",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;40;49_In_王碩賢_C74_Z2.66_W420",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;40;55_In_王碩賢_C76_Z2.52_W416",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;41;02_Out_王碩賢_C78_Z2.88_W479",
+    "field_name": "王碩賢",
+    "field_id": "JY03",
+    "ground_truth": "JY03",
+    "ground_truth_name": "王碩賢",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "14;47;44_In_傅俊銓_C80_Z2.25_W515",
+    "field_name": "傅俊銓",
+    "field_id": "JY08",
+    "ground_truth": "JY36",
+    "ground_truth_name": "黃志傑",
+    "notes": "黃志傑"
+  },
+  {
+    "file": "14;47;57_In_傅俊銓_C81_Z2.10_W454",
+    "field_name": "傅俊銓",
+    "field_id": "JY08",
+    "notes": "正面可保留",
+    "ground_truth": "JY08",
+    "ground_truth_name": "傅俊銓"
+  },
+  {
+    "file": "14;48;02_In_傅俊銓_C77_Z1.91_W508",
+    "field_name": "傅俊銓",
+    "field_id": "JY08",
+    "notes": "黃志傑閉眼",
+    "ground_truth": "FILTERED",
+    "ground_truth_name": "應過濾"
+  },
+  {
+    "file": "15;04;16_Out_阿耿_C83_Z2.71_W383",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "15;04;34_In_阿耿_C79_Z2.65_W330",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "15;04;43_In_阿耿_C72_Z2.40_W592",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "15;05;02_In_阿耿_C75_Z2.54_W575",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "15;05;08_Out_阿耿_C84_Z2.72_W508",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "15;05;16_Out_阿耿_C73_Z2.44_W645",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "15;05;28_Out_阿耿_C74_Z2.66_W598",
+    "field_name": "阿耿",
+    "field_id": "SH18",
+    "ground_truth": "SH18",
+    "ground_truth_name": "阿耿",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "15;05;29_Out_林福欽_C75_Z1.87_W575",
+    "field_name": "林福欽",
+    "field_id": "JY05",
+    "notes": "黃志傑",
+    "ground_truth": "JY36",
+    "ground_truth_name": "黃志傑"
+  },
+  {
+    "file": "15;05;29_Out_黃志傑_C77_Z2.11_W532",
+    "field_name": "黃志傑",
+    "field_id": "JY36",
+    "ground_truth": "JY36",
+    "ground_truth_name": "黃志傑",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "15;06;26_Out_阿諾_C79_Z3.17_W502",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "15;09;53_Out_力安_C77_Z2.73_W643",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "16;06;29_In_黃瑞華_C70_Z2.94_W448",
+    "field_name": "黃瑞華",
+    "field_id": "JY01",
+    "notes": "未建檔",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客"
+  },
+  {
+    "file": "16;06;31_In_楊昌裕_C71_Z2.81_W456",
+    "field_name": "楊昌裕",
+    "field_id": "JY04",
+    "ground_truth": "VISITOR",
+    "ground_truth_name": "訪客",
+    "notes": "未建檔(批量)"
+  },
+  {
+    "file": "16;52;12_Out_力安_C75_Z2.64_W601",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "16;52;20_Out_力安_C74_Z2.28_W662",
+    "field_name": "力安",
+    "field_id": "SH21",
+    "ground_truth": "SH21",
+    "ground_truth_name": "力安",
+    "notes": "現場+重測一致"
+  },
+  {
+    "file": "16;52;38_Out_阿諾_C76_Z3.04_W341",
+    "field_name": "阿諾",
+    "field_id": "SH22",
+    "ground_truth": "SH22",
+    "ground_truth_name": "阿諾",
+    "notes": "現場+重測一致"
+  }
+]
