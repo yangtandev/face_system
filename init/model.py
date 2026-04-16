@@ -950,7 +950,8 @@ class Comparison:
                 # Detect Bad Pose (Compound Deviation)
                 # 1. Yaw > 15 AND Pitch > 10 (Both distinct deviations) -> Dangerous
                 # 2. Roll > 15 (Tilt) -> Dangerous
-                is_bad_pose = (abs(yaw) > 15 and abs(pitch) > 10) or abs(roll) > 15
+                # [2026-04-15] 修正邏輯：只要任一角度過大就是不良姿態 (or)
+                is_bad_pose = (abs(yaw) > 25 or abs(pitch) > 20) or abs(roll) > 20
                 metrics['is_bad_pose'] = is_bad_pose
 
                 if not is_looking:
@@ -1022,8 +1023,24 @@ class Comparison:
         # except Exception as e:
         #     LOGGER.error(f"清晰度檢查失敗: {e}")
 
-        # 通過所有檢查
-        return 1.0, "Pass", metrics
+        # ---------------------------------------------------------
+        # 4. [2026-04-14 Fix] 計算連續姿態降權 (Continuous Score Penalty)
+        # ---------------------------------------------------------
+        quality_score = 1.0
+        if 'yaw' in metrics and 'pitch' in metrics:
+            yaw = metrics['yaw']
+            pitch = metrics['pitch']
+            roll = metrics.get('roll_angle', 0.0)
+            
+            # 從安全角度外開始扣分 (每度0.005)
+            yaw_penalty = max(0, abs(yaw) - 20) * 0.005
+            pitch_penalty = max(0, abs(pitch) - 15) * 0.005
+            roll_penalty = max(0, abs(roll) - 5) * 0.005
+            
+            total_penalty = min(0.20, yaw_penalty + pitch_penalty + roll_penalty)
+            quality_score -= total_penalty
+
+        return quality_score, "Pass", metrics
 
     def _update_display_state(self, person_id):
         """更新當前顯示的人員ID和時間"""
@@ -1276,16 +1293,20 @@ class Comparison:
 
                         for i, pid in enumerate(faiss_person_ids):
                             s_raw = distances[i]
-                            s_final = s_raw * quality_score
+                            # [2026-04-15] 高分豁免機制
+                            current_qs = quality_score
+                            if s_raw >= 0.750 and current_qs < 0.99:
+                                current_qs = max(current_qs, 0.99)
+                            
+                            s_final = s_raw * current_qs
 
                             z = (s_raw - mean_score) / std_dev_score if std_dev_score > 0 else 0
 
-                            # [2026-02-09 V5 Logic] Dynamic Threshold based on Pose & Z-Score
-                            # Rescue Mechanism: If Z-Score is high (>=2.5), use moderate penalty (0.75)
-                            # Otherwise (Z < 2.5), use strict penalty (0.85) to kill false positives
-                            required_conf = self.CONFIDENCE_THRESHOLD
+                            # [2026-04-15] 四象限 Z-Score 動態門檻矩陣
                             if quality_metrics.get('is_bad_pose', False):
-                                required_conf = 0.75 if z >= 2.5 else 0.85
+                                required_conf = 0.65 if z >= 2.5 else 0.85
+                            else:
+                                required_conf = 0.65 if z >= 2.5 else 0.70
 
                             # Strict Filter: Must pass BOTH thresholds
                             if s_final >= required_conf and z >= Z_SCORE_THRESHOLD:
@@ -1299,9 +1320,14 @@ class Comparison:
                         # Set Default Winner (Top 1) for fallback/logging
                         best_match_id = faiss_person_ids[0]
                         raw_confidence = distances[0]
-                        confidence = raw_confidence * quality_score
+                        
+                        final_qs = quality_score
+                        if raw_confidence >= 0.750 and final_qs < 0.99:
+                            final_qs = max(final_qs, 0.99)
+                        confidence = raw_confidence * final_qs
                         z_score = (raw_confidence - mean_score) / std_dev_score if std_dev_score > 0 else 0
                         part_msg = ""
+                        is_in_candidates = False
 
                         # [2026-02-01 Feature] Gap Check for Ambiguity Rejection
                         # 攔截高分誤判 (High Confidence False Positive)
@@ -1312,7 +1338,7 @@ class Comparison:
                         # Dynamic Threshold Formula
                         # 如果信心度極高 (>0.80)，容忍較小的 Gap (0.02)
                         # 否則需要較大的 Gap (0.03) 以確保安全
-                        gap_threshold = 0.02 if confidence > 0.80 else 0.03
+                        gap_threshold = 0.005 if confidence >= 0.75 or z >= 2.5 else 0.015
 
                         if gap < gap_threshold:
                              LOGGER.info(f"[{camera_name}][Gap過濾] 分數過於接近 (Gap: {gap:.4f} < {gap_threshold}) - 拒絕辨識")
@@ -1359,6 +1385,7 @@ class Comparison:
                             raw_confidence = winner['raw']
                             confidence = winner['conf']
                             z_score = winner['z']
+                            is_in_candidates = True
 
                         predicted_id = best_match_id
 
@@ -1390,7 +1417,9 @@ class Comparison:
             # [2026-02-09 V5 Logic] Recalculate dynamic threshold for final decision & logging
             final_required_conf = self.CONFIDENCE_THRESHOLD
             if quality_metrics.get('is_bad_pose', False):
-                final_required_conf = 0.75 if z_score >= 2.5 else 0.85
+                final_required_conf = 0.65 if z_score >= 2.5 else 0.85
+            else:
+                final_required_conf = 0.65 if z_score >= 2.5 else 0.70
 
             # [2026-01-11 Fix] 補回遺漏的 Log 訊息定義
             quality_rating = "Low Confidence"
@@ -1404,7 +1433,7 @@ class Comparison:
             log_msg = f"[{camera_name}] ID: {predicted_id} ({staff_name}), Score: {confidence:.2f}/{final_required_conf:.2f} (Raw:{raw_confidence:.2f}), Z: {z_score:.2f}, Q: {quality_score:.2f} [{quality_rating}]{part_msg}"
             LOGGER.info(log_msg)
 
-            if predicted_id != "None" and confidence >= final_required_conf and z_score >= Z_SCORE_THRESHOLD:
+            if is_in_candidates and predicted_id != "None" and confidence >= final_required_conf and z_score >= Z_SCORE_THRESHOLD:
                 if self.system.state.same_class[self.frame_num] != predicted_id:
                     self._update_display_state(predicted_id)
 
@@ -1440,15 +1469,12 @@ class Comparison:
                         except Exception:
                             pass
 
-            elif predicted_id != "None" and confidence >= self.VISITOR_CONF_THRESHOLD:
-                # 訪客邏輯 (分數介於 0.5 ~ 0.7)
-                # 為了避免員工側臉被誤判為訪客，這裡可以加一些限制，或者直接顯示訪客
-                # 目前設定: 只要不是 Low Confidence 且沒過員工門檻，就視為訪客
-                # [2026-01-29 Fix] 擴大模糊區間: 0.5 ~ 0.7 視為 Ambiguous/Ignore，不顯示訪客
-                # 除非有特殊需求，否則不輕易跳出訪客，以免干擾員工
-                pass
-                # if self.system.state.same_class[self.frame_num] != '__VISITOR__':
-                #     self._update_display_state('__VISITOR__')
+            elif predicted_id != "None" and confidence >= 0.58:
+                # [2026-04-14 Fix] 將未能錄取員工但具有一定置信度的辨識標記為訪客
+                # 攔截因分數在 0.58~0.70 被系統忽略，但後續突然跳上 0.7 導致誤認員工的情況
+                if self.system.state.same_class[self.frame_num] != '訪客':
+                    self._update_display_state('訪客', predicted_id='VISITOR')
+                # 依據要求，不發出聲音提示
             else:
                 # Low Confidence or None
                 pass
