@@ -1473,7 +1473,7 @@ class Comparison:
                 # [2026-04-14 Fix] 將未能錄取員工但具有一定置信度的辨識標記為訪客
                 # 攔截因分數在 0.58~0.70 被系統忽略，但後續突然跳上 0.7 導致誤認員工的情況
                 if self.system.state.same_class[self.frame_num] != '訪客':
-                    self._update_display_state('訪客', predicted_id='VISITOR')
+                    self._update_display_state('訪客')
                 # 依據要求，不發出聲音提示
             else:
                 # Low Confidence or None
