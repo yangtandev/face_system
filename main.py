@@ -74,6 +74,7 @@ class CameraSystem:
         self.compar = Comparison(frame_num, system)
         threading.Thread(target=self.main_camera, daemon=True).start()
         self.n_camera = n < 2
+        LOGGER.info(f"CameraSystem init: frame_num={self.frame_num}, ip={ip}, n={n}, single_cam={self.n_camera}")
         if frame_num == 1 and n < 2: return
         self.win = MainWindow(self.updata_screen, frame_num)
         self.img1_size = (self.win.img1.width(), self.win.img1.height())

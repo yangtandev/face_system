@@ -78,7 +78,7 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
     schedule_conf = CONFIG.get("Schedule", {})
     schedule_active = False
     
-    if schedule_conf.get("enabled", False):
+    if schedule_conf.get("enabled", False) and n:
         try:
             # Use local time
             now_dt = datetime.datetime.now()
@@ -120,6 +120,8 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
             schedule_active = True
         except Exception as e:
             LOGGER.error(f"Schedule Logic Error: {e}")
+    elif schedule_conf.get("enabled", False):
+        LOGGER.debug(f"Schedule ignored in dual-camera mode for camera_num={camera_num}")
 
     if not schedule_active:
         if n:  # 單鏡頭模式：根據狀態自動判斷
@@ -132,10 +134,15 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
                 is_check_in_action = True
             elif camera_num == 1:
                 is_check_out_action = True
+            else:
+                LOGGER.warning(f"Unexpected camera_num {camera_num} in double-camera mode; defaulting to exit")
+                is_check_out_action = True
+
+    LOGGER.info(f"check_in_out: staff_id={staff_id}, camera_num={camera_num}, n_single={n}, schedule_active={schedule_active}, in_action={is_check_in_action}, out_action={is_check_out_action}")
 
     # 執行簽到
     if is_check_in_action:
-        log_metrics(staff_name, 0, confidence) # Log as check-in with confidence
+        log_metrics(staff_name, camera_num, confidence, action='enter')
         # [2026-02-10 Feature] Sync direction to GlobalState for file saving
         if system.state.last_direction: 
             system.state.last_direction[camera_num] = "In"
@@ -154,7 +161,7 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
 
     # 執行簽離
     elif is_check_out_action:
-        log_metrics(staff_name, 1, confidence) # Log as check-out with confidence
+        log_metrics(staff_name, camera_num, confidence, action='exit')
         # [2026-02-10 Feature] Sync direction to GlobalState for file saving
         if system.state.last_direction: 
             system.state.last_direction[camera_num] = "Out"
@@ -211,7 +218,7 @@ def check_in_out_qrcode(system, verification, staff_id, camera_num):
     schedule_conf = CONFIG.get("Schedule", {})
     is_scheduled_mode = False
     
-    if schedule_conf.get("enabled", False):
+    if schedule_conf.get("enabled", False) and is_single_cam:
         try:
             now_time = datetime.datetime.now().time()
             periods = schedule_conf.get("in_periods", [])
@@ -233,6 +240,8 @@ def check_in_out_qrcode(system, verification, staff_id, camera_num):
             else: direction = "exit"
             is_scheduled_mode = True
         except: pass
+    elif schedule_conf.get("enabled", False):
+        LOGGER.debug(f"Schedule ignored in dual-camera QR mode for camera_num={camera_num}")
     
     # 2. 自動切換 / 鏡頭判斷
     if not is_scheduled_mode:
@@ -246,8 +255,15 @@ def check_in_out_qrcode(system, verification, staff_id, camera_num):
                 direction = "exit"
         else:
             # 雙鏡頭固定位
-            if camera_num == 0: direction = "enter"
-            elif camera_num == 1: direction = "exit"
+            if camera_num == 0:
+                direction = "enter"
+            elif camera_num == 1:
+                direction = "exit"
+            else:
+                LOGGER.warning(f"Unexpected camera_num {camera_num} in double-camera QR mode; defaulting to exit")
+                direction = "exit"
+
+    LOGGER.info(f"check_in_out_qrcode: staff_id={staff_id}, camera_num={camera_num}, single_cam={is_single_cam}, schedule_active={is_scheduled_mode}, direction={direction}")
 
     # 準備 API 資料
     data = {
@@ -360,23 +376,23 @@ def clear_leave_employee(system, staff_id):
         print(f"clear {staff_id}")
         LOGGER.info(f"clear {staff_id}")
 
-def log_metrics(employee, camera_num, confidence=None):
+def log_metrics(employee, camera_num, confidence=None, action=None):
     """
     將簽到或簽離的事件記錄進 LOGGER 並列印。
 
     :param employee: 人員名稱
-    :param camera_num: 攝影機編號(0=簽到, 1=簽離)
+    :param camera_num: 攝影機編號
     :param confidence: 辨識信賴度 (可選)
+    :param action: 'enter' 或 'exit'，若提供則使用此方向描述
     """
-    inoutType = ""
-    log_cam_num = 0
-    if camera_num == 0:
+    if action == 'enter':
         inoutType = "進入"
-        log_cam_num = 0
-    elif camera_num == 1:
+    elif action == 'exit':
         inoutType = "離開"
-        log_cam_num = 1
-    
+    else:
+        inoutType = "進入" if camera_num == 0 else "離開" if camera_num == 1 else "?"
+
+    log_cam_num = camera_num if camera_num in [0, 1] else camera_num
     conf_str = f", 信賴度: {confidence:.2%}" if confidence is not None else ""
     log_message = f"攝影機編號:{log_cam_num}, 人員:{employee} {inoutType}{conf_str}"
     print(log_message)
