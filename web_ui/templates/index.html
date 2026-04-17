@@ -229,10 +229,9 @@
 
         document.getElementById('loading').style.display = 'none';
         
-        // Ask for Soft Reload
-        if(confirm("設定已儲存！\n是否立即執行「軟重啟」以套用變更？\n(推薦: 不會中斷連線)")) {
-            restart(true);
-        }
+        // Auto Soft Reload
+        alert("設定已儲存！\n系統將自動執行軟重啟以套用變更。");
+        restart(true);
     });
 
     async function restart(force=false) {

@@ -440,29 +440,8 @@ class ConfigWindow(QWidget):
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, ensure_ascii=False, indent=2)
             
-            # [2026-01-30 Fix] Explicitly create QMessageBox to ensure centering on parent
-            msg_box = QMessageBox(self)
-            msg_box.setIcon(QMessageBox.Question)
-            msg_box.setWindowTitle("儲存成功")
-            msg_box.setText("設定已儲存。需要重啟程式才能套用變更。\n是否立即重啟？")
-            msg_box.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            msg_box.setDefaultButton(QMessageBox.Yes)
-            
-            # [2026-01-30 Fix] Force center the popup manually
-            # Get geometry of parent (ConfigWindow)
-            parent_geo = self.geometry()
-            # Estimate msg box size (since not shown yet) or use sizeHint
-            msg_size = msg_box.sizeHint()
-            
-            target_x = parent_geo.x() + (parent_geo.width() - msg_size.width()) // 2
-            target_y = parent_geo.y() + (parent_geo.height() - msg_size.height()) // 2
-            
-            msg_box.move(target_x, target_y)
-            
-            reply = msg_box.exec_()
-            
-            if reply == QMessageBox.Yes:
-                self.restart_system()
+            # Auto restart
+            self.restart_system()
                 
         except Exception as e:
             QMessageBox.critical(self, "儲存失敗", str(e))
@@ -488,6 +467,8 @@ class ConfigWindow(QWidget):
             QMessageBox.critical(self, "錯誤", str(e))
 
     def restart_system(self):
+        QMessageBox.information(self, "重啟中", "設定已儲存。\n系統正在重啟以套用變更...")
+        
         global IS_RESTARTING
         IS_RESTARTING = True
         
