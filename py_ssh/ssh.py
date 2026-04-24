@@ -42,17 +42,18 @@ def sync_with_rsync(ssh_config, source_dir, dest_dir):
     # 使用 sshpass 傳遞密碼
     key_path = config_["Server"].get("ssh_key_path")
     if key_path:
-        ssh_command = f"ssh -i '{key_path}' -p {ssh_config.get('port', 22)} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        ssh_command = f"ssh -i '{key_path}' -p {ssh_config.get('port', 22)} -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
     else:
         # Fallback to password if key_path is not provided (though we encourage using keys)
         # Note: The 'password' key might not exist in config_["Server"] after recent changes.
         # This fallback might need review if password auth is completely removed.
         password = config_["Server"].get("password", "fallback_password_if_needed") # Use .get with a default
-        ssh_command = f"sshpass -p '{password}' ssh -p {ssh_config.get('port', 22)} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+        ssh_command = f"sshpass -p '{password}' ssh -p {ssh_config.get('port', 22)} -o ConnectTimeout=5 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
     command = [
         "rsync",
         "-avz",
+        "--timeout=10",
         "--delete",
         "-e", ssh_command,
         f"{ssh_config['username']}@{ssh_config['ip']}:{source_dir}/", # 注意來源路徑結尾的斜線

@@ -79,7 +79,7 @@ class VideoCapture:
                 '-rtsp_flags', 'prefer_tcp', # Ensure TCP is used for ffprobe too
                 self.rtsp_url
             ]
-            timeout = self.config.get("ffprobe_timeout")
+            timeout = self.config.get("ffprobe_timeout") or 5  # [2026-04-24] Default 5s to prevent hang
             output = subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL, timeout=timeout).strip()
             self.width, self.height = map(int, output.split('x'))
             print(f"Raw Pipeline: Detected resolution {self.width}x{self.height}.")
