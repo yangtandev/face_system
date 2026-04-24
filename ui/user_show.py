@@ -171,20 +171,6 @@ class MainWindow(QWidget, Ui_Form):
         elif config_["cameraIP"]["in_camera"] == "0" or config_["cameraIP"]["out_camera"] == "0":
             n = 1
 
-        # [2026-04-23 Feature] 螢幕等待重試機制
-        # 斷電重啟後，螢幕可能尚未初始化（HDMI 握手需 5~15 秒），
-        # 此時 screen_count=1。使用 QTimer 重試最多 40 次 x 2 秒 = 80 秒。
-        if n == 2 and screen_count < 2 and self.frame_num == 0:
-            if not hasattr(self, '_screen_retry_count'):
-                self._screen_retry_count = 0
-            if self._screen_retry_count < 40:
-                self._screen_retry_count += 1
-                print(f"[ScreenDetect] 等待第 2 個螢幕... ({self._screen_retry_count}/40)")
-                QTimer.singleShot(2000, self.update_screen)
-                return
-            else:
-                print("[ScreenDetect] 超過重試上限，以單螢幕模式定位視窗")
-
         # [2026-01-19] 強制視窗排版邏輯 (當 full_screen = False)
         # 即使只有單螢幕，也強制將視窗左右並排，方便測試與除錯
         if not config_.get("full_screen", True):
@@ -208,27 +194,35 @@ class MainWindow(QWidget, Ui_Form):
                     self.setGeometry(x_offset + (w // 2), y_offset, w // 2, h)
 
             self.showNormal()
-            return
-
-        if n == screen_count:
-            pass
-
-        if screen_count > 1:
-            rect = desktop.screenGeometry(self.frame_num)
-            self.move(rect.left(), rect.top())
-            self.resize(rect.width()//2, rect.height())
         else:
-            helf_w = desktop.screenGeometry(0).width()
-            helf_h = desktop.screenGeometry(0).height()
-            if helf_h > helf_w:
-                self.move(0, self.frame_num*helf_h//2)
-                self.resize(helf_w, helf_h//2)
+            # 全螢幕模式
+            if screen_count > 1:
+                rect = desktop.screenGeometry(self.frame_num)
+                self.move(rect.left(), rect.top())
+                self.resize(rect.width()//2, rect.height())
             else:
-                self.move(self.frame_num*helf_w//2, 0)
-                self.resize(helf_w//2, helf_h)
+                helf_w = desktop.screenGeometry(0).width()
+                helf_h = desktop.screenGeometry(0).height()
+                if helf_h > helf_w:
+                    self.move(0, self.frame_num*helf_h//2)
+                    self.resize(helf_w, helf_h//2)
+                else:
+                    self.move(self.frame_num*helf_w//2, 0)
+                    self.resize(helf_w//2, helf_h)
 
-        if config_["full_screen"] and n == screen_count:
-            self.showMaximized()
+            if config_["full_screen"] and n == screen_count:
+                self.showMaximized()
+
+        # [2026-04-24 Fix] 螢幕等待重試機制（非阻塞）
+        # 先定位視窗（基於目前偵測到的螢幕數），再排程重試。
+        # 若稍後第 2 個螢幕出現，會自動重新定位。
+        if n == 2 and screen_count < 2 and self.frame_num == 0:
+            if not hasattr(self, '_screen_retry_count'):
+                self._screen_retry_count = 0
+            if self._screen_retry_count < 40:
+                self._screen_retry_count += 1
+                print(f"[ScreenDetect] 等待第 2 個螢幕... ({self._screen_retry_count}/40)")
+                QTimer.singleShot(2000, self.update_screen)
 
 class MyThread(QThread):
     signal_update_img = pyqtSignal(QLabel, QPixmap)
