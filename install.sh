@@ -148,41 +148,40 @@ with open(config_path, "w", encoding="utf-8") as f:
 print("  >> config.json 已成功寫入！")
 EOF
 
-# --- 8. Web 介面 Sudo 免密權限 ---
-echo "▶ [5/6] 設定 Web 介面重啟服務的免密碼 sudo 權限..."
-SUDOERS_FILE="/etc/sudoers.d/facial_recognition_web_restart"
-echo "$CURRENT_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart facial_recognition.service" | sudo tee "$SUDOERS_FILE" > /dev/null
-sudo chmod 440 "$SUDOERS_FILE"
-
-# --- 9. Systemd 服務註冊 ---
-echo "▶ [6/6] 設定 Systemd 服務..."
-SERVICE_FILE_PATH="/etc/systemd/system/facial_recognition.service"
+# --- 8. Systemd 用戶級服務註冊 ---
+echo "▶ [5/6] 設定 Systemd 用戶級服務..."
+USER_SERVICE_DIR="$HOME/.config/systemd/user"
+mkdir -p "$USER_SERVICE_DIR"
+SERVICE_FILE_PATH="$USER_SERVICE_DIR/facial_recognition.service"
 
 # 確認當前使用者的 XDG_RUNTIME_DIR ID (通常是 1000)
 USER_ID=$(id -u "$CURRENT_USER")
 
-sudo tee "$SERVICE_FILE_PATH" > /dev/null <<EOF
+# Systemd 只負責啟動 Python，螢幕偵測與視窗定位由程式自動處理
+tee "$SERVICE_FILE_PATH" > /dev/null <<EOF
 [Unit]
-Description=Face Recognition System GUI Application
-After=graphical.target mosquitto.service
+Description=Face Recognition System User Service
+After=network.target graphical-session.target
 
 [Service]
-User=$CURRENT_USER
+Type=simple
 Environment=DISPLAY=:0
-Environment="XDG_RUNTIME_DIR=/run/user/$USER_ID"
+Environment=XDG_RUNTIME_DIR=/run/user/$USER_ID
+Environment=XAUTHORITY=$HOME/.Xauthority
+Environment=PYTHONUNBUFFERED=1
 WorkingDirectory=$PROJECT_DIR
 ExecStart=$PROJECT_DIR/venv/bin/python -u $PROJECT_DIR/main.py
 Restart=always
 RestartSec=10
 
 [Install]
-WantedBy=graphical.target
+WantedBy=graphical-session.target
 EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable facial_recognition.service
+systemctl --user daemon-reload
+systemctl --user enable facial_recognition.service
 # 立即啟動服務
-sudo systemctl start facial_recognition.service || true
+systemctl --user start facial_recognition.service || true
 
 # --- 10. Cronjob 排程設定 ---
 echo "▶ 設定自動報表 (analytics_reporter.py) 排程..."
@@ -198,7 +197,7 @@ echo "============================================="
 echo " 🎉 安裝已全部完成！"
 echo "============================================="
 echo "您可以透過以下指令查看服務狀態："
-echo "  sudo systemctl status facial_recognition.service"
+echo "  systemctl --user status facial_recognition.service"
 echo "============================================="
 echo ""
 echo "⚠️  ====== 重要：請手動重啟系統 ====== ⚠️"
