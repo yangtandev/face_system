@@ -32,6 +32,7 @@ import queue
 import json
 import os
 import subprocess
+import socket
 import shutil
 from gtts import gTTS
 from concurrent.futures import ThreadPoolExecutor  # [2026-01-13 Perf]
@@ -667,8 +668,10 @@ class FaceRecognitionSystem:
 
         # [2026-01-13 Perf] Thread pool for non-blocking I/O (e.g., image saving)
         self.io_pool = ThreadPoolExecutor(max_workers=2)
+        self._shutdown_flag = False
+        self._network_tasks_done = {"sync": False, "voice": False, "mqtt": False}
 
-        # Blocking asset rebuild on startup (Voice -> Descriptors)
+        # [2026-04-24 Offline Resilience] Non-blocking asset rebuild on startup
         self._rebuild_assets()
 
         # Load features AFTER rebuild is complete
@@ -703,60 +706,37 @@ class FaceRecognitionSystem:
         except Exception as e:
             LOGGER.error(f"載入衣著模型失敗: {e}")
 
+    def _is_network_available(self, timeout=3):
+        """[2026-04-24] Quick TCP connect test to the server SSH port."""
+        try:
+            s = socket.create_connection(
+                (CONFIG["Server"]["ip"], 22), timeout=timeout)
+            s.close()
+            return True
+        except (OSError, socket.timeout):
+            return False
+
     def _rebuild_assets(self):
+        """[2026-04-24 Offline Resilience] Non-blocking, offline-safe asset rebuild.
+        Skips rsync if no network. Uses incremental voice rebuild (no rmtree).
+        Falls back to existing local data when offline."""
         LOGGER.info("Starting mandatory asset rebuild...")
-        self._sync_files_with_server()
         dp = os.path.join(self.local_media_path, "descriptors")
         pb = os.path.join(self.local_media_path, "pic_bak")
-        vp = os.path.join(main_path, "voice")
 
-        # 1. Voice (IO Bound) - Run FIRST
-        if os.path.exists(vp):
-            shutil.rmtree(vp)
-        os.makedirs(vp, exist_ok=True)
+        # [2026-04-24] Network-aware sync: skip if offline
+        if self._is_network_available():
+            LOGGER.info("Network available, syncing with server...")
+            sync_ok = self._sync_files_with_server()
+            if sync_ok:
+                self._network_tasks_done["sync"] = True
+            else:
+                LOGGER.warning("Server sync failed, continuing with local data.")
+        else:
+            LOGGER.warning("No network detected, skipping server sync. Using local data.")
 
-        if os.path.isdir(pb):
-            LOGGER.info("Stage 1/2: Rebuilding voice files...")
-            generic_texts = {}
-            for key, val in CONFIG.get("say", {}).items():
-                txt = val.replace("name_", "") if "name_" in val else val
-                generic_texts[key] = txt
-
-            names = set()
-            for f in os.listdir(pb):
-                if f.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    try:
-                        names.add(os.path.splitext(f)[0].split("_")[-1])
-                    except:
-                        pass
-
-            # Collect all tasks: (filename, text)
-            tasks = []
-            # 1. Generic commands (e.g., _in.mp3)
-            for key, txt in generic_texts.items():
-                tasks.append((f"_{key}.mp3", txt))
-            # 2. Person-specific greetings (e.g., Yang_in.mp3)
-            for name in names:
-                for key, txt in generic_texts.items():
-                    tasks.append((f"{name}_{key}.mp3", f"{name}{txt}"))
-
-            def gen_one_voice(filename, text):
-                try:
-                    tts = gTTS(text=text, lang='zh-tw')
-                    tts.save(os.path.join(vp, filename))
-                except Exception:
-                    pass
-
-            # Use ThreadPoolExecutor for all tasks (Blocking wait)
-            # [Perf] Maximize IO parallelism (default workers = CPU_count + 4)
-            with ThreadPoolExecutor() as executor:
-                futures = [executor.submit(gen_one_voice, fn, txt)
-                           for fn, txt in tasks]
-                for f in tqdm(futures, desc="[Voice Gen     ]"):
-                    try:
-                        f.result()
-                    except Exception:
-                        pass
+        # 1. Voice (IO Bound) - Incremental rebuild (never delete existing files)
+        self._incremental_voice_rebuild()
 
         # 2. Descriptors (CPU Bound) - Run SECOND
         if os.path.exists(dp):
@@ -797,6 +777,90 @@ class FaceRecognitionSystem:
                 LOGGER.info(f"Removed stale index: {index_path}")
 
         LOGGER.info("Assets rebuild complete.")
+
+    def _incremental_voice_rebuild(self):
+        """[2026-04-24 Offline Resilience] Incremental voice rebuild.
+        Only generates missing voice files. Never deletes existing files upfront.
+        If gTTS fails (no network), existing files are preserved."""
+        pb = os.path.join(self.local_media_path, "pic_bak")
+        vp = os.path.join(main_path, "voice")
+        os.makedirs(vp, exist_ok=True)
+
+        if not os.path.isdir(pb):
+            return
+
+        generic_texts = {}
+        for key, val in CONFIG.get("say", {}).items():
+            txt = val.replace("name_", "") if "name_" in val else val
+            generic_texts[key] = txt
+
+        names = set()
+        for f in os.listdir(pb):
+            if f.lower().endswith(('.png', '.jpg', '.jpeg')):
+                try:
+                    names.add(os.path.splitext(f)[0].split("_")[-1])
+                except Exception:
+                    pass
+
+        # Build expected file set
+        expected_files = set()
+        tasks = []
+        for key, txt in generic_texts.items():
+            fn = f"_{key}.mp3"
+            expected_files.add(fn)
+            if not os.path.isfile(os.path.join(vp, fn)):
+                tasks.append((fn, txt))
+        for name in names:
+            for key, txt in generic_texts.items():
+                fn = f"{name}_{key}.mp3"
+                expected_files.add(fn)
+                if not os.path.isfile(os.path.join(vp, fn)):
+                    tasks.append((fn, f"{name}{txt}"))
+
+        # Remove orphaned voice files (people removed from pic_bak)
+        existing_files = set(f for f in os.listdir(vp) if f.endswith('.mp3'))
+        orphaned = existing_files - expected_files
+        for f in orphaned:
+            try:
+                os.remove(os.path.join(vp, f))
+                LOGGER.info(f"Removed orphaned voice file: {f}")
+            except Exception:
+                pass
+
+        if not tasks:
+            LOGGER.info("Voice files up-to-date, no generation needed.")
+            self._network_tasks_done["voice"] = True
+            return
+
+        LOGGER.info(f"Stage 1/2: Generating {len(tasks)} missing voice files...")
+        gen_success = 0
+        gen_fail = 0
+
+        def gen_one_voice(filename, text):
+            try:
+                tts = gTTS(text=text, lang='zh-tw')
+                tts.save(os.path.join(vp, filename))
+                return True
+            except Exception:
+                return False
+
+        with ThreadPoolExecutor() as executor:
+            futures = {executor.submit(gen_one_voice, fn, txt): fn
+                       for fn, txt in tasks}
+            for f in tqdm(futures, desc="[Voice Gen     ]"):
+                try:
+                    if f.result():
+                        gen_success += 1
+                    else:
+                        gen_fail += 1
+                except Exception:
+                    gen_fail += 1
+
+        if gen_fail == 0:
+            self._network_tasks_done["voice"] = True
+            LOGGER.info(f"Voice generation complete: {gen_success} files generated.")
+        else:
+            LOGGER.warning(f"Voice generation partial: {gen_success} OK, {gen_fail} failed (likely no network). Will retry later.")
 
     def _auto_tune_performance(self):
         img, ts = np.random.randint(
@@ -859,12 +923,13 @@ class FaceRecognitionSystem:
         except Exception as e:
             LOGGER.error(f"Failed to start Web Server: {e}")
 
-
-
         self._load_features_and_profiles()
         self.setup_mqtt_client()
         self.update_inout_log()
         self.setup_cameras()
+
+        # [2026-04-24 Offline Resilience] Start background network retry loop
+        self._start_network_retry_loop()
         try:
             ret = app.exec_()
         finally:
@@ -912,8 +977,10 @@ class FaceRecognitionSystem:
         try:
             client.connect(self.mqtt_broker_host, self.mqtt_port, 60)
             client.loop_start()
-        except Exception:
-            pass
+            self._network_tasks_done["mqtt"] = True
+            LOGGER.info("MQTT connected successfully.")
+        except Exception as e:
+            LOGGER.warning(f"MQTT connection failed: {e}. Will retry in background.")
 
     def on_mqtt_connect(self, client, userdata, flags, rc, properties=None):
         if rc == 0:
@@ -1246,6 +1313,11 @@ class FaceRecognitionSystem:
                     # This handles syncing, voice generation, and descriptor generation
                     # Note: This is blocking, UI might freeze briefly
                     self._rebuild_assets()
+                    # [2026-04-24 Fix] Reload features into memory after disk rebuild
+                    # Without this, self.state.features_dict and ann_index remain stale
+                    self._load_features_and_profiles()
+                    # [2026-04-24 Fix] Restart retry loop if any network tasks failed during reload
+                    self._start_network_retry_loop()
                 else:
                     LOGGER.info(
                         "Config changed (Params only), skipping asset rebuild.")
@@ -1295,7 +1367,69 @@ class FaceRecognitionSystem:
         t.daemon = True
         t.start()
 
+    def _start_network_retry_loop(self):
+        """[2026-04-24 Offline Resilience] Background thread that retries all
+        network-dependent tasks every 15 seconds until all succeed."""
+        if all(self._network_tasks_done.values()):
+            LOGGER.info("All network tasks already done at startup. No retry loop needed.")
+            return
+
+        if hasattr(self, '_retry_thread') and self._retry_thread.is_alive():
+            LOGGER.info("Network retry loop already running.")
+            return
+
+        LOGGER.info("Starting background network retry loop (interval=15s)...")
+
+        def _retry_worker():
+            while not self._shutdown_flag:
+                time.sleep(15)
+                if self._shutdown_flag:
+                    break
+                if not self._is_network_available(timeout=3):
+                    continue
+
+                LOGGER.info("Network detected! Resuming pending tasks...")
+
+                # Task 1: Sync files with server
+                if not self._network_tasks_done["sync"]:
+                    try:
+                        if self._sync_files_with_server():
+                            self._network_tasks_done["sync"] = True
+                            LOGGER.info("[Retry] Server sync completed.")
+                            # After sync, rebuild descriptors incrementally
+                            try:
+                                self.update_data_and_model(initial_run=True)
+                            except Exception as e:
+                                LOGGER.error(f"[Retry] Incremental model update failed: {e}")
+                        else:
+                            LOGGER.warning("[Retry] Server sync failed, will retry.")
+                    except Exception as e:
+                        LOGGER.error(f"[Retry] Sync exception: {e}")
+
+                # Task 2: Voice files
+                if not self._network_tasks_done["voice"]:
+                    try:
+                        self._incremental_voice_rebuild()
+                    except Exception as e:
+                        LOGGER.error(f"[Retry] Voice rebuild failed: {e}")
+
+                # Task 3: MQTT reconnect
+                if not self._network_tasks_done["mqtt"]:
+                    try:
+                        self.setup_mqtt_client()
+                    except Exception as e:
+                        LOGGER.error(f"[Retry] MQTT reconnect failed: {e}")
+
+                # Check if all done
+                if all(self._network_tasks_done.values()):
+                    LOGGER.info("All network-dependent tasks completed successfully. Stopping retry loop.")
+                    break
+
+        self._retry_thread = threading.Thread(target=_retry_worker, daemon=True, name="net-retry")
+        self._retry_thread.start()
+
     def _safe_shutdown(self):
+        self._shutdown_flag = True
         if hasattr(self, 'speaker'):
             self.speaker.terminate()
         # [2026-01-13 Perf] Shutdown IO pool
