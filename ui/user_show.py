@@ -164,12 +164,26 @@ class MainWindow(QWidget, Ui_Form):
 
     def update_screen(self):
         desktop = QApplication.desktop()
-        screen_count = desktop.screenCount() #讀取螢幕數量
+        screen_count = desktop.screenCount()  # 讀取螢幕數量
         n = 2
         if config_["cameraIP"]["in_camera"] == config_["cameraIP"]["out_camera"]:
             n = 1
         elif config_["cameraIP"]["in_camera"] == "0" or config_["cameraIP"]["out_camera"] == "0":
             n = 1
+
+        # [2026-04-23 Feature] 螢幕等待重試機制
+        # 斷電重啟後，螢幕可能尚未初始化（HDMI 握手需 5~15 秒），
+        # 此時 screen_count=1。使用 QTimer 重試最多 40 次 x 2 秒 = 80 秒。
+        if n == 2 and screen_count < 2 and self.frame_num == 0:
+            if not hasattr(self, '_screen_retry_count'):
+                self._screen_retry_count = 0
+            if self._screen_retry_count < 40:
+                self._screen_retry_count += 1
+                print(f"[ScreenDetect] 等待第 2 個螢幕... ({self._screen_retry_count}/40)")
+                QTimer.singleShot(2000, self.update_screen)
+                return
+            else:
+                print("[ScreenDetect] 超過重試上限，以單螢幕模式定位視窗")
 
         # [2026-01-19] 強制視窗排版邏輯 (當 full_screen = False)
         # 即使只有單螢幕，也強制將視窗左右並排，方便測試與除錯
@@ -181,7 +195,7 @@ class MainWindow(QWidget, Ui_Form):
             y_offset = avail_rect.y()
             w = avail_rect.width()
             h = avail_rect.height()
-            
+
             # 若只有單一視窗 (n=1)，預設佔據可用區域的左半邊
             if n == 1:
                  self.setGeometry(x_offset, y_offset, w // 2, h)
@@ -192,7 +206,7 @@ class MainWindow(QWidget, Ui_Form):
                 elif self.frame_num == 1:
                     # 注意：起始 X 座標必須加上左半邊的寬度
                     self.setGeometry(x_offset + (w // 2), y_offset, w // 2, h)
-            
+
             self.showNormal()
             return
 
