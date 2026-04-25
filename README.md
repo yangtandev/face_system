@@ -37,7 +37,7 @@ This project provides an `install.sh` script for automated deployment. This scri
     **New Feature: Screen Configuration Detection**
     - The script automatically detects your **camera configuration** (Single or Dual camera).
     - If the IN and OUT cameras are the same, the system enters **Single Screen Mode**, where PyQt5 handles the layout automatically.
-    - If they are different, the system enters **Dual Screen Mode**, using the `wmctrl` tool for precise window positioning.
+    - If they are different, the system enters **Dual Screen Mode**, where PyQt5 will automatically manage window placement across monitors.
     
     Once information is provided, the script will handle the rest until the service is successfully started and registered.
 
@@ -52,7 +52,7 @@ The system supports **flexible single and dual screen deployment**, automaticall
 - **Dual Camera Configuration** (IN Camera ≠ OUT Camera):
   - System enters **Dual Screen Mode**.
   - Service waits 15 seconds for hardware initialization at startup.
-  - Uses `wmctrl` to position windows: Entry on the left, Exit on the right.
+  - PyQt5 automatically positions windows: Entry on the left, Exit on the right.
   - Ideal for scenarios requiring simultaneous monitoring of entry and exit.
 
 - **Single Camera Configuration** (IN Camera = OUT Camera):
@@ -221,9 +221,7 @@ The system uses SSH keys for secure communication with the remote server.
 
     [Install]
     WantedBy=graphical-session.target
-    ```
-
-    > **Note**: Dual-screen mode requires `wmctrl`: `sudo apt-get install -y wmctrl`
+    ```ini
 
 3.  **Reload and Start Service**:
     ```bash

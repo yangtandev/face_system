@@ -17,7 +17,7 @@ class ConfigWatcher:
     def _build_service_content(self):
         """生成固定的 systemd service 內容。
 
-        不包含任何 bash 包裝、sleep、xrandr 或 wmctrl 邏輯。
+        不包含任何 bash 包裝、sleep、或 xrandr 邏輯。
         螢幕偵測與視窗定位由 Python/Qt 在程式啟動時自動處理。
         """
         project_dir = os.path.dirname(self.config_path)
