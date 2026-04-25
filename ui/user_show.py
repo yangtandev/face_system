@@ -198,9 +198,6 @@ class MainWindow(QWidget, Ui_Form):
             x_offset, y_offset = avail_rect.x(), avail_rect.y()
             w, h = avail_rect.width(), avail_rect.height()
 
-            # 先呼叫 showNormal 讓 X11 分配視窗控制權，再強制修改大小位置，避免被 WM 的預設規則(如置中或隨機)覆蓋
-            self.showNormal()
-
             if n == 1:
                  self.setGeometry(x_offset, y_offset, w // 2, h)
             else:
@@ -208,6 +205,8 @@ class MainWindow(QWidget, Ui_Form):
                     self.setGeometry(x_offset, y_offset, w // 2, h)
                 elif self.frame_num == 1:
                     self.setGeometry(x_offset + (w // 2), y_offset, w // 2, h)
+            
+            self.showNormal()
         else:
             # 全螢幕模式
             if screen_count > 1:
