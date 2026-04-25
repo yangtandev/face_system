@@ -164,65 +164,66 @@ class MainWindow(QWidget, Ui_Form):
 
     def update_screen(self):
         desktop = QApplication.desktop()
-        screen_count = desktop.screenCount()  # 讀取螢幕數量
+        screen_count = desktop.screenCount()
         n = 2
         if config_["cameraIP"]["in_camera"] == config_["cameraIP"]["out_camera"]:
             n = 1
         elif config_["cameraIP"]["in_camera"] == "0" or config_["cameraIP"]["out_camera"] == "0":
             n = 1
 
-        # [2026-01-19] 強制視窗排版邏輯 (當 full_screen = False)
-        # 即使只有單螢幕，也強制將視窗左右並排，方便測試與除錯
-        if not config_.get("full_screen", True):
-            # [2026-01-19 Fix] 改用 availableGeometry 取得扣除系統工具列(Dock)後的可用區域
-            # 避免視窗被 Ubuntu 左側/底部工具列遮擋
-            avail_rect = desktop.availableGeometry(0)
-            x_offset = avail_rect.x()
-            y_offset = avail_rect.y()
-            w = avail_rect.width()
-            h = avail_rect.height()
-
-            # 若只有單一視窗 (n=1)，預設佔據可用區域的左半邊
-            if n == 1:
-                 self.setGeometry(x_offset, y_offset, w // 2, h)
+        # [2026-04-25 Fix] 螢幕等待重試機制（非阻塞且攔截顯示）
+        # 如果是雙螢幕配置，確保系統真的抓到 2 個獨立螢幕，且座標不是鏡像(重疊)狀態
+        needs_retry = False
+        if n == 2:
+            if screen_count < 2:
+                needs_retry = True
             else:
-                # 雙視窗模式：Cam 0 (Entry) 左邊，Cam 1 (Exit) 右邊
-                if self.frame_num == 0:
-                    self.setGeometry(x_offset, y_offset, w // 2, h)
-                elif self.frame_num == 1:
-                    # 注意：起始 X 座標必須加上左半邊的寬度
-                    self.setGeometry(x_offset + (w // 2), y_offset, w // 2, h)
-
-            self.showNormal()
-        else:
-            # 全螢幕模式
-            if screen_count > 1:
-                rect = desktop.screenGeometry(self.frame_num)
-                self.move(rect.left(), rect.top())
-                self.resize(rect.width()//2, rect.height())
-            else:
-                helf_w = desktop.screenGeometry(0).width()
-                helf_h = desktop.screenGeometry(0).height()
-                if helf_h > helf_w:
-                    self.move(0, self.frame_num*helf_h//2)
-                    self.resize(helf_w, helf_h//2)
-                else:
-                    self.move(self.frame_num*helf_w//2, 0)
-                    self.resize(helf_w//2, helf_h)
-
-            if config_["full_screen"] and n == screen_count:
-                self.showMaximized()
-
-        # [2026-04-24 Fix] 螢幕等待重試機制（非阻塞）
-        # 先定位視窗（基於目前偵測到的螢幕數），再排程重試。
-        # 若稍後第 2 個螢幕出現，會自動重新定位。
-        if n == 2 and screen_count < 2:
+                geom0 = desktop.screenGeometry(0)
+                geom1 = desktop.screenGeometry(1)
+                if geom0 == geom1:
+                    needs_retry = True
+        
+        if needs_retry:
             if not hasattr(self, '_screen_retry_count'):
                 self._screen_retry_count = 0
             if self._screen_retry_count < 40:
                 self._screen_retry_count += 1
-                print(f"[ScreenDetect] 等待第 2 個螢幕... ({self._screen_retry_count}/40)")
+                print(f"[ScreenDetect] 等待正確的雙螢幕配置... ({self._screen_retry_count}/40)")
                 QTimer.singleShot(2000, self.update_screen)
+                return  # 在雙螢幕準備好之前，先不要顯示視窗，避免被作業系統強制綁定在同一個螢幕
+
+        # 準備好後再進行排版
+        if not config_.get("full_screen", True):
+            avail_rect = desktop.availableGeometry(0)
+            x_offset, y_offset = avail_rect.x(), avail_rect.y()
+            w, h = avail_rect.width(), avail_rect.height()
+
+            if n == 1:
+                 self.setGeometry(x_offset, y_offset, w // 2, h)
+            else:
+                if self.frame_num == 0:
+                    self.setGeometry(x_offset, y_offset, w // 2, h)
+                elif self.frame_num == 1:
+                    self.setGeometry(x_offset + (w // 2), y_offset, w // 2, h)
+            self.showNormal()
+        else:
+            # 全螢幕模式
+            if screen_count > 1:
+                # 取得目標螢幕的完整解析度範圍並直接套用
+                rect = desktop.screenGeometry(self.frame_num)
+                self.setGeometry(rect)
+            else:
+                # 單螢幕分割模式
+                helf_w = desktop.screenGeometry(0).width()
+                helf_h = desktop.screenGeometry(0).height()
+                if helf_h > helf_w:
+                    self.setGeometry(0, self.frame_num * helf_h // 2, helf_w, helf_h // 2)
+                else:
+                    self.setGeometry(self.frame_num * helf_w // 2, 0, helf_w // 2, helf_h)
+
+            if config_["full_screen"]:
+                # 使用 showFullScreen() 替代 showMaximized() 避免 X11 的視窗管理器干擾位置
+                self.showFullScreen()
 
 class MyThread(QThread):
     signal_update_img = pyqtSignal(QLabel, QPixmap)
