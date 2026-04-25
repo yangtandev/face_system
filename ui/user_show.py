@@ -172,9 +172,9 @@ class MainWindow(QWidget, Ui_Form):
             n = 1
 
         # [2026-04-25 Fix] 螢幕等待重試機制（非阻塞且攔截顯示）
-        # 如果是雙螢幕配置，確保系統真的抓到 2 個獨立螢幕，且座標不是鏡像(重疊)狀態
+        # 如果是雙螢幕配置且為「全螢幕模式」，才需要確保系統真的抓到 2 個獨立螢幕
         needs_retry = False
-        if n == 2:
+        if config_.get("full_screen", True) and n == 2:
             if screen_count < 2:
                 needs_retry = True
             else:
@@ -198,6 +198,9 @@ class MainWindow(QWidget, Ui_Form):
             x_offset, y_offset = avail_rect.x(), avail_rect.y()
             w, h = avail_rect.width(), avail_rect.height()
 
+            # 先呼叫 showNormal 讓 X11 分配視窗控制權，再強制修改大小位置，避免被 WM 的預設規則(如置中或隨機)覆蓋
+            self.showNormal()
+
             if n == 1:
                  self.setGeometry(x_offset, y_offset, w // 2, h)
             else:
@@ -205,7 +208,6 @@ class MainWindow(QWidget, Ui_Form):
                     self.setGeometry(x_offset, y_offset, w // 2, h)
                 elif self.frame_num == 1:
                     self.setGeometry(x_offset + (w // 2), y_offset, w // 2, h)
-            self.showNormal()
         else:
             # 全螢幕模式
             if screen_count > 1:
