@@ -216,7 +216,7 @@ class MainWindow(QWidget, Ui_Form):
         # [2026-04-24 Fix] 螢幕等待重試機制（非阻塞）
         # 先定位視窗（基於目前偵測到的螢幕數），再排程重試。
         # 若稍後第 2 個螢幕出現，會自動重新定位。
-        if n == 2 and screen_count < 2 and self.frame_num == 0:
+        if n == 2 and screen_count < 2:
             if not hasattr(self, '_screen_retry_count'):
                 self._screen_retry_count = 0
             if self._screen_retry_count < 40:
