@@ -137,6 +137,7 @@ class ConfigWindow(QWidget):
         group_feat, form_feat = self.create_form_group("功能開關")
         self.chk_clothes = QCheckBox("啟用服裝/安全帽偵測 (Clothes Detection)")
         self.chk_clothes_show = QCheckBox("顯示服裝偵測框 (Show Clothes Box)")
+        self.chk_long_distance = QCheckBox("啟用長距離辨識 (Long Distance Two-Pass)")
         self.chk_qrcode = QCheckBox(
             "啟用 QR Code 掃描 (QR Code Mode)")  # [2026-02-04 Feature]
         self.chk_full_screen = QCheckBox("全螢幕模式 (Full Screen)")
@@ -144,6 +145,7 @@ class ConfigWindow(QWidget):
 
         form_feat.addRow(self.chk_clothes)
         form_feat.addRow(self.chk_clothes_show)
+        form_feat.addRow(self.chk_long_distance)
         form_feat.addRow(self.chk_qrcode)
         form_feat.addRow(self.chk_full_screen)
         form_feat.addRow(self.chk_auto_open)
@@ -331,6 +333,7 @@ class ConfigWindow(QWidget):
 
             self.chk_clothes.setChecked(cfg.get("Clothes_detection", False))
             self.chk_clothes_show.setChecked(cfg.get("Clothes_show", False))
+            self.chk_long_distance.setChecked(cfg.get("Long_distance_mode", False))
             self.chk_qrcode.setChecked(
                 cfg.get("qrcode_mode", False))  # [2026-02-04 Feature]
             self.chk_full_screen.setChecked(cfg.get("full_screen", False))
@@ -415,6 +418,7 @@ class ConfigWindow(QWidget):
 
             cfg["Clothes_detection"] = self.chk_clothes.isChecked()
             cfg["Clothes_show"] = self.chk_clothes_show.isChecked()
+            cfg["Long_distance_mode"] = self.chk_long_distance.isChecked()
             # [2026-02-04 Feature]
             cfg["qrcode_mode"] = self.chk_qrcode.isChecked()
             cfg["full_screen"] = self.chk_full_screen.isChecked()

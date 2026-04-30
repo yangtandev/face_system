@@ -68,6 +68,7 @@ class Detector:
         self.clothe_time = [0.0, 0.0, 0.0]
         # 初始化 MediaPipe 處理器
         self.mp_handler = MediaPipeHandler()
+        self.mp_handler_zoom = MediaPipeHandler() # [Two-Pass] 專用獨立追蹤器
 
         # [2026-02-04 Feature] QR Code Detector
         self.qr_detector = cv2.QRCodeDetector()
@@ -157,6 +158,42 @@ class Detector:
 
                     box = None
                     points = None
+                    is_pass_2 = False
+
+                    if (boxes is None or len(boxes) == 0) and CONFIG.get("Long_distance_mode", False):
+                        # --- Pass 2: Digital Zoom (800x800 center-top crop) ---
+                        h_source, w_source = rgb_frame.shape[:2]
+                        crop_size = 800
+                        cx = w_source // 2
+                        cy = int(h_source * 0.4) # 偏上方裁切
+                        
+                        x_start = max(0, cx - crop_size // 2)
+                        y_start = max(0, cy - crop_size // 2)
+                        x_end = min(w_source, cx + crop_size // 2)
+                        y_end = min(h_source, cy + crop_size // 2)
+
+                        cropped_rgb = rgb_frame[y_start:y_end, x_start:x_end]
+                        boxes_crop, _, landmarks_crop = self.mp_handler_zoom.detect(cropped_rgb)
+
+                        if boxes_crop is not None and len(boxes_crop) > 0:
+                            rx1, ry1, rx2, ry2 = boxes_crop[0]
+                            rx1 += x_start
+                            rx2 += x_start
+                            ry1 += y_start
+                            ry2 += y_start
+                            boxes = [[rx1, ry1, rx2, ry2]]
+                            
+                            restored_landmarks = []
+                            for lm in landmarks_crop[0]:
+                                restored_landmarks.append([lm[0] + x_start, lm[1] + y_start])
+                            landmarks = [np.array(restored_landmarks)]
+                            is_pass_2 = True
+                            
+                            if not hasattr(self, 'last_pass2_log_time'): self.last_pass2_log_time = 0
+                            if now - self.last_pass2_log_time > 1.0:
+                                LOGGER.info(f"[Two-Pass] 攝影機 {self.frame_num} - 裁切變焦成功抓到小臉! 寬: {rx2-rx1}px")
+                                self.last_pass2_log_time = now
+                        # ----------------------------------------------------
 
                     is_entry_now = self._is_entry_active()
                     clothes_active = self.do_clothes and is_entry_now
@@ -190,6 +227,10 @@ class Detector:
                         # [2026-03-06 Revert] Strict threshold when clothes mode is On
                         # Avoid "請靠近" when clothes detection is on, only start when >= min_face
                         det_ratio = 1.0 if clothes_active else POTENTIAL_MISS_RATIO
+                        
+                        # [Two-Pass] 若為遠距特權，解除初階過濾的尺寸限制
+                        if is_pass_2:
+                            min_face_val = 35
 
                         if center_x < roi_x1 or center_x > roi_x2 or face_width < (min_face_val * det_ratio):
                             box = None
@@ -319,12 +360,15 @@ class Detector:
                                 continue
 
                         # 正常流程 (Gaze, Update State)
-                        g_pass, g_msg, g_pose, g_ear = self.mp_handler.check_gaze(0)
+                        if is_pass_2:
+                            g_pass, g_msg, g_pose, g_ear = self.mp_handler_zoom.check_gaze(0)
+                        else:
+                            g_pass, g_msg, g_pose, g_ear = self.mp_handler.check_gaze(0)
                         self.system.state.gaze_status[self.frame_num] = (g_pass, g_msg, g_pose, g_ear)
                         self.system.state.head_pose[self.frame_num] = g_pose
 
                         g_status = self.system.state.gaze_status[self.frame_num]
-                        self.system.state.frame_data[self.frame_num] = (new_frame, g_status, box, points)
+                        self.system.state.frame_data[self.frame_num] = (new_frame, g_status, box, points, is_pass_2)
                     else:
                         self.system.state.gaze_status[self.frame_num] = None
                         self.system.state.head_pose[self.frame_num] = None
@@ -477,13 +521,13 @@ class Detector:
 
         # --- Universal Spatial Validators ---
         def is_helmet_valid(bx1, by1, bx2, by2, det_conf=0.0):
-            if target_face_box is None: 
+            if target_face_box is None:
                 # Basic relative check for missing face_box (e.g., looking down)
                 img_h, img_w = full_frame.shape[:2]
                 if by1 < img_h * 0.5 and (bx2 - bx1) > img_w * 0.05:
                     return True, "Passed (No Face Box, Spatial Fallback)"
                 return False, "No face box detected and not optimal helmet position"
-                
+
             fx1, fy1, fx2, fy2 = target_face_box
             face_cx = (fx1 + fx2) / 2
             helmet_cx = (bx1 + bx2) / 2
@@ -515,13 +559,13 @@ class Detector:
 
 
         def is_vest_valid(bx1, by1, bx2, by2):
-            if target_face_box is None: 
+            if target_face_box is None:
                 # Basic relative check for missing face_box
                 img_h, img_w = full_frame.shape[:2]
                 if by1 > img_h * 0.2 and (bx2 - bx1) > img_w * 0.15 and (by2 - by1) > img_h * 0.15:
                     return True, "Passed (No Face Box, Spatial Fallback)"
                 return False, "No face box detected and invalid vest dimensions"
-                
+
             fx1, fy1, fx2, fy2 = target_face_box
             face_cx = (fx1 + fx2) / 2
             vest_cx = (bx1 + bx2) / 2
@@ -1031,12 +1075,12 @@ class Comparison:
             yaw = metrics['yaw']
             pitch = metrics['pitch']
             roll = metrics.get('roll_angle', 0.0)
-            
+
             # 從安全角度外開始扣分 (每度0.005)
             yaw_penalty = max(0, abs(yaw) - 20) * 0.005
             pitch_penalty = max(0, abs(pitch) - 15) * 0.005
             roll_penalty = max(0, abs(roll) - 5) * 0.005
-            
+
             total_penalty = min(0.20, yaw_penalty + pitch_penalty + roll_penalty)
             quality_score -= total_penalty
 
@@ -1104,7 +1148,7 @@ class Comparison:
             if now > self.hint_clear_time:
                 self.system.state.hint_text[self.frame_num] = ""
 
-            _frame, _gaze_status, _box, _points = data_package
+            _frame, _gaze_status, _box, _points, _is_pass_2 = data_package
 
             # 使用解包出來的 frame，而不是去讀可能已經被覆蓋的 system.state.frame_mtcnn
             self.system.state.frame_mtcnn[self.frame_num] = _frame # 為了相容其他可能讀取這欄位的地方(如UI?)
@@ -1121,6 +1165,12 @@ class Comparison:
             # 檢查臉部大小是否足夠
             face_width = _box[2] - _box[0]
             min_face_threshold = self.system.state.min_face[self.frame_num]
+            
+            # --- [Two-Pass 動態門檻] ---
+            if _is_pass_2:
+                # 由於已有專屬開關管控，此處直接無條件賦予遠距小臉 (35px) 特權
+                min_face_threshold = 35
+            # --------------------------
 
             # --- 統計: 記錄人臉寬度分佈 (每 10px 為一個區間) ---
             width_bin = (face_width // 10) * 10
@@ -1297,7 +1347,7 @@ class Comparison:
                             current_qs = quality_score
                             if s_raw >= 0.750 and current_qs < 0.99:
                                 current_qs = max(current_qs, 0.99)
-                            
+
                             s_final = s_raw * current_qs
 
                             z = (s_raw - mean_score) / std_dev_score if std_dev_score > 0 else 0
@@ -1320,7 +1370,7 @@ class Comparison:
                         # Set Default Winner (Top 1) for fallback/logging
                         best_match_id = faiss_person_ids[0]
                         raw_confidence = distances[0]
-                        
+
                         final_qs = quality_score
                         if raw_confidence >= 0.750 and final_qs < 0.99:
                             final_qs = max(final_qs, 0.99)
@@ -1456,7 +1506,7 @@ class Comparison:
                     last_trigger = self.last_api_trigger_time.get(predicted_id, 0)
                     if now - last_trigger > 3.0:
                         self.last_api_trigger_time[predicted_id] = now
-                        
+
                         _is_entry = True
                         if hasattr(self.system, 'cameras'):
                             for _cam in self.system.cameras:

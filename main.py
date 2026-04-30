@@ -216,15 +216,12 @@ class CameraSystem:
                     "Clothes_show", False) or CONFIG.get("Clothes_detection", False))
                 vis_ratio = 1.0 if clothes_active else 0.8
 
+                # [2026-04-30 Fix] 預先定義 passed_gate 避免 UnboundLocalError
+                need_check_clothes = (is_entry and CONFIG.get("Clothes_detection", False))
+                is_clothes_pass = (self.system.state.clothes[0] and self.system.state.clothes[2])
+                passed_gate = (not need_check_clothes) or is_clothes_pass
+
                 if current_width >= (target_min * vis_ratio):
-                    # [2026-02-03 Fix] 衣著檢查邏輯：需考慮單鏡頭排程切換
-                    need_check_clothes = (
-                        is_entry and CONFIG["Clothes_detection"])
-
-                    is_clothes_pass = (
-                        self.system.state.clothes[0] and self.system.state.clothes[2])
-                    passed_gate = (not need_check_clothes) or is_clothes_pass
-
                     staff_name_display = self.system.state.features_dict.get(
                         "id_name", {}).get(current_class, "辨識中")
 
