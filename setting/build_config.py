@@ -49,11 +49,12 @@ default_config = {
     "min_face": 450,
     "max_face": 700,
     "test_mod": False,
-    "auto_open": False,
+    "auto_open": True,
     "full_screen": False,
     "excel_api_enabled": False,
     "qrcode_mode": False,
-    "theme": "dark"
+    "theme": "dark",
+    "Long_distance_mode": False
 }
 
 
