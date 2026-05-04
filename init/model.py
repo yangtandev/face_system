@@ -1000,6 +1000,14 @@ class Comparison:
 
                 if not is_looking:
                     return 0.0, f"{gaze_msg}", metrics
+
+                # [2026-05-04 Fix v2] 極端姿態硬攔截
+                # 根據實測校正：yaw 25~28° 的照片仍可正常辨識 (6 張實證)，
+                # 因此硬攔截閾值從 25° 提升至 30°，避免誤殺。
+                # is_bad_pose (yaw>25) 仍保留用於辨識階段提高 confidence 門檻。
+                is_extreme_pose = abs(yaw) > 30 or abs(pitch) > 25 or abs(roll) > 25
+                if is_extreme_pose:
+                    return 0.0, f"姿態不良 (Yaw:{yaw:.1f}° Pitch:{pitch:.1f}° Roll:{roll:.1f}°)", metrics
             else:
                 # [2026-01-11 Fix] 若無 Gaze 狀態 (可能因 Race Condition 被清空)，嚴格禁止放行
                 return 0.0, "Gaze Status Missing", metrics
@@ -1038,14 +1046,25 @@ class Comparison:
                     metrics['pitch_check'] = 'Fail (Combo Low+Cover)'
                     return 0.0, f"低頭/遮眼 (V {v_ratio:.2f}<0.42 & EAR {current_ear:.2f}<0.22)", metrics
 
+            # [2026-05-04 Fix v2] 抬頭/眼睛超出畫面上限過濾
+            # 根因：當人抬頭或仰頭使眼睛離開畫面時，v_ratio 會異常升高。
+            # 正常 v_ratio 範圍 0.8~1.2。
+            # [校正] 門檻從 1.5 提升至 1.6 (v=1.52 實測為正常人臉)。
+            if v_ratio > 1.6:
+                metrics['pitch_check'] = 'Fail (Eyes Out of Frame)'
+                return 0.0, f"抬頭/眼睛超出畫面 (V-Ratio: {v_ratio:.2f} > 1.6)", metrics
+
         # ---------------------------------------------------------
         # 3.2 閉眼檢查 (Eye Closure Check) - [2026-01-26 Fix]
         # ---------------------------------------------------------
         # 根據測試，閉眼誤判照 EAR=0.0694，小眼(楊昌裕) EAR=0.0837。
         # 設定底層安全門檻 0.05 (極端閉眼)。
         # 中間地帶 (0.05~0.10) 交由 mp_handler 的 Combo Check 處理。
-        if current_ear < 0.075:
-            return 0.0, f"眼睛閉合 (EAR: {current_ear:.4f} < 0.075)", metrics
+        # [2026-05-04 Fix] 提高 EAR 底線從 0.075 至 0.10
+        # 根因：實測閉眼 EAR=0.139 仍能通過 0.075 門檻。
+        # 小眼睛特例 (楊昌裕 EAR=0.0837) 應由 Combo Check (v_ratio<0.42) 處理。
+        if current_ear < 0.10:
+            return 0.0, f"眼睛閉合 (EAR: {current_ear:.4f} < 0.10)", metrics
 
         # ---------------------------------------------------------
         # 4. 臉部區域清晰度檢查 (ROI Blur Detection)
