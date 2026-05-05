@@ -1060,11 +1060,15 @@ class Comparison:
         # 根據測試，閉眼誤判照 EAR=0.0694，小眼(楊昌裕) EAR=0.0837。
         # 設定底層安全門檻 0.05 (極端閉眼)。
         # 中間地帶 (0.05~0.10) 交由 mp_handler 的 Combo Check 處理。
-        # [2026-05-04 Fix] 提高 EAR 底線從 0.075 至 0.10
-        # 根因：實測閉眼 EAR=0.139 仍能通過 0.075 門檻。
-        # 小眼睛特例 (楊昌裕 EAR=0.0837) 應由 Combo Check (v_ratio<0.42) 處理。
+        # [2026-05-04 Fix v4] 兩層 EAR 過濾
+        # 層 1：EAR < 0.10 → 直接攔截（極端閉眼）
+        # 層 2：0.10 ≤ EAR < 0.15 且 v_ratio < 0.60 → 閉眼+低頭 combo
+        #   根因：13;27;24 (EAR=0.139, v=0.44) 需被攔截
+        #   避免誤殺：11;20;43 陳志杰 (EAR=0.12, v_ratio 正常~0.8+) 不受影響
         if current_ear < 0.10:
             return 0.0, f"眼睛閉合 (EAR: {current_ear:.4f} < 0.10)", metrics
+        if current_ear < 0.15 and v_ratio < 0.60:
+            return 0.0, f"眼睛閉合+低頭 (EAR: {current_ear:.4f} < 0.15 & V-Ratio: {v_ratio:.2f} < 0.60)", metrics
 
         # ---------------------------------------------------------
         # 4. 臉部區域清晰度檢查 (ROI Blur Detection)
@@ -1484,8 +1488,11 @@ class Comparison:
             staff_name = self.system.state.features_dict.get("id_name", {}).get(predicted_id, "未知")
 
             # [2026-02-09 V5 Logic] Recalculate dynamic threshold for final decision & logging
+            # [2026-05-04 Fix] Use is_extreme_pose (yaw>30°) instead of is_bad_pose (yaw>25°)
+            # for the strict 0.85 gate. Rationale: yaw=25-30° faces are valid-quality and
+            # should not be penalized with an impossibly high confidence threshold.
             final_required_conf = self.CONFIDENCE_THRESHOLD
-            if quality_metrics.get('is_bad_pose', False):
+            if quality_metrics.get('is_extreme_pose', False):
                 final_required_conf = 0.65 if z_score >= 2.5 else 0.85
             else:
                 final_required_conf = 0.65 if z_score >= 2.5 else 0.70
