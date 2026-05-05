@@ -9,7 +9,8 @@ class AnnIndex:
     A manager for a Faiss index for Approximate Nearest Neighbor (ANN) search.
     This class handles building, saving, loading, and searching the index.
     """
-    def __init__(self, dimension=512, index_path="media/faiss.index", mapping_path="media/faiss_map.json"):
+    def __init__(self, dimension=512, index_path="media/faiss.index", mapping_path="media/faiss_map.json",
+                 baseline_path="media/enrollment_baselines.json"):
         """
         Initializes the AnnIndex manager.
 
@@ -17,12 +18,15 @@ class AnnIndex:
             dimension (int): The dimension of the feature vectors (e.g., 512 for ResNet).
             index_path (str): Path to save/load the Faiss index file.
             mapping_path (str): Path to save/load the index-to-person_id mapping.
+            baseline_path (str): Path to save/load per-person enrollment baselines.
         """
         self.dimension = dimension
         self.index_path = index_path
         self.mapping_path = mapping_path
+        self.baseline_path = baseline_path
         self.index = None
         self.id_map = []  # List where the index is the Faiss ID and the value is the person_id
+        self.enrollment_baselines = {}  # {person_id: threshold}
 
     def build(self, features_dict):
         """
@@ -55,9 +59,56 @@ class AnnIndex:
         # Faiss requires a numpy array of float32
         embeddings_matrix = np.array(all_embeddings).astype('float32')
         self.index.add(embeddings_matrix)
-        
+
         print(f"Faiss index built successfully with {self.index.ntotal} vectors.")
+
+        # [2026-05-04] Compute per-person enrollment baselines for stranger rejection
+        self._compute_enrollment_baselines(all_embeddings)
+
         self.save()
+
+    def _compute_enrollment_baselines(self, all_embeddings):
+        """
+        [2026-05-04] Compute per-person enrollment baselines for stranger rejection.
+
+        Strategy: For each person i, find the maximum cosine similarity between
+        person i's descriptor and ALL OTHER persons' descriptors.
+        The baseline threshold = max_inter_similarity + safety_margin.
+
+        A new face matching person i must score >= baseline to be accepted.
+        This rejects strangers who happen to weakly match someone in the DB.
+        """
+        if len(all_embeddings) < 2:
+            return
+
+        emb_matrix = np.array(all_embeddings, dtype='float32')
+        n = len(emb_matrix)
+
+        # Compute full NxN cosine similarity matrix (vectors already normalized)
+        sim_matrix = emb_matrix @ emb_matrix.T  # shape: (n, n)
+
+        # Hardcode stranger rejection settings (previously in config)
+        safety_margin = 0.0
+        min_baseline = 0.60
+
+        self.enrollment_baselines = {}
+        for i, person_id in enumerate(self.id_map):
+            # Mask out self-similarity (diagonal)
+            inter_sims = [sim_matrix[i, j] for j in range(n) if j != i]
+            if not inter_sims:
+                self.enrollment_baselines[person_id] = min_baseline
+                continue
+            # [2026-05-04 Fix] Use fixed min_baseline (not driven by inter-person sim).
+            # High inter-person similarity would otherwise raise the baseline above
+            # legitimate intra-session scores for similar-looking employees.
+            threshold = min_baseline + safety_margin
+            self.enrollment_baselines[person_id] = round(threshold, 4)
+
+        print(f"[Stranger Rejection] Enrollment baselines computed for {len(self.enrollment_baselines)} persons.")
+        # Sample output
+        sample = list(self.enrollment_baselines.items())[:5]
+        for pid, thr in sample:
+            print(f"  {pid}: threshold={thr:.4f}")
 
     def load(self):
         """
@@ -70,34 +121,50 @@ class AnnIndex:
             try:
                 print(f"Loading existing Faiss index from {self.index_path}...")
                 self.index = faiss.read_index(self.index_path)
-                
+
                 with open(self.mapping_path, 'r', encoding='utf-8') as f:
                     self.id_map = json.load(f)
-                
+
+                # Load enrollment baselines if available
+                if os.path.exists(self.baseline_path):
+                    with open(self.baseline_path, 'r', encoding='utf-8') as f:
+                        self.enrollment_baselines = json.load(f)
+                    print(f"[Stranger Rejection] Baselines loaded: {len(self.enrollment_baselines)} persons.")
+                else:
+                    self.enrollment_baselines = {}
+
                 print(f"Faiss index loaded successfully with {self.index.ntotal} vectors.")
                 return True
             except Exception as e:
                 print(f"Error loading Faiss index: {e}. A new index will be built.")
                 self.index = None
                 self.id_map = []
+                self.enrollment_baselines = {}
                 return False
         return False
 
     def save(self):
         """
-        Saves the index and the ID mapping to disk.
+        Saves the index, ID mapping, and enrollment baselines to disk.
         """
         if self.index is None:
             print("Cannot save, index is not built.")
             return
-            
+
         print(f"Saving Faiss index to {self.index_path}...")
         # Ensure media directory exists
         os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
-        
+
         faiss.write_index(self.index, self.index_path)
         with open(self.mapping_path, 'w', encoding='utf-8') as f:
             json.dump(self.id_map, f)
+
+        # Save enrollment baselines
+        if self.enrollment_baselines:
+            with open(self.baseline_path, 'w', encoding='utf-8') as f:
+                json.dump(self.enrollment_baselines, f, ensure_ascii=False, indent=2)
+            print(f"[Stranger Rejection] Baselines saved to {self.baseline_path}")
+
         print("Faiss index and ID map saved.")
 
     def search(self, vector, k=5):

@@ -1460,7 +1460,22 @@ class Comparison:
                             z_score = winner['z']
                             is_in_candidates = True
 
-                        predicted_id = best_match_id
+                            # [2026-05-04] Stranger Rejection: Per-Person Enrollment Baseline Check
+                            # If the winner's score is below their personal threshold,
+                            # the face is more likely a stranger than a registered person.
+                            if is_in_candidates:
+                                baselines = getattr(self.system.state.ann_index, 'enrollment_baselines', {})
+                                personal_thresh = baselines.get(best_match_id)
+                                if personal_thresh is not None and raw_confidence < personal_thresh:
+                                    LOGGER.info(
+                                        f"[{camera_name}][陌生人拒絕] ID={best_match_id} "
+                                        f"score={raw_confidence:.4f} < baseline={personal_thresh:.4f} → 判定為訪客"
+                                    )
+                                    is_in_candidates = False
+                                    best_match_id = '__VISITOR__'
+                                    predicted_id = '__VISITOR__'
+
+                        predicted_id = best_match_id if predicted_id != '__VISITOR__' else '__VISITOR__'
 
                         # [2026-01-24 Feature] 建立完整的 Snapshot Metadata (供離線重現測試)
                         if current_face_vec is not None:
