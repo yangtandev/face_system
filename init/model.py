@@ -1473,9 +1473,7 @@ class Comparison:
                                     )
                                     is_in_candidates = False
                                     best_match_id = '__VISITOR__'
-                                    predicted_id = '__VISITOR__'
-
-                        predicted_id = best_match_id if predicted_id != '__VISITOR__' else '__VISITOR__'
+                        predicted_id = best_match_id
 
                         # [2026-01-24 Feature] 建立完整的 Snapshot Metadata (供離線重現測試)
                         if current_face_vec is not None:
