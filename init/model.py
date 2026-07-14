@@ -16,7 +16,6 @@ import json
 from PIL import Image
 from init.function import (
     analyze_low_light,
-    analyze_backlight_glare,
     analyze_face_blur,
     crop_face_without_forehead,
     enhance_low_light_frame,
@@ -1342,11 +1341,6 @@ class Comparison:
 
                 if is_sunset_condition(frame_to_use, box, points):
                     return 0.0, "光線直射 (Sunset Mode)", metrics
-
-                backlight_metrics = analyze_backlight_glare(frame_to_use, box)
-                metrics['backlight_glare'] = backlight_metrics
-                if backlight_metrics.get("is_backlight_glare", False):
-                    return 0.0, "背後光源散射 (BacklightGlare)", metrics
 
                 blur_metrics = analyze_face_blur(frame_to_use, box)
                 metrics['face_blur'] = blur_metrics
