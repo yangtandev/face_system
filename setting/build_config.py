@@ -28,6 +28,10 @@ default_config = {
         "out": "請離開",
         "clothes": "請正確著裝"
     },
+    "camera_voice_prefix": {
+        "0": "攝影機1",
+        "1": "攝影機2"
+    },
     "inCamera": {
         "close": False,
         "min_face": 300

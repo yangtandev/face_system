@@ -24,6 +24,7 @@ from init.function import (
     git_head_commit,
     stable_json_hash,
     is_schedule_entry_active,
+    prefixed_hint_voice,
     check_in_out_qrcode,
     check_in_out,
 )
@@ -111,6 +112,10 @@ class Detector:
 
     def _clothes_gate_required(self):
         return self.do_clothes and (CONFIG.get("Clothes_detection", False) or CONFIG.get("Clothes_show", False))
+
+    def _say_hint(self, text, filename, priority=2):
+        text, filename = prefixed_hint_voice(text, filename, self.frame_num, CONFIG)
+        self.system.speaker.say(text, filename, priority=priority)
 
     def _is_entry_active(self):
         """
@@ -267,7 +272,7 @@ class Detector:
                     if clothes_gate_required and not clothes_gate_pass:
                         self.system.state.hint_text[self.frame_num] = "請正確著裝"
                         if box is not None and now - self.last_clothes_hint_speak_time >= self.clothes_hint_cooldown_seconds:
-                            self.system.speaker.say(
+                            self._say_hint(
                                 CONFIG.get("say", {}).get("clothes", "請正確著裝"),
                                 "hint_clothes",
                                 priority=2,
@@ -933,6 +938,10 @@ class Comparison:
 
         threading.Thread(target=self.face_comparison, daemon=True).start()
 
+    def _say_hint(self, text, filename, priority=2):
+        text, filename = prefixed_hint_voice(text, filename, self.frame_num, CONFIG)
+        self.system.speaker.say(text, filename, priority=priority)
+
     def _runtime_version_metadata(self):
         descriptor_dir = os.path.join(self.repo_root, "media", "descriptors")
         return {
@@ -1076,7 +1085,7 @@ class Comparison:
         if self.system.state.same_class[self.frame_num] != "None":
             self._update_display_state("None")
         if now - self.last_unrecognized_hint_time >= self.UNRECOGNIZED_HINT_COOLDOWN_SECONDS:
-            self.system.speaker.say("無法識別", "hint_unrecognized", priority=2)
+            self._say_hint("無法識別", "hint_unrecognized", priority=2)
             self.last_unrecognized_hint_time = now
         LOGGER.info(
             f"[{camera_name}][無法識別] {reason}, "
@@ -1731,7 +1740,7 @@ class Comparison:
                         if not is_staff_displaying:
                             self.system.state.hint_text[self.frame_num] = "請靠近鏡頭"
                             self.hint_clear_time = now + 2.0
-                            self.system.speaker.say(
+                            self._say_hint(
                                 "請靠近鏡頭", "hint_closer", priority=2)
 
                 continue
@@ -1739,7 +1748,7 @@ class Comparison:
             if face_width >= CONFIG["max_face"]:
                 if not is_staff_displaying:
                     self.system.state.hint_text[self.frame_num] = "請稍微後退"
-                    self.system.speaker.say(
+                    self._say_hint(
                         "請稍微後退", "hint_move_back", priority=2)
                     self.hint_clear_time = time.time() + 1.5
                     if self.display_state['person_id'] != 'None':
@@ -1805,33 +1814,33 @@ class Comparison:
 
                 if "低頭" in quality_msg:
                     self.system.state.hint_text[self.frame_num] = "請抬頭"
-                    self.system.speaker.say("請抬頭", "hint_look_up", priority=2)
+                    self._say_hint("請抬頭", "hint_look_up", priority=2)
                 elif "抬頭" in quality_msg:
                     self.system.state.hint_text[self.frame_num] = "請低頭"
-                    self.system.speaker.say(
+                    self._say_hint(
                         "請低頭", "hint_look_down", priority=2)
                 elif "未置中" in quality_msg:
                     self.system.state.hint_text[self.frame_num] = "請站到中間"
-                    self.system.speaker.say("請站到中間", "hint_center", priority=2)
+                    self._say_hint("請站到中間", "hint_center", priority=2)
                 elif "完整露出" in quality_msg or "FaceBoundaryClipped" in quality_msg or "特徵點被切除" in quality_msg:
                     self.system.state.hint_text[self.frame_num] = "請完整露出臉部"
-                    self.system.speaker.say(
+                    self._say_hint(
                         "請完整露出臉部", "hint_face_visible", priority=2)
                 elif "斜視" in quality_msg or "未正視" in quality_msg or "側臉" in quality_msg or "影像模糊" in quality_msg:
                     self.system.state.hint_text[self.frame_num] = "請正視鏡頭"
-                    self.system.speaker.say(
+                    self._say_hint(
                         "請正視鏡頭", "hint_look_straight", priority=2)
                 elif "光線直射" in quality_msg:
                     self.system.state.hint_text[self.frame_num] = "光線直射 請遮擋"
-                    self.system.speaker.say(
+                    self._say_hint(
                         "光線直射請遮擋", "hint_sunset", priority=2)
                 elif "背後光源" in quality_msg or "BacklightGlare" in quality_msg:
                     self.system.state.hint_text[self.frame_num] = "請遮擋背後光源"
-                    self.system.speaker.say(
+                    self._say_hint(
                         "請遮擋背後光源", "hint_backlight", priority=2)
                 else:
                     self.system.state.hint_text[self.frame_num] = "請對準鏡頭"
-                    self.system.speaker.say(
+                    self._say_hint(
                         "請對準鏡頭", "hint_occlusion", priority=2)
 
                 self.hint_clear_time = now + 1.0

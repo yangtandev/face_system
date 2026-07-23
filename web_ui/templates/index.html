@@ -322,6 +322,14 @@
 						<label>語音 (Clothes)</label
 						><input type="text" name="say.clothes" />
 					</div>
+					<div class="form-group">
+						<label>排程提示前綴 - 攝影機1</label
+						><input type="text" name="camera_voice_prefix.0" />
+					</div>
+					<div class="form-group">
+						<label>排程提示前綴 - 攝影機2</label
+						><input type="text" name="camera_voice_prefix.1" />
+					</div>
 				</div>
 
 				<!-- Logs -->
@@ -447,6 +455,8 @@
 					return;
 				}
 				currentConfig = await res.json();
+				currentConfig.camera_voice_prefix =
+					currentConfig.camera_voice_prefix || { 0: '攝影機1', 1: '攝影機2' };
 
 				// Populate inputs
 				document.querySelectorAll('input').forEach((el) => {

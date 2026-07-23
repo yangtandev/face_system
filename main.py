@@ -73,6 +73,8 @@ HINT_VOICE_TEXTS = {
     "hint_backlight": "請遮擋背後光源",
     "hint_occlusion": "請對準鏡頭",
     "hint_unrecognized": "無法識別",
+    "qr_fail": "驗證失敗",
+    "qr_error": "連線失敗",
 }
 
 
@@ -296,8 +298,9 @@ class CameraSystem:
                         else:
                             # [2026-02-03 Fix] 衣著檢查未通過的回饋
                             # 1. 語音提示
-                            self.system.speaker.say(
-                                CONFIG["say"]["clothes"], "hint_clothes", priority=2)
+                            text, filename = prefixed_hint_voice(
+                                CONFIG["say"]["clothes"], "hint_clothes", self.frame_num, CONFIG)
+                            self.system.speaker.say(text, filename, priority=2)
                             # 2. 畫面提示 (這裡設定僅供下次循環參考，即時繪圖已在上方處理)
                             self.system.state.hint_text[self.frame_num] = "請正確著裝"
 
@@ -859,6 +862,9 @@ class FaceRecognitionSystem:
             generic_texts[key] = txt
         hint_texts = dict(HINT_VOICE_TEXTS)
         hint_texts["hint_clothes"] = generic_texts.get("clothes", "請正確著裝")
+        prefixes = CONFIG.get("camera_voice_prefix", {})
+        if not isinstance(prefixes, dict):
+            prefixes = {}
 
         names = set()
         for f in os.listdir(pb):
@@ -881,6 +887,14 @@ class FaceRecognitionSystem:
             expected_files.add(fn)
             if force or not os.path.isfile(os.path.join(vp, fn)):
                 tasks.append((fn, txt))
+            for cam_num in (0, 1):
+                prefix = str(prefixes.get(str(cam_num), prefixes.get(cam_num, ""))).strip()
+                if not prefix:
+                    continue
+                fn = f"{key}_cam{cam_num}.mp3"
+                expected_files.add(fn)
+                if force or not os.path.isfile(os.path.join(vp, fn)):
+                    tasks.append((fn, f"{prefix} {txt}"))
         for name in names:
             for key, txt in generic_texts.items():
                 fn = f"{name}_{key}.mp3"
@@ -1347,7 +1361,10 @@ class FaceRecognitionSystem:
 
             # [2026-01-30 Fix] Check if asset rebuild is needed
             # Rebuild if 'say' (voice content) or 'Server' (staff list source) changed
-            say_changed = new_config.get("say") != CONFIG.get("say")
+            say_changed = (
+                new_config.get("say") != CONFIG.get("say") or
+                new_config.get("camera_voice_prefix") != CONFIG.get("camera_voice_prefix")
+            )
             need_rebuild = say_changed or \
                            (new_config.get("Server") != CONFIG.get("Server"))
 

@@ -153,6 +153,31 @@ def is_schedule_entry_active(schedule_conf, now_time=None):
     return False
 
 
+def is_schedule_voice_prefix_enabled(config_data=None):
+    config_data = config_data or CONFIG
+    return bool(config_data.get("Schedule", {}).get("enabled", False))
+
+
+def camera_voice_prefix(camera_num, config_data=None):
+    config_data = config_data or CONFIG
+    prefixes = config_data.get("camera_voice_prefix", {})
+    if isinstance(prefixes, dict):
+        return str(prefixes.get(str(camera_num), prefixes.get(camera_num, ""))).strip()
+    if isinstance(prefixes, list) and 0 <= camera_num < len(prefixes):
+        return str(prefixes[camera_num]).strip()
+    return ""
+
+
+def prefixed_hint_voice(text, filename, camera_num, config_data=None):
+    if not is_schedule_voice_prefix_enabled(config_data):
+        return text, filename
+
+    prefix = camera_voice_prefix(camera_num, config_data)
+    if not prefix:
+        return text, filename
+    return f"{prefix} {text}", f"{filename}_cam{camera_num}"
+
+
 def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
     """
     根據攝影機與時間控制簽到/簽離邏輯，並執行 API 上傳與語音播放。
@@ -392,11 +417,13 @@ def check_in_out_qrcode(system, verification, staff_id, camera_num):
                     system.speaker.say(f"{staff_name}{CONFIG['say']['out']}", f"qr_{staff_id}_out", priority=1)
             else:
                 LOGGER.error(f"[QRCode] 上傳失敗: {res.status_code} - {res.text}")
-                system.speaker.say("驗證失敗", "qr_fail", priority=1)
+                text, filename = prefixed_hint_voice("驗證失敗", "qr_fail", camera_num)
+                system.speaker.say(text, filename, priority=1)
                 
         except Exception as e:
             LOGGER.error(f"[QRCode] API 錯誤: {e}")
-            system.speaker.say("連線失敗", "qr_error", priority=1)
+            text, filename = prefixed_hint_voice("連線失敗", "qr_error", camera_num)
+            system.speaker.say(text, filename, priority=1)
 
     threading.Thread(target=api_task).start()
 

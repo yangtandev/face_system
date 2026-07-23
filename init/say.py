@@ -23,7 +23,7 @@ class Say_:
 
         self.path = os.path.join(os.path.dirname(__file__), "../voice/")
         self.stop_threads = False
-        self.playback_timeout_sec = 3.0
+        self.playback_timeout_sec = 6.0
         self.playback_error_cooldown_sec = 5.0
         self.last_playback_failure_time = 0.0
         
@@ -119,6 +119,11 @@ class Say_:
                 pass
 
     def _fallback_voice_path(self, filename_base):
+        for suffix in ("_cam0", "_cam1"):
+            if filename_base.endswith(suffix):
+                path = os.path.join(self.path, f"{filename_base[:-len(suffix)]}.mp3")
+                if os.path.isfile(path) and os.path.getsize(path) >= 100:
+                    return path
         for suffix in ("_in", "_out", "_clothes"):
             if filename_base.endswith(suffix):
                 path = os.path.join(self.path, f"{suffix}.mp3")

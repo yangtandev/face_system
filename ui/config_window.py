@@ -291,10 +291,14 @@ class ConfigWindow(QWidget):
         self.voice_in = QLineEdit()
         self.voice_out = QLineEdit()
         self.voice_clothes = QLineEdit()
+        self.voice_prefix_cam0 = QLineEdit()
+        self.voice_prefix_cam1 = QLineEdit()
 
         form.addRow("進入 (In):", self.voice_in)
         form.addRow("離開 (Out):", self.voice_out)
         form.addRow("服裝提示:", self.voice_clothes)
+        form.addRow("排程提示前綴 - 攝影機1:", self.voice_prefix_cam0)
+        form.addRow("排程提示前綴 - 攝影機2:", self.voice_prefix_cam1)
 
         layout.addWidget(group)
         layout.addStretch(1)
@@ -413,6 +417,9 @@ class ConfigWindow(QWidget):
             self.voice_in.setText(say.get("in", ""))
             self.voice_out.setText(say.get("out", ""))
             self.voice_clothes.setText(say.get("clothes", ""))
+            prefixes = cfg.get("camera_voice_prefix", {"0": "攝影機1", "1": "攝影機2"})
+            self.voice_prefix_cam0.setText(str(prefixes.get("0", "")))
+            self.voice_prefix_cam1.setText(str(prefixes.get("1", "")))
 
             # Tab 6: Network
             ip_set = cfg.get("ip_set", {})
@@ -507,6 +514,10 @@ class ConfigWindow(QWidget):
             cfg["say"]["in"] = self.voice_in.text()
             cfg["say"]["out"] = self.voice_out.text()
             cfg["say"]["clothes"] = self.voice_clothes.text()
+            cfg["camera_voice_prefix"] = {
+                "0": self.voice_prefix_cam0.text().strip(),
+                "1": self.voice_prefix_cam1.text().strip(),
+            }
 
             # Network
             if "ip_set" not in cfg:
