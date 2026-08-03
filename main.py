@@ -626,8 +626,14 @@ with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding=
     CONFIG = json.load(f)
 if not check_empty_string_in_dict(CONFIG):
     os._exit(0)
-API = config.API(str(CONFIG["Server"]["API_url"]),
-                 int(CONFIG["Server"]["location_ID"]))
+
+
+def build_api_client(config_data):
+    server = config_data["Server"]
+    return config.API(str(server["API_url"]), int(server["location_ID"]))
+
+
+API = build_api_client(CONFIG)
 
 
 @dataclass
@@ -1071,12 +1077,21 @@ class FaceRecognitionSystem:
             os._exit(0)
 
     def setup_mqtt_client(self):
+        old_client = getattr(self, "mqtt_client", None)
+        if old_client:
+            try:
+                old_client.loop_stop()
+                old_client.disconnect()
+            except Exception:
+                pass
+
         s_ip = CONFIG.get("Server", {}).get("ip", "localhost")
         m_conf = CONFIG.get("MQTT", {})
         self.mqtt_broker_host = m_conf.get("broker_ip", s_ip)
         self.mqtt_port, self.mqtt_topic = m_conf.get(
             "port", 1883), m_conf.get("topic", "pvms/faces/updated")
         client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        self.mqtt_client = client
         client.on_connect = self.on_mqtt_connect
         client.on_message = self.on_mqtt_message
         try:
@@ -1354,7 +1369,7 @@ class FaceRecognitionSystem:
             self.cameras = []
 
         # 2. Reload Config
-        global CONFIG
+        global CONFIG, API
         try:
             with open(os.path.join(os.path.dirname(__file__), "config.json"), "r", encoding="utf-8") as f:
                 new_config = json.load(f)
@@ -1365,12 +1380,19 @@ class FaceRecognitionSystem:
                 new_config.get("say") != CONFIG.get("say") or
                 new_config.get("camera_voice_prefix") != CONFIG.get("camera_voice_prefix")
             )
-            need_rebuild = say_changed or \
-                           (new_config.get("Server") != CONFIG.get("Server"))
+            server_changed = new_config.get("Server") != CONFIG.get("Server")
+            need_rebuild = say_changed or server_changed
 
             # Update global CONFIG
             CONFIG.clear()
             CONFIG.update(new_config)
+            API = build_api_client(CONFIG)
+            import init.function as function
+            function.CONFIG = CONFIG
+            function.API = build_api_client(CONFIG)
+            if server_changed:
+                self._network_tasks_done["sync"] = False
+                self._network_tasks_done["mqtt"] = False
             LOGGER.info("Configuration reloaded from disk.")
 
             # [2026-01-30 Fix] Reload Theme
@@ -1408,7 +1430,6 @@ class FaceRecognitionSystem:
             # [2026-01-30 Fix] Sync function.py CONFIG global variable
             # function.py loads its own CONFIG copy on import, which becomes stale on reload.
             # We must explicitly update it.
-            import init.function as function
             function.CONFIG = CONFIG
 
             # [2026-02-06 Fix] Sync init.model CONFIG global variable
@@ -1422,6 +1443,8 @@ class FaceRecognitionSystem:
 
             LOGGER.info(
                 "Synced configuration to function and init.model modules.")
+            if server_changed:
+                self.setup_mqtt_client()
 
         except Exception as e:
             LOGGER.error(f"Failed to reload config.json: {e}")
