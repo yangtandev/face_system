@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 class LargeTitleBar(QWidget):
     def __init__(
             self, title, parent=None, show_close=False, centered=False,
-            font_size=20, align_bottom=False, height=76):
+            font_size=20, align_bottom=False, height=76, theme="dark"):
         super().__init__(parent)
         self._drag_pos = None
         self.setFixedHeight(height)
@@ -21,8 +21,9 @@ class LargeTitleBar(QWidget):
         self.label = QLabel(title)
         self.label.setObjectName("largeTitleLabel")
         self.label.setFont(QFont("Microsoft JhengHei", font_size, QFont.Bold))
+        title_color = "#111827" if theme == "light" else "#ffffff"
         self.label.setStyleSheet(
-            f"color: #ffffff; font-size: {font_size}pt; font-weight: 700;")
+            f"color: {title_color}; font-size: {font_size}pt; font-weight: 700;")
         if centered and align_bottom:
             self.label.setAlignment(Qt.AlignHCenter | Qt.AlignBottom)
         elif centered:
@@ -44,7 +45,33 @@ class LargeTitleBar(QWidget):
             self.close_button.clicked.connect(close_action)
             layout.addWidget(self.close_button)
 
-        self.setStyleSheet("""
+        if theme == "light":
+            title_bar_style = """
+            QWidget#largeTitleBar {
+                background-color: #e5e7eb;
+                border-bottom: 2px solid #cbd5e1;
+            }
+            QPushButton#largeTitleCloseButton {
+                background-color: #f8fafc;
+                color: #111827;
+                border: 1px solid #94a3b8;
+                border-radius: 4px;
+                font-size: 18pt;
+                font-weight: 700;
+                min-width: 56px;
+                max-width: 56px;
+                min-height: 56px;
+                max-height: 56px;
+                padding: 0;
+            }
+            QPushButton#largeTitleCloseButton:hover {
+                background-color: #dc2626;
+                color: #ffffff;
+                border-color: #ffffff;
+            }
+            """
+        else:
+            title_bar_style = """
             QWidget#largeTitleBar {
                 background-color: #111827;
                 border-bottom: 2px solid #4b5563;
@@ -66,7 +93,8 @@ class LargeTitleBar(QWidget):
                 background-color: #dc2626;
                 border-color: #ffffff;
             }
-        """)
+            """
+        self.setStyleSheet(title_bar_style)
 
     def set_title(self, title):
         self.label.setText(title)

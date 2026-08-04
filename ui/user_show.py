@@ -53,13 +53,14 @@ class AdminPasswordDialog(QDialog):
         self.setWindowFlags(self.windowFlags() | QtCore.Qt.FramelessWindowHint)
         self.setModal(True)
         self.resize(560, 260)
+        theme = config_.get("theme", "dark")
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         self.setLayout(layout)
 
-        layout.addWidget(LargeTitleBar("身分驗證", self, show_close=True))
+        layout.addWidget(LargeTitleBar("身分驗證", self, show_close=True, theme=theme))
 
         body = QWidget()
         body_layout = QVBoxLayout()
@@ -90,7 +91,41 @@ class AdminPasswordDialog(QDialog):
         button_layout.addWidget(self.ok_button)
         body_layout.addLayout(button_layout)
 
-        body.setStyleSheet("""
+        if theme == "light":
+            body_style = """
+            QWidget {
+                background-color: #f0f0f0;
+                color: #000000;
+            }
+            QLabel {
+                color: #000000;
+                font-size: 16pt;
+                font-weight: 700;
+            }
+            QLineEdit {
+                background-color: #ffffff;
+                border: 2px solid #999;
+                color: #000000;
+                font-size: 16pt;
+                min-height: 48px;
+                padding: 8px 12px;
+            }
+            QPushButton#adminCancelButton, QPushButton#adminOkButton {
+                background-color: #e0e0e0;
+                color: #000000;
+                border: 1px solid #aaa;
+                border-radius: 4px;
+                font-size: 16pt;
+                min-height: 48px;
+                min-width: 96px;
+                padding: 8px 22px;
+            }
+            QPushButton#adminCancelButton:hover, QPushButton#adminOkButton:hover {
+                background-color: #d0d0d0;
+            }
+            """
+        else:
+            body_style = """
             QWidget {
                 background-color: #2b2b2b;
                 color: #ffffff;
@@ -121,7 +156,8 @@ class AdminPasswordDialog(QDialog):
             QPushButton#adminCancelButton:hover, QPushButton#adminOkButton:hover {
                 background-color: #666;
             }
-        """)
+            """
+        body.setStyleSheet(body_style)
 
     def textValue(self):
         return self.password_edit.text()
@@ -282,6 +318,9 @@ class MainWindow(QWidget, Ui_Form):
             PRIMARY_HINT_FONT_MIN,
             min(PRIMARY_HINT_FONT_MAX, int(self.height() * PRIMARY_HINT_FONT_HEIGHT_RATIO)))
 
+    def primary_hint_text_color(self):
+        return "black" if config_.get("theme", "dark") == "light" else "white"
+
     def version_label_style(self, style):
         keep = []
         for part in style.split(";"):
@@ -328,7 +367,8 @@ class MainWindow(QWidget, Ui_Form):
             hint_geom.x(), title_y, hint_geom.width(), hint_geom.height())
         self.title_label.setFont(QFont("Microsoft JhengHei", self.primary_hint_font_size(), QFont.Bold))
         self.title_label.setAlignment(self.hint2.alignment())
-        self.title_label.setStyleSheet("background-color: transparent; color: white;")
+        self.title_label.setStyleSheet(
+            f"background-color: transparent; color: {self.primary_hint_text_color()};")
         self.title_label.raise_()
         if hasattr(self, "btn_setting"):
             self.btn_setting.setGeometry(10, 18, 40, 40)

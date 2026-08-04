@@ -58,7 +58,8 @@ class ConfigWindow(QWidget):
         outer_layout.setSpacing(0)
         self.setLayout(outer_layout)
 
-        self.title_bar = LargeTitleBar("系統參數設定", self, show_close=True)
+        self.title_bar = LargeTitleBar(
+            "系統參數設定", self, show_close=True, theme=self._saved_theme())
         outer_layout.addWidget(self.title_bar)
 
         content = QWidget()
@@ -194,6 +195,13 @@ class ConfigWindow(QWidget):
         btn_layout.addWidget(self.btn_cancel)
         btn_layout.addWidget(self.btn_save)
         main_layout.addLayout(btn_layout)
+
+    def _saved_theme(self):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f).get("theme", "dark")
+        except Exception:
+            return "dark"
 
     def _resize_for_site_display(self):
         width = WINDOW_TARGET_SIZE.width()
