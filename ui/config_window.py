@@ -8,25 +8,42 @@ from PyQt5.QtWidgets import (
     QLineEdit, QPushButton, QCheckBox, QFormLayout,
     QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
     QScrollArea, QGroupBox, QSpinBox, QDoubleSpinBox, QApplication, QComboBox,
-    QRadioButton, QButtonGroup
+    QRadioButton, QButtonGroup, QTabBar
 )
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtGui import QFont, QIcon
 from ui import styles
+from ui.window_title import LargeTitleBar
 
 # 設定檔路徑
 CONFIG_PATH = os.path.join(os.path.dirname(
     os.path.dirname(__file__)), "config.json")
 
+FIELD_FONT_SIZE = 15
+BUTTON_FONT_SIZE = 16
+WINDOW_TARGET_SIZE = QSize(1280, 860)
+WINDOW_SCREEN_RATIO = 0.92
+
 # 全域狀態旗標，供 setting_tool.py 的 Watchdog 讀取
 IS_RESTARTING = False
+
+
+class FullWidthTabBar(QTabBar):
+    def tabSizeHint(self, index):
+        size = super().tabSizeHint(index)
+        parent = self.parentWidget()
+        if parent and self.count() > 0:
+            size.setWidth(max(size.width(), parent.width() // self.count()))
+        return size
 
 
 class ConfigWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("系統參數設定 (System Configuration)")
-        self.resize(1000, 700)
+        self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
+        self.setFont(QFont("Microsoft JhengHei", FIELD_FONT_SIZE))
+        self._resize_for_site_display()
         self.config_data = {}
 
         # UI 初始化
@@ -36,19 +53,104 @@ class ConfigWindow(QWidget):
         self.load_config()
 
     def init_ui(self):
+        outer_layout = QVBoxLayout()
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+        self.setLayout(outer_layout)
+
+        self.title_bar = LargeTitleBar("系統參數設定", self, show_close=True)
+        outer_layout.addWidget(self.title_bar)
+
+        content = QWidget()
+        outer_layout.addWidget(content, 1)
+
         # 主佈局
         main_layout = QVBoxLayout()
-        self.setLayout(main_layout)
-
-        # 標題
-        title_label = QLabel("Face System 設定工具")
-        title_label.setFont(QFont("Microsoft JhengHei", 16, QFont.Bold))
-        title_label.setAlignment(Qt.AlignCenter)
-        main_layout.addWidget(title_label)
+        main_layout.setContentsMargins(24, 20, 24, 20)
+        main_layout.setSpacing(16)
+        content.setLayout(main_layout)
+        content.setStyleSheet("""
+            QLabel, QCheckBox, QRadioButton, QLineEdit, QSpinBox,
+            QDoubleSpinBox, QComboBox, QTableWidget {
+                font-size: 15pt;
+            }
+            QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+                min-height: 44px;
+                padding: 8px 10px;
+            }
+            QLabel, QCheckBox, QRadioButton {
+                font-weight: 600;
+            }
+            QCheckBox, QRadioButton {
+                min-height: 38px;
+                spacing: 12px;
+            }
+            QCheckBox::indicator {
+                width: 26px;
+                height: 26px;
+                border: 3px solid #f5f5f5;
+                border-radius: 5px;
+                background-color: #1f2937;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #22d3ee;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #22c55e;
+                border-color: #ffffff;
+            }
+            QRadioButton::indicator {
+                width: 26px;
+                height: 26px;
+                border: 3px solid #f5f5f5;
+                border-radius: 13px;
+                background-color: #1f2937;
+            }
+            QRadioButton::indicator:hover {
+                border-color: #22d3ee;
+            }
+            QRadioButton::indicator:checked {
+                background-color: #22c55e;
+                border-color: #ffffff;
+            }
+            QTabBar {
+                qproperty-expanding: true;
+                qproperty-usesScrollButtons: false;
+                qproperty-elideMode: 0;
+            }
+            QTabBar::tab {
+                font-size: 15pt;
+                font-weight: 500;
+                min-height: 38px;
+                padding: 12px 10px;
+            }
+            QTabBar::tab:selected {
+                font-weight: 700;
+            }
+            QGroupBox {
+                font-size: 15pt;
+                margin-top: 28px;
+                padding: 18px 12px 12px 12px;
+            }
+            QPushButton {
+                font-size: 16pt;
+                min-height: 46px;
+                padding: 8px 20px;
+            }
+            QHeaderView::section {
+                font-size: 15pt;
+                min-height: 38px;
+                padding: 8px;
+            }
+        """)
 
         # 頁籤容器
         self.tabs = QTabWidget()
-        self.tabs.setFont(QFont("Microsoft JhengHei", 11))
+        self.tabs.setTabBar(FullWidthTabBar(self.tabs))
+        self.tabs.setFont(QFont("Microsoft JhengHei", FIELD_FONT_SIZE))
+        self.tabs.tabBar().setExpanding(True)
+        self.tabs.tabBar().setUsesScrollButtons(False)
+        self.tabs.tabBar().setElideMode(Qt.ElideNone)
         main_layout.addWidget(self.tabs)
 
         # 初始化各分頁
@@ -77,15 +179,15 @@ class ConfigWindow(QWidget):
         # 底部按鈕區
         btn_layout = QHBoxLayout()
         self.btn_save = QPushButton("儲存設定 (Save)")
-        self.btn_save.setFixedHeight(50)
-        self.btn_save.setFont(QFont("Microsoft JhengHei", 12, QFont.Bold))
+        self.btn_save.setFixedHeight(62)
+        self.btn_save.setFont(QFont("Microsoft JhengHei", BUTTON_FONT_SIZE, QFont.Bold))
         self.btn_save.setStyleSheet(
             "background-color: #4CAF50; color: white; border-radius: 5px;")
         self.btn_save.clicked.connect(self.save_config)
 
         self.btn_cancel = QPushButton("取消")
-        self.btn_cancel.setFixedHeight(50)
-        self.btn_cancel.setFont(QFont("Microsoft JhengHei", 12))
+        self.btn_cancel.setFixedHeight(62)
+        self.btn_cancel.setFont(QFont("Microsoft JhengHei", BUTTON_FONT_SIZE))
         self.btn_cancel.clicked.connect(self.close)
 
         btn_layout.addStretch(1)
@@ -93,10 +195,25 @@ class ConfigWindow(QWidget):
         btn_layout.addWidget(self.btn_save)
         main_layout.addLayout(btn_layout)
 
+    def _resize_for_site_display(self):
+        width = WINDOW_TARGET_SIZE.width()
+        height = WINDOW_TARGET_SIZE.height()
+        screen = QApplication.primaryScreen()
+        if screen:
+            available = screen.availableGeometry()
+            width = min(width, int(available.width() * WINDOW_SCREEN_RATIO))
+            height = min(height, int(available.height() * WINDOW_SCREEN_RATIO))
+
+        self.resize(width, height)
+        self.setMinimumSize(min(width, 1050), min(height, 720))
+
     def create_form_group(self, title):
         group = QGroupBox(title)
-        group.setFont(QFont("Microsoft JhengHei", 11))
+        group.setFont(QFont("Microsoft JhengHei", FIELD_FONT_SIZE, QFont.Bold))
         layout = QFormLayout()
+        layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        layout.setHorizontalSpacing(22)
+        layout.setVerticalSpacing(14)
         group.setLayout(layout)
         return group, layout
 
@@ -251,6 +368,7 @@ class ConfigWindow(QWidget):
         self.table_schedule.setHorizontalHeaderLabels(
             ["開始時間 (HH:MM:SS)", "結束時間 (HH:MM:SS)"])
         self.table_schedule.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table_schedule.verticalHeader().setDefaultSectionSize(48)
         layout.addWidget(self.table_schedule)
 
         # 操作按鈕
@@ -328,7 +446,7 @@ class ConfigWindow(QWidget):
         self.chk_excel = QCheckBox("啟用 Excel API")
 
         door_hint = QLabel("系統將自動組成 http://{IP}:1880/open_door")
-        door_hint.setStyleSheet("color: gray; font-size: 10px;")
+        door_hint.setStyleSheet("color: gray; font-size: 14pt;")
 
         form_adv.addRow("開門裝置 IP:", self.door_api)
         form_adv.addRow("", door_hint)
@@ -594,6 +712,7 @@ class ConfigWindow(QWidget):
 if __name__ == "__main__":
     from PyQt5.QtWidgets import QApplication
     app = QApplication(sys.argv)
+    app.setFont(QFont("Microsoft JhengHei", FIELD_FONT_SIZE))
 
     # 全域樣式 (Dark Theme 雛形)
     app.setStyleSheet("""

@@ -9,6 +9,7 @@ if project_root not in sys.path:
 
 from PyQt5.QtWidgets import QApplication, QMessageBox
 from PyQt5.QtCore import QLockFile, QDir
+from PyQt5.QtGui import QFont
 import ui.config_window # Import module to access IS_RESTARTING
 from ui.config_window import ConfigWindow
 from ui import styles
@@ -41,6 +42,7 @@ def main():
             os.environ["XMODIFIERS"] = "@im=fcitx"
     
     app = QApplication(sys.argv)
+    app.setFont(QFont("Microsoft JhengHei", 15))
     
     # [2026-01-30 Feature] Single Instance Protection
     # Use QLockFile to prevent multiple setting windows

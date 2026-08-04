@@ -3,9 +3,13 @@ from PyQt5.QtCore import QThread, pyqtSignal, QTimer
 from ui.user import Ui_Show_from
 from ui.dy_user import Ui_dynamic_Form
 from ui.user_only import Ui_Form
-from PyQt5.QtGui import QIcon, QPixmap
-from PyQt5.QtWidgets import QApplication, QPushButton, QInputDialog, QLineEdit, QMessageBox
+from PyQt5.QtGui import QIcon, QPixmap, QFont
+from PyQt5.QtWidgets import (
+    QApplication, QPushButton, QLineEdit, QMessageBox, QDialog,
+    QVBoxLayout, QHBoxLayout
+)
 from PyQt5 import QtCore
+from ui.window_title import LargeTitleBar
 import os, json, time, subprocess, sys
 
 def get_app_version():
@@ -37,6 +41,90 @@ try:
 except Exception as e:
     print("ui_show-載入失敗", e)
 
+PRIMARY_HINT_FONT_SIZE = 30
+
+
+class AdminPasswordDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("身分驗證")
+        self.setWindowFlags(self.windowFlags() | QtCore.Qt.FramelessWindowHint)
+        self.setModal(True)
+        self.resize(560, 260)
+
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.setLayout(layout)
+
+        layout.addWidget(LargeTitleBar("身分驗證", self, show_close=True))
+
+        body = QWidget()
+        body_layout = QVBoxLayout()
+        body_layout.setContentsMargins(28, 24, 28, 24)
+        body_layout.setSpacing(18)
+        body.setLayout(body_layout)
+        layout.addWidget(body, 1)
+
+        label = QLabel("請輸入管理員密碼:")
+        label.setFont(QFont("Microsoft JhengHei", 16, QFont.Bold))
+        body_layout.addWidget(label)
+
+        self.password_edit = QLineEdit()
+        self.password_edit.setEchoMode(QLineEdit.Password)
+        self.password_edit.setFont(QFont("Microsoft JhengHei", 16))
+        self.password_edit.returnPressed.connect(self.accept)
+        body_layout.addWidget(self.password_edit)
+
+        button_layout = QHBoxLayout()
+        self.cancel_button = QPushButton("取消")
+        self.ok_button = QPushButton("確定")
+        self.cancel_button.setObjectName("adminCancelButton")
+        self.ok_button.setObjectName("adminOkButton")
+        self.cancel_button.clicked.connect(self.reject)
+        self.ok_button.clicked.connect(self.accept)
+        button_layout.addStretch(1)
+        button_layout.addWidget(self.cancel_button)
+        button_layout.addWidget(self.ok_button)
+        body_layout.addLayout(button_layout)
+
+        body.setStyleSheet("""
+            QWidget {
+                background-color: #2b2b2b;
+                color: #ffffff;
+            }
+            QLabel {
+                color: #ffffff;
+                font-size: 16pt;
+                font-weight: 700;
+            }
+            QLineEdit {
+                background-color: #3b3b3b;
+                border: 2px solid #777;
+                color: #ffffff;
+                font-size: 16pt;
+                min-height: 48px;
+                padding: 8px 12px;
+            }
+            QPushButton#adminCancelButton, QPushButton#adminOkButton {
+                background-color: #555;
+                color: #ffffff;
+                border: 1px solid #777;
+                border-radius: 4px;
+                font-size: 16pt;
+                min-height: 48px;
+                min-width: 96px;
+                padding: 8px 22px;
+            }
+            QPushButton#adminCancelButton:hover, QPushButton#adminOkButton:hover {
+                background-color: #666;
+            }
+        """)
+
+    def textValue(self):
+        return self.password_edit.text()
+
+
 class MainWindow(QWidget, Ui_Form):
     def __init__(self, fun, frame_num, parent=None):
         super(MainWindow, self).__init__(parent)
@@ -60,11 +148,16 @@ class MainWindow(QWidget, Ui_Form):
             self.out_voice.setStyleSheet("")
             self.clothes_voice.setStyleSheet("")
         except Exception: pass
+        self.apply_primary_hint_style()
         
         if frame_num == 0:
             self.setWindowTitle(f"進入視窗")
         if frame_num == 1:
             self.setWindowTitle(f"離開視窗")
+        self.title_label = QLabel(self.title_text_html(self.windowTitle()), self)
+        self.title_label.setAlignment(self.hint2.alignment())
+        self.title_label.setWordWrap(True)
+        self.title_label.hide()
 
         self.img1.setScaledContents(True)
         self.img2.setScaledContents(True)
@@ -122,11 +215,7 @@ class MainWindow(QWidget, Ui_Form):
 
     def open_settings(self):
         """Open the external setting tool with password protection."""
-        # [2026-01-30 Fix] Use explicit QInputDialog to ensure centering
-        dlg = QInputDialog(self)
-        dlg.setWindowTitle('身分驗證')
-        dlg.setLabelText('請輸入管理員密碼:')
-        dlg.setTextEchoMode(QLineEdit.Password)
+        dlg = AdminPasswordDialog(self)
         
         # Force center on parent
         # Note: dlg.exec_() blocks, so we move before exec.
@@ -134,7 +223,7 @@ class MainWindow(QWidget, Ui_Form):
         # We trust Qt parent centering usually, but if it fails (top-left),
         # we can try to force move.
         
-        if dlg.exec_() == QInputDialog.Accepted:
+        if dlg.exec_() == QDialog.Accepted:
             text = dlg.textValue()
             # Default password is 'admin', or matching the server password if available?
             # Let's use 'admin' for simplicity as requested "Option A".
@@ -176,8 +265,15 @@ class MainWindow(QWidget, Ui_Form):
     def update_hint(self, obj, color, txt):
         obj.setStyleSheet(color)
         obj.setText(txt)
+        if obj is self.hint2:
+            self.apply_primary_hint_style()
         if obj is self.hint2 and hasattr(self, "version_label"):
             self.version_label.setStyleSheet(self.version_label_style(color))
+
+    def apply_primary_hint_style(self):
+        font = QFont("Microsoft JhengHei", PRIMARY_HINT_FONT_SIZE, QFont.Bold)
+        self.hint2.setFont(font)
+        self.hint2.setWordWrap(True)
 
     def version_label_style(self, style):
         keep = []
@@ -208,24 +304,75 @@ class MainWindow(QWidget, Ui_Form):
         if hasattr(self, "btn_setting"):
             self.btn_setting.raise_()
 
+    def position_title_label(self):
+        if not hasattr(self, "title_label"):
+            return
+
+        show_title = not config_.get("full_screen", True)
+        self.title_label.setVisible(show_title)
+        if not show_title:
+            if hasattr(self, "btn_setting"):
+                self.btn_setting.setGeometry(10, 10, 40, 40)
+            return
+
+        hint_geom = self.hint2.geometry()
+        title_y = max(0, self.height() - hint_geom.y() - hint_geom.height())
+        self.title_label.setGeometry(
+            hint_geom.x(), title_y, hint_geom.width(), hint_geom.height())
+        self.title_label.setFont(QFont("Microsoft JhengHei", PRIMARY_HINT_FONT_SIZE, QFont.Bold))
+        self.title_label.setAlignment(self.hint2.alignment())
+        self.title_label.setStyleSheet("background-color: transparent; color: white;")
+        self.title_label.raise_()
+        if hasattr(self, "btn_setting"):
+            self.btn_setting.setGeometry(10, 18, 40, 40)
+            self.btn_setting.raise_()
+
+    def setWindowTitle(self, title):
+        super().setWindowTitle(title)
+        if hasattr(self, "title_label"):
+            self.title_label.setText(self.title_text_html(title))
+
+    def title_text_html(self, title):
+        return f'<html><head/><body><p align="center">&nbsp;<br/>{title}</p></body></html>'
+
     def win_resize(self, event):
         Proportion_X = self.width()/self.org_point[0][2]
         Proportion_Y = self.height()/self.org_point[0][0]
-        blank_X = 0
-        blank_Y = 0
-        
         chang = min(Proportion_X, Proportion_Y)
+
+        img_base_h = self.org_point[1][0] * chang
+        img_base_w = self.org_point[1][2] * chang
+        hint2_base_h = self.org_point[2][0] * chang
+        blank_X = max(0, (self.width() - img_base_w) // 2)
+        blank_Y = max(0, (self.height() - img_base_h - hint2_base_h) // 2)
+
+        hint2_y = int(self.org_point[2][3] * chang + blank_Y)
+        hint2_h = int(hint2_base_h)
+        title_y = max(0, self.height() - hint2_y - hint2_h)
+        title_h = hint2_h
+        camera_y = title_y + title_h
+        camera_bottom = hint2_y
+        camera_h = max(1, camera_bottom - camera_y)
+
         for i in range(1, len(self.obj)):
             height = self.org_point[i][0]*chang
             left_ = self.org_point[i][1]*chang
             width = self.org_point[i][2]*chang
             top = self.org_point[i][3]*chang
-            if i == 1:
-                height_hint2 = self.org_point[2][0]*chang
-                blank_X = max(0, (self.width() - width )//2)
-                blank_Y = max(0, (self.height() - height - height_hint2)//2)
         
-            self.obj[i].setGeometry(int(left_+blank_X), int(top+blank_Y),  int(width), int(height))
+            new_top = int(top + blank_Y)
+            new_height = int(height)
+            if i == 1:
+                new_top = camera_y
+                new_height = camera_h
+            elif i != 2:
+                original_img_h = max(1, self.org_point[1][0])
+                rel_top = self.org_point[i][3] / original_img_h
+                rel_height = self.org_point[i][0] / original_img_h
+                new_top = int(camera_y + rel_top * camera_h)
+                new_height = int(max(1, rel_height * camera_h))
+            self.obj[i].setGeometry(int(left_+blank_X), new_top, int(width), new_height)
+        self.position_title_label()
         self.position_version_label()
         pass
 
@@ -298,6 +445,7 @@ class MyThread(QThread):
     signal_update_bgcolor = pyqtSignal(list, list)
     signal_update_visibility = pyqtSignal(list, bool)
     signal_update_hint = pyqtSignal(QLabel, str, str)
+    signal_update_title = pyqtSignal(str)
 
     def __init__(self):
         super(MyThread, self).__init__()

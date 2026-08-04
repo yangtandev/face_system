@@ -117,8 +117,8 @@ class CameraSystem:
         self.win = MainWindow(self.updata_screen, frame_num)
         self.img1_size = (self.win.img1.width(), self.win.img1.height())
         self.img2_size = (self.win.img2.width(), self.win.img2.height())
-        if n == 1:
-            self.win.setWindowTitle(f"進出視窗")
+        self._last_window_title = None
+        self._sync_window_title(force=True)
         self.win.closeEvent = self.terminate
         if self.frame_num == 0 and CONFIG["Clothes_show"]:
             self.win.img3.setPixmap(QPixmap(f'{main_path}/other/helmet_R.png'))
@@ -149,6 +149,25 @@ class CameraSystem:
             return self.frame_num == 0
 
         return True
+
+    def _window_title_for_current_direction(self):
+        schedule_enabled = CONFIG.get("Schedule", {}).get("enabled", False)
+        if self.n_camera and not schedule_enabled:
+            return "進出視窗"
+        return "進入視窗" if self._is_entry_active() else "離開視窗"
+
+    def _sync_window_title(self, force=False):
+        if not hasattr(self, "win"):
+            return
+        title = self._window_title_for_current_direction()
+        if force or title != self._last_window_title:
+            self._last_window_title = title
+            if force:
+                self.win.setWindowTitle(title)
+            elif hasattr(self.win, "my_thread"):
+                self.win.my_thread.signal_update_title.emit(title)
+            else:
+                self.win.setWindowTitle(title)
 
     def main_camera(self):
         frame_count = 0
@@ -371,6 +390,9 @@ class CameraSystem:
         time.sleep(0.5)
         self.win.my_thread.signal_update_img.connect(self.win.update_img)
         self.win.my_thread.signal_update_hint.connect(self.win.update_hint)
+        self.win.my_thread.signal_update_title.connect(self.win.setWindowTitle)
+        self._last_window_title = None
+        self._sync_window_title()
         if self.clothes_de:
             self.win.my_thread.signal_update_bgcolor.connect(
                 self.win.update_bgcolor)
@@ -382,6 +404,7 @@ class CameraSystem:
                 time.sleep(0.2)
                 continue
             try:
+                self._sync_window_title()
                 self.win.my_thread.signal_update_img.emit(
                     self.win.img1, self.show_main())
                 self.win.my_thread.signal_update_img.emit(
