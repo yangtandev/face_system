@@ -41,7 +41,9 @@ try:
 except Exception as e:
     print("ui_show-載入失敗", e)
 
-PRIMARY_HINT_FONT_SIZE = 30
+PRIMARY_HINT_FONT_MIN = 18
+PRIMARY_HINT_FONT_MAX = 30
+PRIMARY_HINT_FONT_HEIGHT_RATIO = 0.032
 
 
 class AdminPasswordDialog(QDialog):
@@ -271,9 +273,14 @@ class MainWindow(QWidget, Ui_Form):
             self.version_label.setStyleSheet(self.version_label_style(color))
 
     def apply_primary_hint_style(self):
-        font = QFont("Microsoft JhengHei", PRIMARY_HINT_FONT_SIZE, QFont.Bold)
+        font = QFont("Microsoft JhengHei", self.primary_hint_font_size(), QFont.Bold)
         self.hint2.setFont(font)
         self.hint2.setWordWrap(True)
+
+    def primary_hint_font_size(self):
+        return max(
+            PRIMARY_HINT_FONT_MIN,
+            min(PRIMARY_HINT_FONT_MAX, int(self.height() * PRIMARY_HINT_FONT_HEIGHT_RATIO)))
 
     def version_label_style(self, style):
         keep = []
@@ -319,7 +326,7 @@ class MainWindow(QWidget, Ui_Form):
         title_y = max(0, self.height() - hint_geom.y() - hint_geom.height())
         self.title_label.setGeometry(
             hint_geom.x(), title_y, hint_geom.width(), hint_geom.height())
-        self.title_label.setFont(QFont("Microsoft JhengHei", PRIMARY_HINT_FONT_SIZE, QFont.Bold))
+        self.title_label.setFont(QFont("Microsoft JhengHei", self.primary_hint_font_size(), QFont.Bold))
         self.title_label.setAlignment(self.hint2.alignment())
         self.title_label.setStyleSheet("background-color: transparent; color: white;")
         self.title_label.raise_()
@@ -372,6 +379,7 @@ class MainWindow(QWidget, Ui_Form):
                 new_top = int(camera_y + rel_top * camera_h)
                 new_height = int(max(1, rel_height * camera_h))
             self.obj[i].setGeometry(int(left_+blank_X), new_top, int(width), new_height)
+        self.apply_primary_hint_style()
         self.position_title_label()
         self.position_version_label()
         pass
