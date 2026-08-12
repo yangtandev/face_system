@@ -224,11 +224,8 @@ class CameraSystem:
                 vis_ratio = 1.0 if clothes_active else 0.8
 
                 # [2026-04-30 Fix] 預先定義 passed_gate 避免 UnboundLocalError
-                need_check_clothes = self.frame_num == 0 and (CONFIG.get("Clothes_detection", False) or CONFIG.get("Clothes_show", False))
-                is_clothes_pass = bool(
-                    getattr(self.system.state, "clothes_gate_pass", False) and
-                    time.time() - getattr(self.system.state, "clothes_gate_time", 0.0) <= 0.5
-                )
+                need_check_clothes = self.frame_num == 0 and self._is_entry_active() and CONFIG.get("Clothes_detection", False)
+                is_clothes_pass = clothes_gate_is_fresh(self.system)
                 passed_gate = (not need_check_clothes) or is_clothes_pass
 
                 if current_width >= (target_min * vis_ratio):
@@ -455,11 +452,8 @@ class CameraSystem:
 
         # [2026-02-03 Fix] 入口衣著不合格時，強制隱藏大頭貼
         # 修正：改用 _is_entry_active() 以支援單鏡頭排程切換
-        need_check_clothes = self.frame_num == 0 and (CONFIG.get("Clothes_detection", False) or CONFIG.get("Clothes_show", False))
-        is_clothes_pass = bool(
-            getattr(self.system.state, "clothes_gate_pass", False) and
-            time.time() - getattr(self.system.state, "clothes_gate_time", 0.0) <= 0.5
-        )
+        need_check_clothes = self.frame_num == 0 and self._is_entry_active() and CONFIG.get("Clothes_detection", False)
+        is_clothes_pass = clothes_gate_is_fresh(self.system)
         if need_check_clothes and not is_clothes_pass:
             # 若為辨識成功狀態但沒穿衣服，暫時視為 None 以隱藏照片
             # 但若原本就是 VISITOR 或 None，則保持原樣 (交給下方邏輯處理)
@@ -521,11 +515,8 @@ class CameraSystem:
         # [2026-02-03 Fix] 顯示邏輯：若被衣著檢查攔截，UI 提示也應改為 "請正確著裝"
         # 修正：只有在 "偵測到人" (current_class != None) 時才檢查衣著並攔截
         # 修正 (User Feedback): 左側欄位空間不足，"請正確著裝" 會被切掉。改回顯示 "辨識中" 即可 (主畫面已有提示)。
-        need_check_clothes = self.frame_num == 0 and (CONFIG.get("Clothes_detection", False) or CONFIG.get("Clothes_show", False))
-        is_clothes_pass = bool(
-            getattr(self.system.state, "clothes_gate_pass", False) and
-            time.time() - getattr(self.system.state, "clothes_gate_time", 0.0) <= 0.5
-        )
+        need_check_clothes = self.frame_num == 0 and self._is_entry_active() and CONFIG.get("Clothes_detection", False)
+        is_clothes_pass = clothes_gate_is_fresh(self.system)
 
         if current_class == "__VISITOR__":
             return 'color: rgb(0, 0, 255); background-color: rgb(255, 255, 255); font: 24pt "微軟正黑體";', "訪客"

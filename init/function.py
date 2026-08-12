@@ -22,6 +22,16 @@ API = config.API(str(CONFIG["Server"]["API_url"]), int(CONFIG["Server"]["locatio
 API_QUEUE_TTL_SECONDS = 24 * 60 * 60
 API_QUEUE_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "../data/pending_api_calls.json"))
+CLOTHES_GATE_HOLD_SECONDS = 1.5
+
+
+def clothes_gate_is_fresh(system, now=None):
+    now = time.time() if now is None else now
+    gate_time = getattr(system.state, "clothes_gate_time", 0.0)
+    return bool(
+        getattr(system.state, "clothes_gate_pass", False) and
+        now - gate_time <= CLOTHES_GATE_HOLD_SECONDS
+    )
 
 
 def frame_hash(frame):
@@ -238,14 +248,17 @@ def check_in_out(system, staff_name, staff_id, camera_num, n, confidence):
                 LOGGER.warning(f"Unexpected camera_num {camera_num} in double-camera mode; defaulting to exit")
                 is_check_out_action = True
 
-    if (CONFIG.get("Clothes_detection", False) or CONFIG.get("Clothes_show", False)) and (n or camera_num == 0):
-        clothes_gate_ok = bool(
-            getattr(system.state, "clothes_gate_pass", False) and
-            time.time() - getattr(system.state, "clothes_gate_time", 0.0) <= 0.5
-        )
+    if CONFIG.get("Clothes_detection", False) and is_check_in_action:
+        now = time.time()
+        clothes_gate_ok = clothes_gate_is_fresh(system, now)
         if not clothes_gate_ok:
+            gate_time = getattr(system.state, "clothes_gate_time", 0.0)
+            gate_age = now - gate_time if gate_time else None
+            clothes_state = getattr(system.state, "clothes", [False, False, False])
             LOGGER.info(
-                f"[服裝硬閘] staff_id={staff_id} 已辨識但未同時通過背心與安全帽，取消刷入/開門"
+                f"[服裝硬閘] staff_id={staff_id} 已辨識但未同時通過背心與安全帽，取消刷入/開門 "
+                f"clothes={clothes_state} gate_pass={getattr(system.state, 'clothes_gate_pass', False)} "
+                f"gate_age={gate_age}"
             )
             return leave
 

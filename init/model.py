@@ -25,6 +25,7 @@ from init.function import (
     stable_json_hash,
     is_schedule_entry_active,
     prefixed_hint_voice,
+    clothes_gate_is_fresh,
     check_in_out_qrcode,
     check_in_out,
 )
@@ -87,6 +88,7 @@ class Detector:
         self.clothe_hold_seconds = [2.5, 0.0, 1.5]
         self.last_clothes_hint_speak_time = 0.0
         self.clothes_hint_cooldown_seconds = 2.0
+        self.last_clothes_gate_block_log_time = 0.0
         # 初始化 MediaPipe 處理器
         self.mp_handler = MediaPipeHandler()
 
@@ -111,7 +113,7 @@ class Detector:
         threading.Thread(target=self.face_detector, daemon=True).start()
 
     def _clothes_gate_required(self):
-        return self.do_clothes and (CONFIG.get("Clothes_detection", False) or CONFIG.get("Clothes_show", False))
+        return self.do_clothes and self._is_entry_active() and CONFIG.get("Clothes_detection", False)
 
     def _say_hint(self, text, filename, priority=2):
         text, filename = prefixed_hint_voice(text, filename, self.frame_num, CONFIG)
@@ -262,14 +264,19 @@ class Detector:
                         pass
 
                     clothes_gate_required = self._clothes_gate_required()
-                    clothes_gate_pass = bool(
-                        getattr(self.system.state, "clothes_gate_pass", False) and
-                        now - getattr(self.system.state,
-                                      "clothes_gate_time", 0.0) <= 0.5
-                    )
+                    clothes_gate_pass = clothes_gate_is_fresh(self.system, now)
 
                     # 鐵則：服裝辨識開啟後，未同時通過安全帽+背心，不產生臉辨資料。
                     if clothes_gate_required and not clothes_gate_pass:
+                        if now - self.last_clothes_gate_block_log_time >= 1.0:
+                            gate_time = getattr(self.system.state, "clothes_gate_time", 0.0)
+                            gate_age = now - gate_time if gate_time else None
+                            LOGGER.info(
+                                f"[服裝Gate阻擋] frame={self.frame_num} clothes={self.system.state.clothes} "
+                                f"gate_pass={getattr(self.system.state, 'clothes_gate_pass', False)} gate_age={gate_age} "
+                                f"face_width={face_width} min_face={self.system.state.min_face[self.frame_num]}"
+                            )
+                            self.last_clothes_gate_block_log_time = now
                         self.system.state.hint_text[self.frame_num] = "請正確著裝"
                         if box is not None and now - self.last_clothes_hint_speak_time >= self.clothes_hint_cooldown_seconds:
                             self._say_hint(
@@ -1579,13 +1586,20 @@ class Comparison:
             self.system.state.success_metadata[self.frame_num] = None
 
     def _clothes_gate_required(self):
-        return self.frame_num == 0 and (CONFIG.get("Clothes_detection", False) or CONFIG.get("Clothes_show", False))
+        if self.frame_num != 0 or not CONFIG.get("Clothes_detection", False):
+            return False
+        schedule_conf = CONFIG.get("Schedule", {})
+        if schedule_conf.get("enabled", False):
+            try:
+                result = is_schedule_entry_active(schedule_conf)
+                return True if result is None else result
+            except Exception as e:
+                LOGGER.error(f"Schedule comparison logic error: {e}")
+                return True
+        return True
 
     def _clothes_gate_is_fresh(self):
-        return bool(
-            getattr(self.system.state, "clothes_gate_pass", False) and
-            time.time() - getattr(self.system.state, "clothes_gate_time", 0.0) <= 0.5
-        )
+        return clothes_gate_is_fresh(self.system)
 
     def face_comparison(self):
         """
