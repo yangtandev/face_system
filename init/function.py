@@ -22,7 +22,14 @@ API = config.API(str(CONFIG["Server"]["API_url"]), int(CONFIG["Server"]["locatio
 API_QUEUE_TTL_SECONDS = 24 * 60 * 60
 API_QUEUE_PATH = os.path.abspath(os.path.join(
     os.path.dirname(__file__), "../data/pending_api_calls.json"))
-CLOTHES_GATE_HOLD_SECONDS = 1.5
+CLOTHES_GATE_HOLD_SECONDS = 2.0
+
+
+def clothes_gate_hold_seconds():
+    try:
+        return max(0.1, float(CONFIG.get("Clothes_gate_hold_seconds", CLOTHES_GATE_HOLD_SECONDS)))
+    except (TypeError, ValueError):
+        return CLOTHES_GATE_HOLD_SECONDS
 
 
 def clothes_gate_is_fresh(system, now=None):
@@ -30,7 +37,7 @@ def clothes_gate_is_fresh(system, now=None):
     gate_time = getattr(system.state, "clothes_gate_time", 0.0)
     return bool(
         getattr(system.state, "clothes_gate_pass", False) and
-        now - gate_time <= CLOTHES_GATE_HOLD_SECONDS
+        now - gate_time <= clothes_gate_hold_seconds()
     )
 
 

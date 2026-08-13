@@ -191,6 +191,18 @@
 						>
 					</div>
 					<div class="form-group">
+						<label>服裝通過有效時間 (秒)</label>
+						<input
+							type="number"
+							name="Clothes_gate_hold_seconds"
+							min="0.5"
+							max="10"
+							step="0.1"
+							data-number="float"
+							required
+						/>
+					</div>
+					<div class="form-group">
 						<label
 							><input type="checkbox" name="qrcode_mode" />啟用 QR
 							Code 掃描</label
@@ -457,6 +469,8 @@
 				currentConfig = await res.json();
 				currentConfig.camera_voice_prefix =
 					currentConfig.camera_voice_prefix || { 0: '攝影機1', 1: '攝影機2' };
+				currentConfig.Clothes_gate_hold_seconds =
+					currentConfig.Clothes_gate_hold_seconds ?? 2.0;
 
 				// Populate inputs
 				document.querySelectorAll('input').forEach((el) => {
@@ -542,7 +556,9 @@
 							el.type === 'checkbox'
 								? el.checked
 								: el.type === 'number'
-									? parseInt(el.value)
+									? el.dataset.number === 'float'
+										? parseFloat(el.value)
+										: parseInt(el.value)
 									: el.value;
 						setVal(newConfig, el.name, val);
 					});

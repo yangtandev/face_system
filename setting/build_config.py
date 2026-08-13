@@ -51,6 +51,7 @@ default_config = {
     },
     "Clothes_detection": False,
     "Clothes_show": False,
+    "Clothes_gate_hold_seconds": 2.0,
     "min_face": 450,
     "max_face": 700,
     "test_mod": False,
