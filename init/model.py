@@ -55,6 +55,8 @@ with open(os.path.join(os.path.dirname(__file__), "../config.json"), "r", encodi
     CONFIG = json.load(json_file)
 CAMERA = {0: "inCamera", 1: "outCamera"}
 CAM_NAME_MAP = {0: "入口", 1: "出口"}
+CLOTHES_INTERNAL_VEST_CLASS = 0
+CLOTHES_INTERNAL_HELMET_CLASS = 2
 POTENTIAL_MISS_RATIO = 0.8
 Z_SCORE_THRESHOLD = 1.5
 QUALITY_RULE_VERSION = "2026-05-29.1"
@@ -63,6 +65,14 @@ test_img = cv2.imread(os.path.join(
     os.path.dirname(__file__), "../other/test_img.jpg"))
 test_img = cv2.resize(test_img, (224, 224))
 tensor_test_img = torch.from_numpy(test_img).unsqueeze(0).permute(0, 3, 1, 2)
+
+
+def clothes_model_helmet_class():
+    return int(CONFIG.get("Clothes_model_helmet_class", 0))
+
+
+def clothes_model_vest_class():
+    return int(CONFIG.get("Clothes_model_vest_class", 4))
 
 
 class Detector:
@@ -450,12 +460,61 @@ class Detector:
         roi_x1, roi_x2 = self._roi_bounds(full_frame.shape[1])
 
         fallback_cache = {}
+        helmet_model_cls = clothes_model_helmet_class()
+        vest_model_cls = clothes_model_vest_class()
+
+        def clamp_box(box):
+            h, w = full_frame.shape[:2]
+            x1, y1, x2, y2 = box
+            x1 = max(0, min(w - 1, int(x1)))
+            y1 = max(0, min(h - 1, int(y1)))
+            x2 = min(w, max(x1 + 1, int(x2)))
+            y2 = min(h, max(y1 + 1, int(y2)))
+            return x1, y1, x2, y2
+
+        def target_crop_box(region):
+            if target_face_box is None or not region.startswith("target_"):
+                return None
+
+            fx1, fy1, fx2, fy2 = clamp_box(target_face_box)
+            frame_h, frame_w = full_frame.shape[:2]
+            face_w = max(1, fx2 - fx1)
+            face_h = max(1, fy2 - fy1)
+            face_cx = (fx1 + fx2) / 2
+
+            if region == "target_upper":
+                return clamp_box([face_cx - face_w * 1.6, fy1, face_cx + face_w * 1.6, frame_h])
+            if region == "target_torso":
+                return clamp_box([face_cx - face_w * 1.8, fy2 - face_h * 0.15, face_cx + face_w * 1.8, frame_h])
+
+            half_w = max(frame_w * 0.18, face_w * 2.25)
+            return clamp_box([face_cx - half_w, fy1 - face_h * 1.05, face_cx + half_w, frame_h])
+
+        if target_face_box is not None:
+            target_face_box = list(clamp_box(target_face_box))
 
         def get_fallback_results(region="full"):
             # Use masked frame to horizontally filter background persons.
             # Spatial validator then handles remaining edge cases.
             if region in fallback_cache:
                 return fallback_cache[region]
+
+            target_box = target_crop_box(region)
+            if target_box is not None:
+                x1, y1, x2, y2 = target_box
+                crop = full_frame[y1:y2, x1:x2]
+                if crop.size == 0 or crop.shape[0] < 16 or crop.shape[1] < 16:
+                    fallback_cache[region] = (None, 0, 0)
+                    return fallback_cache[region]
+
+                details["vest"].setdefault("fallback_crops", []).append({
+                    "region": region,
+                    "box": [x1, y1, x2, y2]
+                })
+                result = (self.system.model_clothes(
+                    source=crop, imgsz=640, iou=0.45, conf=0.01, verbose=False)[0], x1, y1)
+                fallback_cache[region] = result
+                return result
 
             mask_frame, mx_offset = self.apply_mask(full_frame)
             y_offset = 0
@@ -607,19 +666,21 @@ class Detector:
             face_w = fx2 - fx1
             face_h = fy2 - fy1
 
-            # Mid-distance handoff: face is valid enough to create a face_box, but
-            # vest still needs zoom fallback. Keep horizontal binding, relax vertical scale.
+            target_fallback = source.startswith("fallback:target")
             zoom_fallback = enable_zoom and source.startswith("fallback")
-            horizontal_limit = face_w * (3.5 if zoom_fallback else 3.0)
-            vertical_limit = face_h * (3.2 if zoom_fallback else 1.8)
-            min_height_ratio = 0.35 if zoom_fallback else 0.5
+            horizontal_limit = face_w * 2.1
+            vertical_limit = face_h * (3.8 if target_fallback or zoom_fallback else 1.8)
+            min_height_ratio = 0.20 if target_fallback or zoom_fallback else 0.5
+            torso_x1 = face_cx - face_w * 0.95
+            torso_x2 = face_cx + face_w * 0.95
 
             horizontal_aligned = abs(face_cx - vest_cx) < horizontal_limit
+            intersects_torso = bx1 <= torso_x2 and bx2 >= torso_x1
             placed_below = by2 > fy2
             not_too_far_down = by1 < (fy2 + vertical_limit)
 
-            if not (horizontal_aligned and placed_below and not_too_far_down):
-                return False, f"Reject: src={source}, horiz={horizontal_aligned}, below={placed_below}, not_far={not_too_far_down} | vy1,vy2={by1},{by2} fy2={fy2} | face_h={face_h}, v_limit={vertical_limit:.0f}"
+            if not (horizontal_aligned and intersects_torso and placed_below and not_too_far_down):
+                return False, f"Reject: src={source}, horiz={horizontal_aligned}, torso={intersects_torso}, below={placed_below}, not_far={not_too_far_down} | vy1,vy2={by1},{by2} fy2={fy2} | face_h={face_h}, v_limit={vertical_limit:.0f}"
 
             # Height check: a folded/handheld vest has a very small bbox height.
             vest_bbox_h = by2 - by1
@@ -641,7 +702,7 @@ class Detector:
                 h_results = self.system.model_clothes(
                     source=head_crop, iou=0.45, conf=0.15, verbose=False)[0]
                 for det in h_results.boxes:
-                    if int(det.cls) == 2:
+                    if int(det.cls) == helmet_model_cls:
                         det_conf = float(det.conf[0])
                         rx1, ry1, rx2, ry2 = det.xyxy[0].cpu(
                         ).numpy().astype(int)
@@ -655,7 +716,7 @@ class Detector:
 
                         if valid:
                             details["helmet"]["detected"] = True
-                            detections.append((2, [gx1, gy1, gx2, gy2]))
+                            detections.append((CLOTHES_INTERNAL_HELMET_CLASS, [gx1, gy1, gx2, gy2]))
                             helmet_found = True
                             break
 
@@ -665,7 +726,7 @@ class Detector:
                 "full")
             helmet_min_conf = 0.12 if enable_zoom else 0.20
             for det in fallback_results.boxes:
-                if int(det.cls) == 2:
+                if int(det.cls) == helmet_model_cls:
                     det_conf = float(det.conf[0])
                     if det_conf < helmet_min_conf:
                         continue
@@ -683,7 +744,7 @@ class Detector:
                         details["helmet"]["fallback_box"] = [
                             gx1, gy1, gx2, gy2]
                         details["helmet"]["conf"] = det_conf
-                        detections.append((2, [gx1, gy1, gx2, gy2]))
+                        detections.append((CLOTHES_INTERNAL_HELMET_CLASS, [gx1, gy1, gx2, gy2]))
                         break
 
         vest_found = False
@@ -715,7 +776,7 @@ class Detector:
                 v_results = self.system.model_clothes(
                     source=body_crop, iou=0.45, conf=0.05, verbose=False)[0]
                 for det in v_results.boxes:
-                    if int(det.cls) == 0:
+                    if int(det.cls) == vest_model_cls:
                         rx1, ry1, rx2, ry2 = det.xyxy[0].cpu(
                         ).numpy().astype(int)
                         gx1, gy1, gx2, gy2 = rx1 + cx, ry1 + cy, rx2 + cx, ry2 + cy
@@ -727,7 +788,7 @@ class Detector:
 
                         if valid:
                             details["vest"]["detected"] = True
-                            detections.append((0, [gx1, gy1, gx2, gy2]))
+                            detections.append((CLOTHES_INTERNAL_VEST_CLASS, [gx1, gy1, gx2, gy2]))
                             vest_found = True
                             break
 
@@ -735,6 +796,9 @@ class Detector:
         if not vest_found:
             if enable_zoom:
                 fallback_regions = [
+                    "target_torso",
+                    "target_upper",
+                    "target_dynamic",
                     "body_dynamic_high",
                     "body_dynamic",
                     "body_dynamic_low",
@@ -751,14 +815,21 @@ class Detector:
                         "full",
                     ]
             else:
-                fallback_regions = ["body"]
+                fallback_regions = [
+                    "target_torso",
+                    "target_upper",
+                    "target_dynamic",
+                    "body",
+                ]
 
             best_vest = None
             for fallback_region in fallback_regions:
                 fallback_results, fallback_offset, fallback_y_offset = get_fallback_results(
                     fallback_region)
+                if fallback_results is None:
+                    continue
                 for det in fallback_results.boxes:
-                    if int(det.cls) == 0:
+                    if int(det.cls) == vest_model_cls:
                         det_conf = float(det.conf[0])
                         if det_conf < 0.25:
                             continue
@@ -783,7 +854,7 @@ class Detector:
                 details["vest"]["fallback_box"] = best_vest["box"]
                 details["vest"]["fallback_region"] = best_vest["region"]
                 details["vest"]["conf"] = best_vest["conf"]
-                detections.append((0, best_vest["box"]))
+                detections.append((CLOTHES_INTERNAL_VEST_CLASS, best_vest["box"]))
                 vest_found = True
 
         # Update State

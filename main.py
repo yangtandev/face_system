@@ -1,3 +1,8 @@
+import os
+
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
+os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp/yolo_config")
+
 from init.ann_index import AnnIndex
 from typing import List, Dict, Any
 from dataclasses import dataclass
@@ -17,7 +22,7 @@ from ui import styles
 from ui.user_show import MainWindow
 from init.log import LOGGER
 from PVMS_Library import config
-from ultralytics import YOLOv10
+from ultralytics import YOLO
 from tqdm import tqdm
 import requests
 import numpy as np
@@ -29,7 +34,6 @@ import time
 import threading
 import queue
 import json
-import os
 import subprocess
 import socket
 import shutil
@@ -757,25 +761,23 @@ class FaceRecognitionSystem:
 
     def load_clothes_model(self):
         """
-        Dynamically load the YOLOv10 clothes detection model.
+        Dynamically load the YOLO clothes detection model.
         Safe to call multiple times (idempotent).
         """
         if hasattr(self, 'model_clothes') and self.model_clothes is not None:
             return
 
         try:
-            LOGGER.info("正在載入衣著辨識模型 (YOLOv10 OpenVINO)...")
+            LOGGER.info("正在載入衣著辨識模型 (YOLO)...")
             models_dir = Path(f'{os.path.dirname(__file__)}/models')
-            model_name = 'best_cloth2'
-            int8_model_det_path = models_dir/'int8' / \
-                f'{model_name}_openvino_model/{model_name}.xml'
+            model_name = CONFIG.get("Clothes_model", "leeyunjai_ppe-11s.pt")
+            model_path = models_dir / model_name
 
-            if not int8_model_det_path.exists():
-                LOGGER.error(f"模型檔案不存在: {int8_model_det_path}")
+            if not model_path.exists():
+                LOGGER.error(f"模型檔案不存在: {model_path}")
                 return
 
-            self.model_clothes = YOLOv10(
-                int8_model_det_path.parent, task='detect')
+            self.model_clothes = YOLO(model_path, task='detect')
             LOGGER.info("衣著辨識模型載入成功。")
 
         except Exception as e:
