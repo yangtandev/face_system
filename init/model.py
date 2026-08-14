@@ -247,9 +247,17 @@ class Detector:
                             if not local_clothes_state[i]:
                                 if (now_t - self.clothe_time[i]) < self.clothe_hold_seconds[i]:
                                     local_clothes_state[i] = True
+
+                        # Helmet-only branch: vest is no longer an independent gate.
+                        # A valid helmet should mark both PPE icons green and pass clothes gate.
+                        if local_clothes_state[2]:
+                            local_clothes_state[0] = True
+                            self.clothe_time[0] = now_t
+                        else:
+                            local_clothes_state[0] = False
+
                         self.system.state.clothes = local_clothes_state
-                        self.system.state.clothes_gate_pass = bool(
-                            local_clothes_state[0] and local_clothes_state[2])
+                        self.system.state.clothes_gate_pass = bool(local_clothes_state[2])
                         self.system.state.clothes_gate_time = now if self.system.state.clothes_gate_pass else 0.0
                     else:
                         if self.do_clothes:
