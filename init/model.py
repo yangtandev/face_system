@@ -208,9 +208,7 @@ class Detector:
                         face_width = x2 - x1
                         min_face_val = self.system.state.min_face[self.frame_num]
 
-                        # [2026-03-06 Revert] Strict threshold when clothes mode is On
-                        # Avoid "請靠近" when clothes detection is on, only start when >= min_face
-                        det_ratio = 1.0 if clothes_active else POTENTIAL_MISS_RATIO
+                        det_ratio = POTENTIAL_MISS_RATIO
 
                         if center_x < roi_x1 or center_x > roi_x2 or face_width < (min_face_val * det_ratio):
                             box = None
@@ -228,8 +226,12 @@ class Detector:
                         if 'face_width' not in locals():
                             face_width = 0
 
-                    # 2. 執行衣著偵測。遠距模式只放寬服裝偵測，不放寬臉辨 min_face。
-                    should_detect_clothes = clothes_active
+                    # 2. 執行衣著偵測。未達臉辨距離時只提示靠近，不顯示 PPE 通過狀態。
+                    should_detect_clothes = (
+                        clothes_active and
+                        box is not None and
+                        face_width >= self.system.state.min_face[self.frame_num]
+                    )
                     current_clothes_detections = []
                     # [2026-02-12 Feature] Store detailed JSON log
                     current_clothes_details = {}
@@ -260,7 +262,7 @@ class Detector:
                         self.system.state.clothes = local_clothes_state
                         self.system.state.clothes_gate_pass = bool(
                             local_clothes_state[0] and local_clothes_state[2])
-                        self.system.state.clothes_gate_time = now if self.system.state.clothes_gate_pass else 0.0
+                        self.system.state.clothes_gate_time = now_t if self.system.state.clothes_gate_pass else 0.0
                     else:
                         if self.do_clothes:
                             self.system.state.clothes = [False, False, False]
@@ -278,6 +280,10 @@ class Detector:
 
                     # 鐵則：服裝辨識開啟後，未同時通過安全帽+背心，不產生臉辨資料。
                     if clothes_gate_required and not clothes_gate_pass:
+                        face_too_small_for_recognition = (
+                            box is not None and
+                            face_width < self.system.state.min_face[self.frame_num]
+                        )
                         if now - self.last_clothes_gate_block_log_time >= 1.0:
                             gate_time = getattr(self.system.state, "clothes_gate_time", 0.0)
                             gate_age = now - gate_time if gate_time else None
@@ -287,8 +293,14 @@ class Detector:
                                 f"face_width={face_width} min_face={self.system.state.min_face[self.frame_num]}"
                             )
                             self.last_clothes_gate_block_log_time = now
-                        self.system.state.hint_text[self.frame_num] = "請正確著裝"
-                        if box is not None and now - self.last_clothes_hint_speak_time >= self.clothes_hint_cooldown_seconds:
+                        self.system.state.hint_text[self.frame_num] = (
+                            "請靠近鏡頭" if face_too_small_for_recognition else "請正確著裝"
+                        )
+                        if (
+                            box is not None and
+                            not face_too_small_for_recognition and
+                            now - self.last_clothes_hint_speak_time >= self.clothes_hint_cooldown_seconds
+                        ):
                             self._say_hint(
                                 CONFIG.get("say", {}).get("clothes", "請正確著裝"),
                                 "hint_clothes",
