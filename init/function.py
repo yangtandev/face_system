@@ -41,6 +41,29 @@ def clothes_gate_is_fresh(system, now=None):
     )
 
 
+def apply_clothes_gate_hold(system, clothes_state, now=None):
+    now = time.time() if now is None else now
+    clothes_state = list(clothes_state)
+    passed_now = bool(clothes_state[0] and clothes_state[2])
+
+    if passed_now:
+        system.state.clothes_gate_pass = True
+        system.state.clothes_gate_time = now
+        system.state.clothes = clothes_state
+        return True
+
+    if clothes_gate_is_fresh(system, now):
+        clothes_state[0] = True
+        clothes_state[2] = True
+        system.state.clothes = clothes_state
+        return True
+
+    system.state.clothes_gate_pass = False
+    system.state.clothes_gate_time = 0.0
+    system.state.clothes = clothes_state
+    return False
+
+
 def frame_hash(frame):
     """Return a stable hash for a concrete frame array."""
     if frame is None:

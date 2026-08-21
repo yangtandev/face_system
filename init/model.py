@@ -25,6 +25,7 @@ from init.function import (
     stable_json_hash,
     is_schedule_entry_active,
     prefixed_hint_voice,
+    apply_clothes_gate_hold,
     clothes_gate_is_fresh,
     check_in_out_qrcode,
     check_in_out,
@@ -227,10 +228,17 @@ class Detector:
                             face_width = 0
 
                     # 2. 執行衣著偵測。未達臉辨距離時只提示靠近，不顯示 PPE 通過狀態。
-                    should_detect_clothes = (
-                        clothes_active and
+                    face_ready_for_clothes = (
                         box is not None and
                         face_width >= self.system.state.min_face[self.frame_num]
+                    )
+                    keep_gate_by_hold = (
+                        clothes_active and
+                        clothes_gate_is_fresh(self.system, now)
+                    )
+                    should_detect_clothes = (
+                        clothes_active and
+                        face_ready_for_clothes
                     )
                     current_clothes_detections = []
                     # [2026-02-12 Feature] Store detailed JSON log
@@ -253,21 +261,24 @@ class Detector:
                         except Exception as e:
                             LOGGER.error(f"衣著偵測失敗: {e}")
 
-                        # Debounce
                         now_t = time.time()
-                        for i in range(3):
-                            if not local_clothes_state[i]:
-                                if (now_t - self.clothe_time[i]) < self.clothe_hold_seconds[i]:
-                                    local_clothes_state[i] = True
-                        self.system.state.clothes = local_clothes_state
-                        self.system.state.clothes_gate_pass = bool(
-                            local_clothes_state[0] and local_clothes_state[2])
-                        self.system.state.clothes_gate_time = now_t if self.system.state.clothes_gate_pass else 0.0
+                        if face_ready_for_clothes:
+                            for i in range(3):
+                                if not local_clothes_state[i]:
+                                    if (now_t - self.clothe_time[i]) < self.clothe_hold_seconds[i]:
+                                        local_clothes_state[i] = True
+                            apply_clothes_gate_hold(
+                                self.system, local_clothes_state, now_t)
                     else:
                         if self.do_clothes:
-                            self.system.state.clothes = [False, False, False]
-                            self.system.state.clothes_gate_pass = False
-                            self.system.state.clothes_gate_time = 0.0
+                            if keep_gate_by_hold:
+                                apply_clothes_gate_hold(
+                                    self.system, [False, False, False], now)
+                            else:
+                                self.system.state.clothes = [
+                                    False, False, False]
+                                self.system.state.clothes_gate_pass = False
+                                self.system.state.clothes_gate_time = 0.0
                             self.system.state.clothes_display_suppressed[self.frame_num] = False
 
                     # 3. QR Code (省略，保持原位)
